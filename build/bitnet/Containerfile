@@ -24,9 +24,10 @@ RUN find . -name "*.cpp" -o -name "*.h" | \
 # Build llama-server
 RUN cmake -B build -DBITNET_X86_TL2=OFF \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-    -DLLAMA_FATAL_WARNINGS=OFF \
-    -DLLAMA_BUILD_SERVER=ON 2>&1 && \
-    cmake --build build --config Release --target llama-server -j4 2>&1
+    -DLLAMA_FATAL_WARNINGS=OFF 2>&1 && \
+    cmake --build build --config Release -j4 2>&1 && \
+    echo "=== Built executables ===" && \
+    find build/ -type f -executable -name "llama*" -o -name "server" | head -20
 
 # Download the pre-converted 400MB GGUF
 RUN python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download('microsoft/bitnet-b1.58-2B-4T-gguf', 'ggml-model-i2_s.gguf', local_dir='/build/model')"
