@@ -11,8 +11,9 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Relax torch version pin — upstream requires 2.11.0 which doesn't exist yet
-RUN sed -i 's/torch==2\.11\.0/torch>=2.5.0/' requirements.txt && \
+# Install torch first (upstream pins a version that may not exist yet)
+RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
+    sed -i '/^torch/d' requirements.txt && \
     pip3 install -r requirements.txt
 
 # Pre-patch const-correctness bug in ternary kernel
