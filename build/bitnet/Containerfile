@@ -11,9 +11,17 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Install torch CPU-only, then remaining deps with torch line removed
+# Install torch CPU-only, then remaining deps
+# The upstream requirements.txt has conditional torch entries that sed misses
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-    sed -i '/torch/d' requirements.txt && \
+    python3 -c "
+lines = open('requirements.txt').readlines()
+with open('requirements.txt','w') as f:
+    for line in lines:
+        if 'torch' not in line.lower():
+            f.write(line)
+" && \
+    cat requirements.txt && \
     pip3 install -r requirements.txt
 
 # Pre-patch const-correctness bug in ternary kernel
