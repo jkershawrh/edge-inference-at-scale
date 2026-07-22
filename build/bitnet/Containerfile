@@ -12,9 +12,10 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 WORKDIR /build/BitNet
 
 # Install torch first (upstream pins a version that may not exist yet)
+# Remove ALL torch references from requirements.txt regardless of format
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-    sed -i '/^torch/d' requirements.txt && \
-    pip3 install -r requirements.txt
+    grep -vi 'torch' requirements.txt > req_clean.txt && \
+    pip3 install -r req_clean.txt
 
 # Pre-patch const-correctness bug in ternary kernel
 RUN find . -name "*.cpp" -o -name "*.h" | \
