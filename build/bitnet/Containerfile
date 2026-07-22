@@ -25,7 +25,7 @@ RUN find . -name "*.cpp" -o -name "*.h" | \
 RUN cmake -B build -DBITNET_X86_TL2=OFF \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
     -DLLAMA_FATAL_WARNINGS=OFF 2>&1 && \
-    cmake --build build --config Release -j$(nproc) 2>&1
+    cmake --build build --config Release -j4 2>&1
 
 # Download the pre-converted 400MB GGUF
 RUN huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
