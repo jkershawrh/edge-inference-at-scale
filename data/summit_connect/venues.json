@@ -1,0 +1,65 @@
+{
+  "main_venue": {
+    "name": "Convention Center",
+    "address": "100 Main Street",
+    "levels": [
+      {
+        "level": 1,
+        "areas": ["North Lobby (Registration)", "Main Cafeteria", "Exhibition Hall", "First Aid Station"]
+      },
+      {
+        "level": 2,
+        "areas": ["Main Hall (Keynotes)", "Rooms A1-A10 (Sessions)", "Coffee Stations"]
+      },
+      {
+        "level": 3,
+        "areas": ["Rooms B1-B5 (Sessions)", "Lab Rooms L1-L5", "Coffee Stations"]
+      },
+      {
+        "level": "Rooftop",
+        "areas": ["Rooftop Terrace (Events)", "Grand Ballroom"]
+      }
+    ],
+    "amenities": [
+      "Free WiFi: SummitConnect-Guest (no password) or SummitConnect-Labs (badge QR)",
+      "Coffee stations on every level, refreshed hourly",
+      "Charging stations near all session rooms",
+      "Quiet room on Level 3 near B5",
+      "Prayer/meditation room on Level 1 near the cafeteria"
+    ]
+  },
+  "hotels": [
+    {
+      "name": "Grand Hotel Downtown",
+      "distance": "0.2 miles",
+      "shuttle": true,
+      "rate": "Conference rate: $189/night"
+    },
+    {
+      "name": "Summit Inn",
+      "distance": "0.5 miles",
+      "shuttle": true,
+      "rate": "Conference rate: $149/night"
+    },
+    {
+      "name": "Tech District Suites",
+      "distance": "0.8 miles",
+      "shuttle": true,
+      "rate": "Conference rate: $169/night"
+    }
+  ],
+  "restaurants": [
+    {"name": "The Edge Cafe", "cuisine": "American", "distance": "100 ft", "price": "$$"},
+    {"name": "Noodle House", "cuisine": "Asian Fusion", "distance": "0.1 miles", "price": "$$"},
+    {"name": "Brick Oven Pizza", "cuisine": "Italian", "distance": "0.2 miles", "price": "$$"},
+    {"name": "Green Fork", "cuisine": "Vegan/Vegetarian", "distance": "0.2 miles", "price": "$$"},
+    {"name": "The Steakhouse", "cuisine": "Steakhouse", "distance": "0.3 miles", "price": "$$$"},
+    {"name": "Taco Loco", "cuisine": "Mexican", "distance": "0.1 miles", "price": "$"}
+  ],
+  "transport": {
+    "shuttle": "Free shuttle every 15 min between partner hotels and Convention Center, 7AM-10PM",
+    "rideshare": "Pickup/dropoff at the east entrance (look for the Summit Connect signs)",
+    "parking": "Parking garage attached to the Convention Center, $15/day for attendees (show badge)",
+    "public_transit": "Bus routes 5 and 12 stop at Main & 1st, one block from the venue"
+  }
+}

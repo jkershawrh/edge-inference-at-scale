@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-bitnet
+  labels:
+    app.kubernetes.io/name: bitnet
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: inference-engine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: bitnet
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: bitnet
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: inference-engine
+    spec:
+      containers:
+        - name: bitnet
+          image: {{ .Values.bitnet.image }}
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          args:
+            - "--model"
+            - "/models/ggml-model-i2_s.gguf"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "8080"
+            - "--ctx-size"
+            - "{{ .Values.bitnet.ctxSize }}"
+            - "--threads"
+            - "{{ .Values.bitnet.threads }}"
+            - "--alias"
+            - "{{ .Values.bitnet.model }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: {{ .Values.bitnet.resources.requests.cpu | quote }}
+              memory: {{ .Values.bitnet.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.bitnet.resources.limits.cpu | quote }}
+              memory: {{ .Values.bitnet.resources.limits.memory }}

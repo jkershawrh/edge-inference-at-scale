@@ -1,0 +1,55 @@
+---
+bitnet:
+  image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
+  model: bitnet-2b4t
+  threads: 16
+  ctxSize: 2048
+  resources:
+    requests:
+      cpu: "2"
+      memory: 2Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+backend:
+  image: quay.io/rh-ai-quickstart/edge-inference-at-scale:latest
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+rag:
+  image: quay.io/rh-ai-quickstart/edge-inference-rag:latest
+  embeddingModel: all-MiniLM-L6-v2
+  storageSize: 5Gi
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+privacyFilter:
+  resources:
+    requests:
+      cpu: 125m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+redis:
+  image: redis:7-alpine
+  maxmemory: 256mb
+
+chromadb:
+  image: chromadb/chroma:latest
+  storageSize: 5Gi
+
+nodeId: edge-node-001
+smsMode: sim

@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-rag-service
+  labels:
+    app.kubernetes.io/name: rag-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rag-service
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rag-service
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: rag-service
+          image: {{ .Values.rag.image }}
+          ports:
+            - containerPort: 8004
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 10
+            failureThreshold: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: {{ .Values.rag.resources.requests.cpu | quote }}
+              memory: {{ .Values.rag.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.rag.resources.limits.cpu | quote }}
+              memory: {{ .Values.rag.resources.limits.memory }}
+      volumes:
+        - name: rag-data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-rag

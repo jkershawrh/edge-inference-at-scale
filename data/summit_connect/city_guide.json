@@ -1,0 +1,30 @@
+{
+  "city": "Summit City",
+  "weather": {
+    "july_average_high": "88°F (31°C)",
+    "july_average_low": "68°F (20°C)",
+    "conditions": "Mostly sunny, occasional afternoon thunderstorms. Bring sunscreen and a light jacket for the AC."
+  },
+  "emergency": {
+    "event_security": "Text HELP or call ext 5555",
+    "first_aid": "North Lobby, Level 1 near registration",
+    "local_emergency": "911",
+    "nearest_hospital": "Summit Medical Center, 500 Hospital Drive (1.2 miles)",
+    "pharmacy": "CVS at 200 Main Street (0.1 miles), open 7AM-10PM"
+  },
+  "attractions": [
+    {"name": "Riverside Walk", "type": "Outdoor", "distance": "0.5 miles", "description": "Scenic walking path along the river, great for morning jogs or evening strolls."},
+    {"name": "Tech Museum", "type": "Museum", "distance": "0.8 miles", "description": "Interactive technology exhibits including a retro computing gallery and AI demo lab."},
+    {"name": "Downtown Market", "type": "Shopping/Food", "distance": "0.3 miles", "description": "Open-air market with local food vendors, crafts, and live music on weekends."},
+    {"name": "City Park", "type": "Outdoor", "distance": "0.4 miles", "description": "Large urban park with walking trails, a lake, and free evening concerts in the amphitheater."},
+    {"name": "Craft Beer District", "type": "Nightlife", "distance": "0.6 miles", "description": "Six craft breweries within walking distance, most with food menus and outdoor seating."}
+  ],
+  "tips": [
+    "The conference badge gets you 10% off at most downtown restaurants — just show it.",
+    "Best coffee near the venue: Edge Cafe (100 ft from the east entrance).",
+    "Afternoon thunderstorms usually last 30-60 minutes. The venue has covered walkways to the parking garage.",
+    "Food trucks outside the south entrance are popular — get there before 12:30 for shorter lines.",
+    "The shuttle to partner hotels runs until 10PM. After that, rideshare is your best bet.",
+    "Quiet room on Level 3 is great for focused work between sessions."
+  ]
+}

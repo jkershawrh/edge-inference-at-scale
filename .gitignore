@@ -1,0 +1,27 @@
+# Reference repos (upstream sources, not part of this project)
+EVY/
+edge-ai-cpu-inference/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Data (generated at runtime)
+data/chroma/
+
+# Node
+node_modules/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

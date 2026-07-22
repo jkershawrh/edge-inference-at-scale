@@ -1,0 +1,9 @@
+apiVersion: v2
+name: edge-inference-at-scale
+description: SMS-to-LLM-to-SMS edge AI inference with BitNet 1.58-bit, RAG, and event-driven messaging
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Red Hat AI Quickstarts
+    url: https://github.com/rh-ai-quickstart

@@ -1,0 +1,84 @@
+{
+  "speakers": [
+    {
+      "id": "SP001",
+      "name": "Jordan Kershaw",
+      "title": "Senior Solutions Architect",
+      "company": "Red Hat",
+      "bio": "Designs edge computing solutions at the intersection of AI, open source, and real-world deployment. Creator of the EVY platform and edge-ai-cpu-inference quickstart.",
+      "sessions": ["S001", "S005", "S010", "S011"]
+    },
+    {
+      "id": "SP002",
+      "name": "Sarah Chen",
+      "title": "Principal Engineer, AI Platforms",
+      "company": "Intel",
+      "bio": "Leads Intel's work on CPU-optimized AI inference, specializing in AVX-512 and AMX acceleration for quantized models on Xeon processors.",
+      "sessions": ["S001", "S006", "S010", "S012"]
+    },
+    {
+      "id": "SP003",
+      "name": "Alex Rivera",
+      "title": "AI/ML Engineer",
+      "company": "Red Hat",
+      "bio": "Builds retrieval-augmented generation systems for disconnected and low-resource environments. Contributor to ChromaDB and sentence-transformers.",
+      "sessions": ["S002", "S011"]
+    },
+    {
+      "id": "SP004",
+      "name": "Min Zhang",
+      "title": "Research Scientist",
+      "company": "Microsoft Research",
+      "bio": "Core contributor to BitNet and the 1.58-bit quantization research. Works on making large language models accessible on commodity hardware.",
+      "sessions": ["S003", "S012"]
+    },
+    {
+      "id": "SP005",
+      "name": "Priya Patel",
+      "title": "Edge Computing Lead",
+      "company": "Red Hat",
+      "bio": "Leads Red Hat's edge computing practice, helping organizations deploy OpenShift and AI workloads at thousands of edge sites worldwide.",
+      "sessions": ["S004", "S009"]
+    },
+    {
+      "id": "SP006",
+      "name": "Dr. Marcus Johnson",
+      "title": "Director of Technology",
+      "company": "International Red Cross",
+      "bio": "Deploys technology solutions in disaster zones and conflict areas. Advocates for appropriate tech that works where infrastructure has failed.",
+      "sessions": ["S007", "S010"]
+    },
+    {
+      "id": "SP007",
+      "name": "Tara O'Brien",
+      "title": "Security Architect",
+      "company": "Red Hat",
+      "bio": "Specializes in container security, supply chain integrity, and building hardened UBI-based images for regulated and edge environments.",
+      "sessions": ["S008"]
+    },
+    {
+      "id": "SP008",
+      "name": "David Kim",
+      "title": "Senior Software Engineer",
+      "company": "Intel",
+      "bio": "Works on fleet management and orchestration tools for edge AI deployments at scale. Contributor to the Open Edge Platform.",
+      "sessions": ["S009", "S010"]
+    },
+    {
+      "id": "SP009",
+      "name": "Dr. Lisa Wang",
+      "title": "VP of Open Source Strategy",
+      "company": "Red Hat",
+      "bio": "Shapes Red Hat's open source AI strategy, including model licensing, community governance, and the InstructLab project.",
+      "sessions": ["S013"]
+    },
+    {
+      "id": "SP010",
+      "name": "James Whitfield",
+      "title": "CTO",
+      "company": "Tech for Good Foundation",
+      "bio": "Leads a global initiative to bring technology to underserved communities. Believes AI should be accessible to everyone, everywhere, regardless of infrastructure.",
+      "sessions": ["S014"]
+    }
+  ]
+}

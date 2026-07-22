@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+  labels:
+    app.kubernetes.io/name: edge-inference-at-scale
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  NODE_ID: {{ .Values.nodeId | quote }}
+  SMS_MODE: {{ .Values.smsMode | quote }}
+  BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
+  REDIS_URL: "redis://{{ .Release.Name }}-redis:6379/0"
+  SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
+  MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
+  LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"
+  RAG_SERVICE_URL: "http://{{ .Release.Name }}-rag-service:8004"
+  PRIVACY_FILTER_URL: "http://{{ .Release.Name }}-privacy-filter:8005"
+  CHROMA_HOST: "{{ .Release.Name }}-chromadb"
+  CHROMA_PORT: "8000"
+  MODEL_NAME: {{ .Values.bitnet.model | quote }}
+  EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}

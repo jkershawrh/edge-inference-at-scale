@@ -1,0 +1,62 @@
+# Benchmark Rubric — technique-specific performance validation
+# Governs Stage 3 (EDD) of the validation matrix.
+#
+# Edge Inference at Scale: SMS -> LLM -> SMS pipeline benchmarks.
+
+benchmark_rubric:
+  version: "1.0"
+  description: "Performance validation for Edge Inference at Scale SMS pipeline"
+
+  verification_policy:
+    verified_means: "Measured by a live endpoint in the target environment"
+    public_claim_rules:
+      - "Do not publish latency claims unless claim_registry marks them verified"
+      - "If a feature is configured but unmeasured, present as 'configured and measured'"
+      - "Cost claims use 'estimate' language, never 'guaranteed'"
+      - "Throughput claims must be measured under edge resource constraints"
+
+  run_modes:
+    local:
+      description: "Unit tests, contract validation, static checks"
+      no_cluster_required: true
+    compose:
+      description: "Full docker-compose stack with live BitNet inference and RAG"
+      requires: ["podman", "docker-compose"]
+    openshift:
+      description: "Helm deployment on OpenShift with full validation"
+      requires: ["oc", "helm"]
+
+  benchmarks:
+    sms_end_to_end_latency:
+      description: "Full SMS pipeline latency: SMS receive -> route -> RAG -> LLM -> SMS response"
+      test_text: "What sessions are about edge computing?"
+      max_ms: 15000
+      required_fields: ["response", "total_latency_ms", "stages"]
+
+    llm_inference_latency:
+      description: "Single LLM chat completion response latency via BitNet server"
+      test_text: "Explain what edge computing is in one sentence."
+      max_ms: 10000
+      required_fields: ["response", "model_used", "processing_time", "tokens_used"]
+
+    rag_search_latency:
+      description: "RAG vector search latency for a domain-specific query"
+      test_text: "summit connect keynote speakers schedule"
+      max_ms: 2000
+      required_fields: ["documents", "scores", "latency_ms"]
+
+    message_throughput:
+      description: "Sustained message throughput under edge resource constraints"
+      min_messages_per_minute: 4
+      duration_seconds: 60
+      required_fields: ["messages_processed", "messages_per_minute", "avg_latency_ms"]
+
+    model_memory_footprint:
+      description: "BitNet model memory consumption stays within edge device limits"
+      max_mb: 1024
+      required_fields: ["model_memory_mb"]
+
+    service_startup_time:
+      description: "Time from docker compose up to all health checks passing"
+      max_seconds: 60
+      required_fields: ["startup_time_seconds", "services_healthy"]

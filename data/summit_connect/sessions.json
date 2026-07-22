@@ -1,0 +1,158 @@
+{
+  "sessions": [
+    {
+      "id": "S001",
+      "title": "Edge Inference at Scale: 1-Bit LLMs in the Field",
+      "track": "Edge AI",
+      "day": 1,
+      "time": "09:00-10:30",
+      "room": "Main Hall",
+      "type": "keynote",
+      "speakers": ["SP001", "SP002"],
+      "description": "How Red Hat and Intel are bringing AI inference to edge deployments using 1-bit ternary models that run on CPU-only hardware with minimal resources."
+    },
+    {
+      "id": "S002",
+      "title": "Building RAG Systems for Disconnected Environments",
+      "track": "Edge AI",
+      "day": 1,
+      "time": "11:00-12:30",
+      "room": "A1",
+      "type": "workshop",
+      "speakers": ["SP003"],
+      "description": "Hands-on workshop on building retrieval-augmented generation systems that work entirely offline using lightweight embedding models and local vector stores."
+    },
+    {
+      "id": "S003",
+      "title": "BitNet: From Research Paper to Production Deployment",
+      "track": "Edge AI",
+      "day": 1,
+      "time": "14:00-15:30",
+      "room": "A2",
+      "type": "workshop",
+      "speakers": ["SP004"],
+      "description": "Deep dive into BitNet 1.58-bit quantization, ternary weight inference, and deploying Microsoft's BitNet b1.58-2B-4T model on Intel Xeon hardware."
+    },
+    {
+      "id": "S004",
+      "title": "OpenShift at the Edge: Patterns and Anti-Patterns",
+      "track": "Cloud Native",
+      "day": 2,
+      "time": "10:15-11:15",
+      "room": "A1",
+      "type": "breakout",
+      "speakers": ["SP005"],
+      "description": "Lessons learned deploying Red Hat OpenShift to edge sites: single-node deployments, disconnected registries, fleet management with RHACM."
+    },
+    {
+      "id": "S005",
+      "title": "SMS as an AI Interface: Reaching the Last Mile",
+      "track": "Edge AI",
+      "day": 2,
+      "time": "10:15-11:15",
+      "room": "A2",
+      "type": "breakout",
+      "speakers": ["SP001"],
+      "description": "Why SMS remains the most accessible communication channel and how to build AI-powered SMS services for communities with limited connectivity."
+    },
+    {
+      "id": "S006",
+      "title": "Intel AMX and AVX-512 for AI Workloads",
+      "track": "Hardware",
+      "day": 2,
+      "time": "11:30-12:30",
+      "room": "A3",
+      "type": "breakout",
+      "speakers": ["SP002"],
+      "description": "How Intel Advanced Matrix Extensions and AVX-512 instructions accelerate integer-only inference for quantized models on Xeon processors."
+    },
+    {
+      "id": "S007",
+      "title": "Disaster Relief Technology: AI for Humanitarian Response",
+      "track": "Impact",
+      "day": 2,
+      "time": "11:30-12:30",
+      "room": "A4",
+      "type": "breakout",
+      "speakers": ["SP006"],
+      "description": "Case studies of deploying technology in disaster zones — connectivity challenges, power constraints, and how edge AI can provide critical information when infrastructure fails."
+    },
+    {
+      "id": "S008",
+      "title": "Container Security on UBI9: From Dev to Edge",
+      "track": "Security",
+      "day": 2,
+      "time": "14:00-15:00",
+      "room": "B1",
+      "type": "breakout",
+      "speakers": ["SP007"],
+      "description": "Building secure container images with Red Hat Universal Base Image 9, vulnerability scanning, and supply chain security for edge deployments."
+    },
+    {
+      "id": "S009",
+      "title": "Scaling Edge Nodes: Fleet Management at 1000 Sites",
+      "track": "Cloud Native",
+      "day": 2,
+      "time": "14:00-15:00",
+      "room": "B2",
+      "type": "breakout",
+      "speakers": ["SP005", "SP008"],
+      "description": "How to manage thousands of edge nodes with GitOps, RHACM, and zero-touch provisioning — keeping models updated and services healthy across a global fleet."
+    },
+    {
+      "id": "S010",
+      "title": "Panel: AI at the Edge — From Lab to Field",
+      "track": "Edge AI",
+      "day": 2,
+      "time": "16:30-17:30",
+      "room": "Main Hall",
+      "type": "panel",
+      "speakers": ["SP001", "SP002", "SP006", "SP008"],
+      "description": "Industry leaders discuss the real-world challenges and opportunities of deploying AI inference at the edge, from hardware constraints to community impact."
+    },
+    {
+      "id": "S011",
+      "title": "Hands-On: Build Your Own SMS AI Assistant",
+      "track": "Edge AI",
+      "day": 3,
+      "time": "09:00-12:00",
+      "room": "L1",
+      "type": "lab",
+      "speakers": ["SP001", "SP003"],
+      "description": "3-hour lab where you build and deploy your own SMS-based AI assistant using BitNet, RAG, and FastAPI. Bring your laptop — you'll leave with a working system."
+    },
+    {
+      "id": "S012",
+      "title": "Hands-On: Intel Xeon Optimization for AI Inference",
+      "track": "Hardware",
+      "day": 3,
+      "time": "09:00-12:00",
+      "room": "L2",
+      "type": "lab",
+      "speakers": ["SP002", "SP004"],
+      "description": "Optimize AI model inference on Intel Xeon processors. Profile performance, enable AMX instructions, and benchmark quantized models."
+    },
+    {
+      "id": "S013",
+      "title": "The Future of Open Source AI",
+      "track": "Open Source",
+      "day": 2,
+      "time": "09:00-10:00",
+      "room": "Main Hall",
+      "type": "keynote",
+      "speakers": ["SP009"],
+      "description": "Where open source AI is heading — model licensing, community-driven development, and the democratization of AI through projects like llama.cpp, BitNet, and Hugging Face."
+    },
+    {
+      "id": "S014",
+      "title": "Closing Keynote: Technology for Everyone, Everywhere",
+      "track": "Impact",
+      "day": 3,
+      "time": "14:30-16:00",
+      "room": "Main Hall",
+      "type": "keynote",
+      "speakers": ["SP010"],
+      "description": "A vision for technology that serves everyone — bridging the digital divide with edge computing, open source, and community-driven innovation."
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-privacy-filter
+  labels:
+    app.kubernetes.io/name: privacy-filter
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: privacy-filter
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: privacy-filter
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: privacy-filter
+          image: {{ .Values.backend.image }}
+          command: ["python3.11", "-m", "uvicorn"]
+          args: ["backend.services.privacy_filter.main:app", "--host", "0.0.0.0", "--port", "8005"]
+          ports:
+            - containerPort: 8005
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: {{ .Values.privacyFilter.resources.requests.cpu }}
+              memory: {{ .Values.privacyFilter.resources.requests.memory }}
+            limits:
+              cpu: {{ .Values.privacyFilter.resources.limits.cpu }}
+              memory: {{ .Values.privacyFilter.resources.limits.memory }}

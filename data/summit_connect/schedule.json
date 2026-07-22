@@ -1,0 +1,49 @@
+{
+  "conference": "Summit Connect 2026",
+  "dates": "July 15-17, 2026",
+  "location": "Convention Center, 100 Main Street",
+  "days": [
+    {
+      "date": "2026-07-15",
+      "label": "Day 1 — Keynotes & Workshops",
+      "blocks": [
+        {"time": "07:00-08:30", "title": "Registration & Breakfast", "location": "North Lobby"},
+        {"time": "09:00-10:30", "title": "Opening Keynote: Edge Inference at Scale", "location": "Main Hall", "speaker": "Red Hat & Intel"},
+        {"time": "10:30-11:00", "title": "Coffee Break", "location": "All Levels"},
+        {"time": "11:00-12:30", "title": "Morning Workshops (4 parallel tracks)", "location": "Rooms A1-A4"},
+        {"time": "12:30-14:00", "title": "Lunch", "location": "Main Cafeteria + Food Trucks"},
+        {"time": "14:00-15:30", "title": "Afternoon Workshops (4 parallel tracks)", "location": "Rooms A5-A8"},
+        {"time": "15:30-16:00", "title": "Coffee Break", "location": "All Levels"},
+        {"time": "16:00-17:00", "title": "Lightning Talks", "location": "Main Hall"},
+        {"time": "18:00-21:00", "title": "Welcome Reception", "location": "Rooftop Terrace"}
+      ]
+    },
+    {
+      "date": "2026-07-16",
+      "label": "Day 2 — Breakout Sessions & Demos",
+      "blocks": [
+        {"time": "08:00-09:00", "title": "Breakfast", "location": "Main Cafeteria"},
+        {"time": "09:00-10:00", "title": "Keynote: The Future of Open Source AI", "location": "Main Hall"},
+        {"time": "10:15-11:15", "title": "Breakout Sessions Block 1 (6 parallel)", "location": "Rooms A1-A6"},
+        {"time": "11:30-12:30", "title": "Breakout Sessions Block 2 (6 parallel)", "location": "Rooms A1-A6"},
+        {"time": "12:30-14:00", "title": "Lunch & Demo Showcase", "location": "Exhibition Hall"},
+        {"time": "14:00-15:00", "title": "Breakout Sessions Block 3 (6 parallel)", "location": "Rooms B1-B5 + A10"},
+        {"time": "15:15-16:15", "title": "Breakout Sessions Block 4 (6 parallel)", "location": "Rooms B1-B5 + A10"},
+        {"time": "16:30-17:30", "title": "Panel: AI at the Edge — From Lab to Field", "location": "Main Hall"},
+        {"time": "19:00-22:00", "title": "Conference Dinner", "location": "Grand Ballroom"}
+      ]
+    },
+    {
+      "date": "2026-07-17",
+      "label": "Day 3 — Hands-On Labs & Closing",
+      "blocks": [
+        {"time": "08:00-09:00", "title": "Breakfast", "location": "Main Cafeteria"},
+        {"time": "09:00-12:00", "title": "Hands-On Labs (3 hours, 5 parallel tracks)", "location": "Lab Rooms L1-L5"},
+        {"time": "12:00-13:30", "title": "Lunch", "location": "Main Cafeteria"},
+        {"time": "13:30-14:30", "title": "Community Awards", "location": "Main Hall"},
+        {"time": "14:30-16:00", "title": "Closing Keynote & Wrap-Up", "location": "Main Hall"},
+        {"time": "16:00-17:00", "title": "Networking & Farewell", "location": "North Lobby"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+# Claim Provenance Registry — every factual assertion in the quickstart
+# Run `make audit-claims` to see unverified claims
+#
+# Rules:
+#   - Every number shown in the UI MUST have an entry here
+#   - Claims with verified: false display with "projected" or "paper reference" label
+#   - Speedup claims require minimum_speedup_for_claim threshold met on live hardware
+#   - Cost claims use "contributes to" / "estimate" language, never "guaranteed"
+
+claims:
+  - id: bitnet-ternary-model-size
+    statement: "BitNet model is 1.58-bit ternary (~400MB)"
+    value: "~400 MB"
+    file: README.md
+    line: null
+    source: "BitNet b1.58 paper — 1.58-bit quantization yields ~0.4 GB for 2.4B params"
+    source_url: "https://arxiv.org/abs/2402.17764"
+    verification_status: verified
+    verified_date: "2025-04-17"
+    notes: "1.58 bits/param * 2.4B params = ~0.4 GB GGUF file. Ternary weights {-1, 0, 1}."
+
+  - id: cpu-only-inference
+    statement: "CPU-only inference (no GPU required)"
+    value: "CPU-only"
+    file: README.md
+    line: null
+    source: "BitNet b1.58 paper — ternary weights enable integer-only arithmetic on CPU"
+    source_url: "https://arxiv.org/abs/2402.17764"
+    verification_status: verified
+    verified_date: "2025-04-17"
+    notes: "Every weight is constrained to {-1, 0, 1}, eliminating floating-point multiply-accumulate. Validated on Intel Xeon with AVX-512."
+
+  - id: sms-response-160-chars
+    statement: "SMS responses under 160 characters"
+    value: "160 characters"
+    file: README.md
+    line: null
+    source: "GSM 03.40 standard — SMS message length limit"
+    source_url: "https://www.etsi.org/deliver/etsi_gts/03/0340/05.03.00_60/gsmts_0340v050300p.pdf"
+    verification_status: verified
+    verified_date: "2025-06-01"
+    notes: "LLM inference service truncates responses to 160 chars. Longer responses are chunked by the message router with part indicators."
+
+  - id: edge-node-footprint
+    statement: "Edge node footprint: ~5 CPU, ~4.5 GB RAM"
+    value: "~5 CPU, ~4.5 GB RAM"
+    file: README.md
+    line: null
+    source: "docker-compose.yml resource limits — sum of all service allocations"
+    source_url: null
+    verification_status: verified
+    verified_date: "2025-06-01"
+    notes: "Sum: BitNet 2.0 CPU + RAG 1.0 + LLM Wrapper 0.5 + SMS GW 0.5 + Router 0.5 + Privacy 0.25 + API GW 0.5 = ~5.25 CPU. Memory: 2GB + 1GB + 512MB + 256MB + 256MB + 128MB + 256MB = ~4.4 GB."
+
+  - id: bitnet-model-params
+    statement: "Model: BitNet b1.58-2B-4T (2.4B parameters)"
+    value: "2.4B parameters"
+    file: README.md
+    line: null
+    source: "HuggingFace model card — microsoft/BitNet-b1.58-2B-4T"
+    source_url: "https://huggingface.co/microsoft/BitNet-b1.58-2B-4T"
+    verification_status: verified
+    verified_date: "2025-04-17"
+    notes: "Model card states 2.4 billion parameters."
+
+  - id: base-images-ubi9
+    statement: "Base images: Red Hat UBI9"
+    value: "UBI9"
+    file: README.md
+    line: null
+    source: "backend/Containerfile — FROM registry.access.redhat.com/ubi9/..."
+    source_url: "https://catalog.redhat.com/software/containers/ubi9"
+    verification_status: verified
+    verified_date: "2025-06-01"
+    notes: "All service containers derive from UBI9 base images for Red Hat ecosystem compatibility."
+
+  - id: target-intel-xeon-avx512
+    statement: "Target: Intel Xeon AVX-512"
+    value: "Intel Xeon with AVX-512"
+    file: README.md
+    line: null
+    source: "BitNet b1.58 inference kernel — optimised for AVX-512/AMX instruction sets"
+    source_url: "https://github.com/microsoft/BitNet"
+    verification_status: verified
+    verified_date: "2025-04-17"
+    notes: "llama.cpp BitNet kernel uses AVX-512 VNNI and AMX for ternary weight matrix multiply. Falls back to scalar on unsupported CPUs."
