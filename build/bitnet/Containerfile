@@ -28,8 +28,7 @@ RUN cmake -B build -DBITNET_X86_TL2=OFF \
     cmake --build build --config Release -j4 2>&1
 
 # Download the pre-converted 400MB GGUF
-RUN huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
-    ggml-model-i2_s.gguf --local-dir /build/model
+RUN python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download('microsoft/bitnet-b1.58-2B-4T-gguf', 'ggml-model-i2_s.gguf', local_dir='/build/model')"
 
 # Export artifacts
 RUN mkdir -p /export/lib && \
