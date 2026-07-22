@@ -1,5 +1,5 @@
 # BitNet llama-server — native 1.58-bit ternary inference on CPU
-# Patched from edge-ai-cpu-inference to relax torch version pin
+# Uses BitNet's setup_env.py for correct cmake configuration
 
 FROM registry.access.redhat.com/ubi9/ubi:9.4 AS builder
 
@@ -11,9 +11,10 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Only install what we actually need for the build (gguf conversion + cmake)
-# Skip the full requirements.txt — it pins torch==2.11.0 which doesn't exist
-RUN pip3 install numpy sentencepiece gguf "protobuf<5" "huggingface_hub[cli]" tokenizers safetensors tqdm pyyaml filelock regex requests packaging
+# Install torch CPU-only, then remaining deps with torch line removed
+RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
+    sed -i '/torch/d' requirements.txt && \
+    pip3 install -r requirements.txt
 
 # Pre-patch const-correctness bug in ternary kernel
 RUN find . -name "*.cpp" -o -name "*.h" | \
@@ -21,33 +22,24 @@ RUN find . -name "*.cpp" -o -name "*.h" | \
     xargs sed -i 's/int8_t \* y_col/const int8_t * y_col/g' 2>/dev/null; \
     echo "const patch applied"
 
-# Build llama-server
-# Use BitNet's own setup_env.py which handles cmake flags correctly
-# It builds llama-server as part of the full build
-RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu 2>&1 && \
-    python3 setup_env.py --hf-repo microsoft/BitNet-b1.58-2B-4T -q i2_s --build-only 2>&1 || \
-    (cmake -B build -DBITNET_X86_TL2=OFF \
-        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-        -DLLAMA_FATAL_WARNINGS=OFF \
-        -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON 2>&1 && \
-     cmake --build build --config Release -j4 2>&1) && \
-    echo "=== finding llama-server ===" && \
-    find . -name "llama-server" -type f 2>/dev/null | head -5 && \
-    find . -name "llama-server" -type f -exec cp {} /build/llama-server \; || true
+# Build using setup_env.py (handles cmake flags for llama-server)
+# Limit parallelism to avoid thrashing on constrained build pods
+RUN CMAKE_BUILD_PARALLEL_LEVEL=4 \
+    python3 setup_env.py --hf-repo microsoft/BitNet-b1.58-2B-4T -q i2_s 2>&1
 
-# Download the pre-converted 400MB GGUF
-RUN python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download('microsoft/bitnet-b1.58-2B-4T-gguf', 'ggml-model-i2_s.gguf', local_dir='/build/model')"
+# Debug: show what was built
+RUN echo "=== All executables ===" && \
+    find . -type f -executable -not -path "./.git/*" | sort && \
+    echo "=== bin/ contents ===" && \
+    ls -la build/bin/ 2>/dev/null || echo "no build/bin"
 
-# Export artifacts
-RUN mkdir -p /export/lib && \
-    (cp /build/llama-server /export/ 2>/dev/null || \
-     find . -name "llama-server" -type f -exec cp {} /export/ \;) && \
-    find . -name "libllama.so*" -exec cp {} /export/lib/ \; && \
-    find . -name "libggml.so*" -exec cp {} /export/lib/ \; && \
-    find . -name "libggml-base.so*" -exec cp {} /export/lib/ \; && \
-    find . -name "libggml-cpu.so*" -exec cp {} /export/lib/ \; && \
-    ls -la /export/ /export/lib/ && \
-    test -f /export/llama-server
+# Export server binary and libs
+RUN mkdir -p /export/lib /export/models && \
+    find . -name "llama-server" -type f -exec cp {} /export/llama-server \; && \
+    find . -name "libllama.so*" -not -path "./.git/*" -exec cp {} /export/lib/ \; && \
+    find . -name "libggml*.so*" -not -path "./.git/*" -exec cp {} /export/lib/ \; && \
+    find . -name "*.gguf" -exec cp {} /export/models/model.gguf \; && \
+    ls -la /export/ /export/lib/ /export/models/
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 
@@ -55,7 +47,7 @@ RUN microdnf install -y libstdc++ libgomp libomp && microdnf clean all
 
 COPY --from=builder /export/llama-server /usr/local/bin/llama-server
 COPY --from=builder /export/lib/ /usr/local/lib/
-COPY --from=builder /build/model/ggml-model-i2_s.gguf /models/ggml-model-i2_s.gguf
+COPY --from=builder /export/models/model.gguf /models/ggml-model-i2_s.gguf
 ENV LD_LIBRARY_PATH=/usr/local/lib
 
 USER 1001
