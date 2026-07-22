@@ -14,7 +14,8 @@ WORKDIR /app
 RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
 COPY requirements-rag.txt requirements.txt ./
-RUN python3.11 -m pip install --no-cache-dir -r requirements-rag.txt
+RUN python3.11 -m pip install --no-cache-dir pysqlite3-binary && \
+    python3.11 -m pip install --no-cache-dir -r requirements-rag.txt
 
 COPY . /app/backend/
 ENV PYTHONPATH=/app

@@ -1,4 +1,11 @@
 """RAG Service — Retrieval-Augmented Generation for Summit Connect knowledge."""
+try:
+    __import__("pysqlite3")
+    import sys
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
+
 import asyncio
 import hashlib
 import logging
