@@ -11,11 +11,10 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Install torch first (upstream pins a version that may not exist yet)
-# Remove ALL torch references from requirements.txt regardless of format
-RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-    grep -vi 'torch' requirements.txt > req_clean.txt && \
-    pip3 install -r req_clean.txt
+# Only install what we actually need for the build (gguf conversion + cmake)
+# Skip the full requirements.txt — it pins torch==2.11.0 which doesn't exist
+RUN pip3 install numpy sentencepiece gguf protobuf transformers huggingface_hub --no-deps || true && \
+    pip3 install numpy sentencepiece gguf "protobuf<5" huggingface_hub tokenizers safetensors tqdm pyyaml filelock regex requests packaging
 
 # Pre-patch const-correctness bug in ternary kernel
 RUN find . -name "*.cpp" -o -name "*.h" | \
