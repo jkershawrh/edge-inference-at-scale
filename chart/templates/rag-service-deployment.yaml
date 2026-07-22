@@ -55,5 +55,4 @@ spec:
               memory: {{ .Values.rag.resources.limits.memory }}
       volumes:
         - name: rag-data
-          persistentVolumeClaim:
-            claimName: {{ .Release.Name }}-rag
+          emptyDir: {}

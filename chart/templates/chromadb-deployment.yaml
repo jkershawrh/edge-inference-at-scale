@@ -39,7 +39,7 @@ spec:
             timeoutSeconds: 5
           volumeMounts:
             - name: chroma-data
-              mountPath: /chroma/chroma
+              mountPath: /chroma
           resources:
             requests:
               cpu: 250m
@@ -49,5 +49,4 @@ spec:
               memory: 512Mi
       volumes:
         - name: chroma-data
-          persistentVolumeClaim:
-            claimName: {{ .Release.Name }}-chromadb
+          emptyDir: {}

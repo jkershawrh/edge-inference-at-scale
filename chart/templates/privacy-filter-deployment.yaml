@@ -44,6 +44,9 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
+          volumeMounts:
+            - name: privacy-data
+              mountPath: /data/privacy_filter
           resources:
             requests:
               cpu: {{ .Values.privacyFilter.resources.requests.cpu }}
@@ -51,3 +54,6 @@ spec:
             limits:
               cpu: {{ .Values.privacyFilter.resources.limits.cpu }}
               memory: {{ .Values.privacyFilter.resources.limits.memory }}
+      volumes:
+        - name: privacy-data
+          emptyDir: {}
