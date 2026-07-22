@@ -22,25 +22,32 @@ RUN find . -name "*.cpp" -o -name "*.h" | \
     echo "const patch applied"
 
 # Build llama-server
-RUN cmake -B build -DBITNET_X86_TL2=OFF \
-    -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-    -DLLAMA_FATAL_WARNINGS=OFF 2>&1 && \
-    cmake --build build --config Release -j4 2>&1 && \
-    echo "=== Built executables ===" && \
-    find build/ -type f -executable -name "llama*" -o -name "server" | head -20
+# Use BitNet's own setup_env.py which handles cmake flags correctly
+# It builds llama-server as part of the full build
+RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu 2>&1 && \
+    python3 setup_env.py --hf-repo microsoft/BitNet-b1.58-2B-4T -q i2_s --build-only 2>&1 || \
+    (cmake -B build -DBITNET_X86_TL2=OFF \
+        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+        -DLLAMA_FATAL_WARNINGS=OFF \
+        -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_SERVER=ON 2>&1 && \
+     cmake --build build --config Release -j4 2>&1) && \
+    echo "=== finding llama-server ===" && \
+    find . -name "llama-server" -type f 2>/dev/null | head -5 && \
+    find . -name "llama-server" -type f -exec cp {} /build/llama-server \; || true
 
 # Download the pre-converted 400MB GGUF
 RUN python3 -c "from huggingface_hub import hf_hub_download; hf_hub_download('microsoft/bitnet-b1.58-2B-4T-gguf', 'ggml-model-i2_s.gguf', local_dir='/build/model')"
 
-# Export artifacts — find binaries wherever cmake put them
+# Export artifacts
 RUN mkdir -p /export/lib && \
-    find build/ -name "llama-server" -type f -executable -exec cp {} /export/ \; && \
-    find build/ -name "libllama.so" -exec cp {} /export/lib/ \; && \
-    find build/ -name "libggml.so" -exec cp {} /export/lib/ \; && \
-    find build/ -name "libggml-base.so" -exec cp {} /export/lib/ \; && \
-    find build/ -name "libggml-cpu.so" -exec cp {} /export/lib/ \; && \
+    (cp /build/llama-server /export/ 2>/dev/null || \
+     find . -name "llama-server" -type f -exec cp {} /export/ \;) && \
+    find . -name "libllama.so*" -exec cp {} /export/lib/ \; && \
+    find . -name "libggml.so*" -exec cp {} /export/lib/ \; && \
+    find . -name "libggml-base.so*" -exec cp {} /export/lib/ \; && \
+    find . -name "libggml-cpu.so*" -exec cp {} /export/lib/ \; && \
     ls -la /export/ /export/lib/ && \
-    test -f /export/llama-server || (echo "ERROR: llama-server not found" && find build/ -type f -executable | head -20 && exit 1)
+    test -f /export/llama-server
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 
