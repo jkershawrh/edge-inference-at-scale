@@ -13,9 +13,11 @@ data:
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
   MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
   LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"
+  LLM_INFERENCE_URL: "http://{{ .Release.Name }}-llm-inference:8003"
   RAG_SERVICE_URL: "http://{{ .Release.Name }}-rag-service:8004"
   PRIVACY_FILTER_URL: "http://{{ .Release.Name }}-privacy-filter:8005"
   CHROMA_HOST: "{{ .Release.Name }}-chromadb"
   CHROMA_PORT: "8000"
   MODEL_NAME: {{ .Values.bitnet.model | quote }}
   EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}
+  LLM_REQUEST_TIMEOUT_SECONDS: "120"
