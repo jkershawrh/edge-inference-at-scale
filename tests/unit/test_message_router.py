@@ -428,3 +428,138 @@ class TestSMSChunking:
         assert len(chunks) > 1
         for chunk in chunks:
             assert len(chunk) <= 50
+
+
+# ===================================================================
+# RAG-direct fallback
+# ===================================================================
+
+
+class TestRAGDirectFallback:
+    """RAG-direct: high-confidence, short docs bypass the LLM entirely."""
+
+    def setup_method(self):
+        self.router = MessageRouter()
+
+    def _mock_http_client(self, rag_docs, rag_scores, llm_response_text="LLM fallback"):
+        """Wire up http_client.post to return canned RAG, LLM, and SMS responses.
+
+        Returns a call_log list so callers can inspect which URLs were hit.
+        """
+        self.router.http_client = MagicMock()
+        call_log = []
+
+        rag_response = MagicMock()
+        rag_response.status_code = 200
+        rag_response.raise_for_status = MagicMock()
+        rag_response.json = MagicMock(return_value={
+            "documents": rag_docs,
+            "scores": rag_scores,
+        })
+
+        llm_response = MagicMock()
+        llm_response.status_code = 200
+        llm_response.raise_for_status = MagicMock()
+        llm_response.json = MagicMock(return_value={
+            "response": llm_response_text,
+            "model_used": "bitnet-2b4t",
+            "tokens_used": 20,
+            "processing_time": 800.0,
+        })
+
+        sms_response = MagicMock()
+        sms_response.status_code = 200
+        sms_response.raise_for_status = MagicMock()
+
+        async def mock_post(url, json=None, timeout=None):
+            call_log.append({"url": url, "json": json})
+            if "/search" in url:
+                return rag_response
+            elif "/inference" in url:
+                return llm_response
+            elif "/sms/send" in url:
+                return sms_response
+            return MagicMock(status_code=200, raise_for_status=MagicMock())
+
+        self.router.http_client.post = AsyncMock(side_effect=mock_post)
+        return call_log
+
+    # ---------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_high_score_skips_llm(self):
+        """Score=0.9, doc under 160 chars -> LLM NOT called, response IS the doc."""
+        doc = "Free WiFi: SummitConnect-Guest no password"
+        call_log = self._mock_http_client(
+            rag_docs=[doc],
+            rag_scores=[0.9],
+        )
+
+        msg = _make_sms("What is the wifi password?")
+        response = await self.router.process_message(msg)
+
+        llm_calls = [c for c in call_log if "/inference" in c["url"]]
+        assert len(llm_calls) == 0, "LLM should NOT be called for RAG-direct"
+        assert response == doc
+        assert self.router.stats.get("rag_direct_responses", 0) == 1
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_exact_threshold(self):
+        """Score exactly at threshold (0.8) and doc under 160 chars -> RAG-direct triggers."""
+        doc = "Registration desk is in Lobby A"
+        call_log = self._mock_http_client(
+            rag_docs=[doc],
+            rag_scores=[0.8],
+        )
+
+        msg = _make_sms("Where do I register?")
+        response = await self.router.process_message(msg)
+
+        llm_calls = [c for c in call_log if "/inference" in c["url"]]
+        assert len(llm_calls) == 0, "LLM should NOT be called at exact threshold"
+        assert response == doc
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_long_doc_calls_llm(self):
+        """Score=0.9 but doc is 200 chars -> too long for SMS, LLM IS called."""
+        long_doc = "A" * 200
+        assert len(long_doc) > 160
+        call_log = self._mock_http_client(
+            rag_docs=[long_doc],
+            rag_scores=[0.9],
+            llm_response_text="Summarised by LLM",
+        )
+
+        msg = _make_sms("Tell me about the keynote")
+        response = await self.router.process_message(msg)
+
+        llm_calls = [c for c in call_log if "/inference" in c["url"]]
+        assert len(llm_calls) == 1, "LLM should be called when doc exceeds 160 chars"
+        assert response == "Summarised by LLM"
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_stats_incremented(self):
+        """Two RAG-direct messages -> rag_direct_responses counter is 2."""
+        doc = "Breakfast served 7-9 AM in Grand Hall"
+        self._mock_http_client(rag_docs=[doc], rag_scores=[0.95])
+
+        await self.router.process_message(_make_sms("When is breakfast?"))
+        await self.router.process_message(_make_sms("Breakfast time?"))
+
+        assert self.router.stats.get("rag_direct_responses", 0) == 2
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_no_docs_calls_llm(self):
+        """RAG returns empty docs list -> LLM IS called."""
+        call_log = self._mock_http_client(
+            rag_docs=[],
+            rag_scores=[],
+            llm_response_text="No docs, LLM handles it",
+        )
+
+        msg = _make_sms("Something obscure that RAG has nothing on")
+        response = await self.router.process_message(msg)
+
+        llm_calls = [c for c in call_log if "/inference" in c["url"]]
+        assert len(llm_calls) == 1, "LLM should be called when RAG has no docs"
+        assert response == "No docs, LLM handles it"
