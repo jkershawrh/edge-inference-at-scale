@@ -1,0 +1,26 @@
+# Edge Inference at Scale — RAG Service Container
+# Includes OpenVINO for Intel-optimized INT8 embedding inference
+# and sentence-transformers + ChromaDB for vector search
+# Uses CPU-only PyTorch to keep image size manageable
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+RUN microdnf install -y python3.11 python3.11-pip && \
+    microdnf clean all
+
+WORKDIR /app
+
+# Install CPU-only PyTorch first to avoid pulling CUDA
+RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+COPY requirements-rag.txt requirements.txt ./
+RUN python3.11 -m pip install --no-cache-dir pysqlite3-binary && \
+    python3.11 -m pip install --no-cache-dir -r requirements-rag.txt
+
+COPY . /app/backend/
+ENV PYTHONPATH=/app
+
+USER 1001
+
+EXPOSE 8004
+CMD ["python3.11", "-m", "uvicorn", "backend.services.rag_service.main:app", "--host", "0.0.0.0", "--port", "8004"]
