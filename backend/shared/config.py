@@ -70,9 +70,10 @@ class Settings(BaseSettings):
     sms_outbound_queue_maxsize: int = 1000
     sms_forward_max_retries: int = 3
     sms_forward_retry_backoff_seconds: int = 2
-    sms_router_timeout_seconds: float = 15.0
-    llm_request_timeout_seconds: float = 20.0
+    sms_router_timeout_seconds: float = 60.0
+    llm_request_timeout_seconds: float = 60.0
     llm_max_inflight_requests: int = 2
+    rag_direct_threshold: float = 0.8
     rag_chunk_size_chars: int = 600
     rag_chunk_overlap_chars: int = 120
 

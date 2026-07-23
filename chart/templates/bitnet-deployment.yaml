@@ -36,6 +36,8 @@ spec:
             - "{{ .Values.bitnet.ctxSize }}"
             - "--threads"
             - "{{ .Values.bitnet.threads }}"
+            - "-np"
+            - "{{ .Values.bitnet.slots | default 2 }}"
             - "--alias"
             - "{{ .Values.bitnet.model }}"
           readinessProbe:

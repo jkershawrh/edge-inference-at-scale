@@ -186,11 +186,14 @@ class MessageRouter:
     # Routing helpers
     # ------------------------------------------------------------------
 
-    async def route_to_rag(self, query: str) -> Optional[str]:
-        """Call the RAG service and return retrieved context."""
+    async def route_to_rag(self, query: str) -> tuple:
+        """Call the RAG service and return (context, top_score, top_doc).
+
+        Returns a 3-tuple: (joined context string or None, top score, top document text).
+        """
         if self.http_client is None:
             logger.error("HTTP client not initialised")
-            return None
+            return None, 0.0, None
 
         rag_query = RAGQuery(query=query, top_k=3)
         try:
@@ -203,13 +206,17 @@ class MessageRouter:
             data = response.json()
 
             documents = data.get("documents", [])
+            scores = data.get("scores", [])
+            top_score = scores[0] if scores else 0.0
+            top_doc = documents[0] if documents else None
+
             if documents:
                 self.stats["messages_routed_rag"] += 1
-                return "\n\n".join(documents)
-            return None
+                return "\n\n".join(documents), top_score, top_doc
+            return None, 0.0, None
         except Exception as exc:
             logger.warning("RAG service call failed: %s", exc)
-            return None
+            return None, 0.0, None
 
     async def route_to_llm(self, prompt: str, context: Optional[str] = None) -> Optional[str]:
         """Call the LLM inference service with concurrency control."""
@@ -438,11 +445,21 @@ class MessageRouter:
         else:
             # 3. RAG retrieval (if needed)
             context = None
+            top_score = 0.0
+            top_doc = None
             if processed.requires_rag:
-                context = await self.route_to_rag(message.content)
+                context, top_score, top_doc = await self.route_to_rag(message.content)
 
-            # 4. LLM inference (if needed)
-            if processed.requires_llm:
+            # 3b. RAG-direct: if top result is high confidence and fits SMS, skip LLM
+            rag_threshold = float(os.getenv("RAG_DIRECT_THRESHOLD", settings.rag_direct_threshold))
+            if top_doc and top_score >= rag_threshold and len(top_doc) <= 160:
+                response_text = top_doc
+                self.stats.setdefault("rag_direct_responses", 0)
+                self.stats["rag_direct_responses"] += 1
+                logger.info("RAG-direct response (score=%.2f): %.60s...", top_score, top_doc)
+
+            # 4. LLM inference (if needed and RAG-direct didn't fire)
+            elif processed.requires_llm:
                 llm_result = await self.route_to_llm(message.content, context)
                 if llm_result:
                     response_text = llm_result

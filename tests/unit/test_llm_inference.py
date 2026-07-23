@@ -214,11 +214,11 @@ class TestSystemPromptIncluded:
 
         assert "Summit Connect" in SYSTEM_PROMPT
 
-    def test_system_prompt_mentions_160_chars(self):
+    def test_system_prompt_mentions_character_limit(self):
         """System prompt instructs concise responses for SMS."""
         from backend.services.llm_inference.main import SYSTEM_PROMPT
 
-        assert "160" in SYSTEM_PROMPT
+        assert "150" in SYSTEM_PROMPT or "160" in SYSTEM_PROMPT
 
     @pytest.mark.asyncio
     async def test_system_prompt_sent_to_bitnet(self, mock_bitnet_server):

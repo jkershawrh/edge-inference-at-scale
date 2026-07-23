@@ -20,5 +20,8 @@ data:
   CHROMA_PORT: "8000"
   MODEL_NAME: {{ .Values.bitnet.model | quote }}
   EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}
-  LLM_REQUEST_TIMEOUT_SECONDS: "120"
+  LLM_REQUEST_TIMEOUT_SECONDS: "60"
+  SMS_ROUTER_TIMEOUT_SECONDS: "60"
+  LLM_MAX_INFLIGHT_REQUESTS: "2"
+  RAG_DIRECT_THRESHOLD: "0.8"
   HOME: "/tmp"

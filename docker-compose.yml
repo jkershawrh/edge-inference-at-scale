@@ -1,5 +1,7 @@
-# Edge Inference at Scale — Single Edge Node
+# Edge Inference at Scale — Micronode Profile
+# Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B class)
 # SMS → BitNet LLM → SMS with RAG, resource-constrained for edge deployment
+# Total budget: 8 CPU / 16 GB RAM
 
 services:
 
@@ -7,13 +9,17 @@ services:
 
   bitnet-server:
     image: localhost/bitnet-cpp:latest
+    command: ["--model", "/models/ggml-model-i2_s.gguf",
+              "--host", "0.0.0.0", "--port", "8080",
+              "--ctx-size", "512", "--threads", "8",
+              "-np", "2", "--alias", "bitnet-2b4t"]
     ports:
       - "8080:8080"
     deploy:
       resources:
         limits:
-          cpus: "2.0"
-          memory: 2g
+          cpus: "4.0"
+          memory: 4g
     healthcheck:
       test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8080) 2>/dev/null"]
       interval: 15s
@@ -26,8 +32,11 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
-    ports:
-      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -38,10 +47,13 @@ services:
 
   chromadb:
     image: chromadb/chroma:latest
-    ports:
-      - "8100:8000"
     volumes:
-      - chroma-data:/chroma/chroma
+      - chroma-data:/chroma
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2g
     healthcheck:
       test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8000) 2>/dev/null"]
       interval: 10s
@@ -70,7 +82,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
+          cpus: "0.25"
           memory: 256m
     depends_on:
       sms-gateway:
@@ -94,11 +106,13 @@ services:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://message-router:8002
       - REDIS_URL=redis://redis:6379/0
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256m
+          memory: 512m
     depends_on:
       redis:
         condition: service_healthy
@@ -120,11 +134,13 @@ services:
       - RAG_SERVICE_URL=http://rag-service:8004
       - PRIVACY_FILTER_URL=http://privacy-filter:8005
       - SMS_GATEWAY_URL=http://sms-gateway:8001
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - RAG_DIRECT_THRESHOLD=0.8
     deploy:
       resources:
         limits:
           cpus: "0.5"
-          memory: 256m
+          memory: 512m
     depends_on:
       llm-inference:
         condition: service_healthy
@@ -146,6 +162,7 @@ services:
     environment:
       - BITNET_SERVER_URL=http://bitnet-server:8080
       - MODEL_NAME=bitnet-2b4t
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
     deploy:
       resources:
         limits:
@@ -171,12 +188,13 @@ services:
       - CHROMA_PORT=8000
       - EMBEDDING_MODEL=all-MiniLM-L6-v2
       - SUMMIT_DATA_DIR=/data/summit_connect
+      - HOME=/tmp
     volumes:
       - rag-data:/data
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          cpus: "0.5"
           memory: 2g
     depends_on:
       chromadb:
@@ -195,13 +213,13 @@ services:
       context: ./backend
       dockerfile: Containerfile
     command: ["python3.11", "-m", "uvicorn", "backend.services.privacy_filter.main:app", "--host", "0.0.0.0", "--port", "8005"]
-    volumes:
-      - privacy-data:/data/privacy_filter
+    environment:
+      - HOME=/tmp
     deploy:
       resources:
         limits:
           cpus: "0.25"
-          memory: 128m
+          memory: 256m
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8005/health').status_code)"]
       interval: 10s
@@ -217,4 +235,3 @@ networks:
 volumes:
   chroma-data:
   rag-data:
-  privacy-data:

@@ -1,9 +1,13 @@
 ---
+# Micronode profile: simulates an 8-core / 16 GB edge board
+# (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class)
+
 bitnet:
   image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
   model: bitnet-2b4t
-  threads: 16
-  ctxSize: 2048
+  threads: 8
+  ctxSize: 512
+  slots: 2
   resources:
     requests:
       cpu: "2"
@@ -28,11 +32,11 @@ rag:
   storageSize: 5Gi
   resources:
     requests:
-      cpu: "1"
-      memory: 2Gi
+      cpu: 250m
+      memory: 1Gi
     limits:
-      cpu: "2"
-      memory: 4Gi
+      cpu: 500m
+      memory: 2Gi
 
 privacyFilter:
   resources:
@@ -50,6 +54,13 @@ redis:
 chromadb:
   image: chromadb/chroma:latest
   storageSize: 5Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
 
 nodeId: edge-node-001
 smsMode: sim

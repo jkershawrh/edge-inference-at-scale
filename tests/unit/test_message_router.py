@@ -279,16 +279,16 @@ class TestRAGContextIncludedInLLMRequest:
 
     @pytest.mark.asyncio
     async def test_rag_context_passed_to_llm(self):
-        """When RAG returns context, it is included in the LLM request."""
+        """When RAG returns context below direct threshold, it is included in the LLM request."""
         self.router.http_client = MagicMock()
 
-        # Mock RAG response
+        # Mock RAG response — score below RAG_DIRECT_THRESHOLD (0.8) so LLM is called
         rag_response = MagicMock()
         rag_response.status_code = 200
         rag_response.raise_for_status = MagicMock()
         rag_response.json = MagicMock(return_value={
             "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-            "scores": [0.85],
+            "scores": [0.7],
         })
 
         # Mock LLM response
