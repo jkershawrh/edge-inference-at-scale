@@ -408,6 +408,7 @@ async def sms_history():
 
 @app.post("/twilio/webhook")
 async def twilio_webhook(
+    request: Request,
     From: str = Form(...),
     To: str = Form(...),
     Body: str = Form(...),
@@ -415,10 +416,24 @@ async def twilio_webhook(
 ):
     """Accept an inbound SMS from Twilio's webhook.
 
+    Validates the X-Twilio-Signature header to prevent forged requests.
     Twilio POSTs form-encoded data with fields ``From``, ``To``, ``Body``,
-    ``MessageSid``, etc.  We record the message via the active driver's
-    ``receive_sms`` and queue it for processing through the normal pipeline.
+    ``MessageSid``, etc.
     """
+    # Validate Twilio signature to prevent spoofed webhooks
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", settings.twilio_auth_token)
+    if auth_token:
+        try:
+            from twilio.request_validator import RequestValidator
+            validator = RequestValidator(auth_token)
+            signature = request.headers.get("X-Twilio-Signature", "")
+            form_data = dict(await request.form())
+            url = str(request.url).replace("http://", "https://")
+            if not validator.validate(url, form_data, signature):
+                logger.warning("Twilio signature validation FAILED — rejecting request")
+                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+        except ImportError:
+            logger.warning("twilio package not installed — skipping signature validation")
     logger.info(
         "Twilio webhook: from=%s to=%s sid=%s body=%s",
         From, To, MessageSid, Body[:40],
