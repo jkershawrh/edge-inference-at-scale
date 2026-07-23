@@ -45,8 +45,7 @@ RUN pip3 install "huggingface_hub[cli]" 2>/dev/null; \
 # Export
 RUN mkdir -p /export/lib && \
     find /build -name "llama-server" -type f -exec cp {} /export/llama-server \; && \
-    find /build -name "libllama.so*" -exec cp {} /export/lib/ \; && \
-    find /build -name "libggml*.so*" -exec cp {} /export/lib/ \; && \
+    find /build -name "lib*.so*" -not -path "*/.git/*" -exec cp {} /export/lib/ \; && \
     ls -la /export/ /export/lib/ && \
     test -f /export/llama-server
 
