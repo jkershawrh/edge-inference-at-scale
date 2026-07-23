@@ -10,24 +10,31 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Install deps — skip requirements.txt (pins torch==2.11.0 which doesn't exist)
+# Install deps (skip requirements.txt — it pins torch==2.11.0)
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
     pip3 install numpy sentencepiece gguf "protobuf<5" huggingface_hub tokenizers safetensors tqdm pyyaml filelock regex requests packaging && \
     pip3 install --no-deps transformers && \
     pip3 install 3rdparty/llama.cpp/gguf-py --no-deps 2>/dev/null || true
 
-# Pre-patch const-correctness bug in ternary kernel
+# Patch const-correctness bug
 RUN find . -name "*.cpp" -o -name "*.h" | \
     xargs grep -rl "int8_t \* y_col" 2>/dev/null | \
     xargs sed -i 's/int8_t \* y_col/const int8_t * y_col/g' 2>/dev/null; \
     echo "const patch applied"
 
-# Build — CMakeLists.txt sets LLAMA_BUILD_SERVER=ON automatically
-RUN cmake -B build \
+# Build libs + server in one cmake pass from the llama.cpp subdir
+# The BitNet CMakeLists only builds libllama, so we build from llama.cpp directly
+# which picks up the BitNet ternary kernels via the parent cmake config
+RUN cd 3rdparty/llama.cpp && \
+    cmake -B build \
     -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-    -DBITNET_X86_TL2=OFF -DLLAMA_FATAL_WARNINGS=OFF 2>&1 && \
+    -DLLAMA_FATAL_WARNINGS=OFF \
+    -DGGML_BITNET=ON \
+    -DCMAKE_PREFIX_PATH=/build/BitNet 2>&1 && \
     cmake --build build --config Release -j4 2>&1 && \
-    ls -la build/bin/
+    echo "=== bin contents ===" && \
+    ls build/bin/ 2>/dev/null && \
+    find build -name "llama-server" -type f 2>/dev/null
 
 # Download model
 RUN pip3 install "huggingface_hub[cli]" 2>/dev/null; \
@@ -37,9 +44,11 @@ RUN pip3 install "huggingface_hub[cli]" 2>/dev/null; \
 
 # Export
 RUN mkdir -p /export/lib && \
-    cp build/bin/llama-server /export/ && \
-    find build/bin -name "lib*.so*" -exec cp {} /export/lib/ \; && \
-    ls -la /export/ /export/lib/
+    find /build -name "llama-server" -type f -exec cp {} /export/llama-server \; && \
+    find /build -name "libllama.so*" -exec cp {} /export/lib/ \; && \
+    find /build -name "libggml*.so*" -exec cp {} /export/lib/ \; && \
+    ls -la /export/ /export/lib/ && \
+    test -f /export/llama-server
 
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
 RUN microdnf install -y libstdc++ libgomp libomp && microdnf clean all
