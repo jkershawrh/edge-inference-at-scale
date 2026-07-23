@@ -46,6 +46,7 @@ class LLMRequest(BaseModel):
     max_length: int = 160
     temperature: float = 0.7
     model: Optional[str] = None
+    chat_history: Optional[List[Dict[str, str]]] = None
 
 
 class LLMResponse(BaseModel):

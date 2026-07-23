@@ -155,9 +155,10 @@ class TestClassifyCommand:
         # 'help' is an emergency keyword, checked before '/' prefix
         assert result.message_type == MessageType.EMERGENCY
 
-    def test_help_response_lists_commands(self):
+    @pytest.mark.asyncio
+    async def test_help_response_lists_commands(self):
         """_handle_command returns command listing when called directly."""
-        response = self.router._handle_command(
+        response = await self.router._handle_command(
             ProcessedMessage(
                 original_message=_make_sms("/status"),
                 message_type=MessageType.COMMAND,

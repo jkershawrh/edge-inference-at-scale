@@ -144,6 +144,11 @@ async def inference(request: LLMRequest):
     # Build the messages list -------------------------------------------------
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
+    # Insert chat history (prior turns) before the current message
+    if request.chat_history:
+        for turn in request.chat_history:
+            messages.append({"role": turn["role"], "content": turn["content"]})
+
     if request.context:
         messages.append(
             {

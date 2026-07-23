@@ -30,6 +30,7 @@ from backend.shared.models import (
     ServiceHealth,
     SMSMessage,
 )
+from backend.shared.chat_history import ChatHistoryStore
 from backend.shared.streams import SMSEventStream
 
 logger = logging.getLogger("message-router")
@@ -102,6 +103,13 @@ class MessageRouter:
         )
         self.consumer_name = os.getenv("NODE_ID", settings.node_id)
         self._stream_task: Optional[asyncio.Task[None]] = None
+
+        # Chat history store
+        self.chat_store = ChatHistoryStore(
+            redis_url=os.getenv("REDIS_URL", settings.redis_url),
+            max_turns=settings.chat_history_max_turns,
+            ttl_seconds=settings.chat_history_ttl_seconds,
+        )
 
         # Concurrency control for LLM requests
         self.llm_semaphore = asyncio.Semaphore(settings.llm_max_inflight_requests)
@@ -218,7 +226,9 @@ class MessageRouter:
             logger.warning("RAG service call failed: %s", exc)
             return None, 0.0, None
 
-    async def route_to_llm(self, prompt: str, context: Optional[str] = None) -> Optional[str]:
+    async def route_to_llm(
+        self, prompt: str, context: Optional[str] = None, chat_history=None
+    ) -> Optional[str]:
         """Call the LLM inference service with concurrency control."""
         if self.http_client is None:
             logger.error("HTTP client not initialised")
@@ -229,6 +239,7 @@ class MessageRouter:
             context=context,
             max_length=SMS_MAX_LENGTH,
             temperature=0.7,
+            chat_history=chat_history,
         )
 
         async with self.llm_semaphore:
@@ -288,9 +299,15 @@ class MessageRouter:
             "Ask about sessions, speakers, venues, or local area info."
         )
 
-    def _handle_command(self, processed: ProcessedMessage) -> str:
+    async def _handle_command(self, processed: ProcessedMessage) -> str:
         """Return a canned command response."""
         command = (processed.intent or "").lower()
+
+        if command == "/reset":
+            await self.chat_store.clear_history(
+                processed.original_message.sender
+            )
+            return "Chat history cleared."
 
         if command == "/help":
             return (
@@ -439,11 +456,14 @@ class MessageRouter:
         if processed.message_type == MessageType.EMERGENCY:
             response_text = self._handle_emergency(processed)
         elif processed.message_type == MessageType.COMMAND:
-            response_text = self._handle_command(processed)
+            response_text = await self._handle_command(processed)
         elif processed.message_type == MessageType.TEMPLATE:
             response_text = self._handle_template(processed)
         else:
-            # 3. RAG retrieval (if needed)
+            # 3. Retrieve chat history for this user
+            history = await self.chat_store.get_history(message.sender)
+
+            # 3a. RAG retrieval (if needed)
             context = None
             top_score = 0.0
             top_doc = None
@@ -460,7 +480,9 @@ class MessageRouter:
 
             # 4. LLM inference (if needed and RAG-direct didn't fire)
             elif processed.requires_llm:
-                llm_result = await self.route_to_llm(message.content, context)
+                llm_result = await self.route_to_llm(
+                    message.content, context, chat_history=history
+                )
                 if llm_result:
                     response_text = llm_result
                 else:
@@ -473,6 +495,11 @@ class MessageRouter:
                     "Sorry, I couldn't process your request right now. "
                     "Please try again shortly."
                 )
+
+            # Store this turn in chat history (only for QUERY messages)
+            await self.chat_store.add_turn(
+                message.sender, message.content, response_text
+            )
 
         # 5. Send response back via SMS gateway
         sent = await self.send_response(
@@ -552,6 +579,13 @@ async def lifespan(app: FastAPI):
         router_instance.privacy_filter_url,
     )
 
+    # Connect chat history store
+    try:
+        await router_instance.chat_store.connect()
+        logger.info("Chat history store connected")
+    except Exception:
+        logger.warning("Chat history store unavailable -- continuing without history")
+
     # Connect to Redis Streams and start the consumer loop
     try:
         await router_instance.event_stream.connect()
@@ -573,6 +607,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     await router_instance.event_stream.close()
+    await router_instance.chat_store.close()
     if router_instance.http_client:
         await router_instance.http_client.aclose()
 

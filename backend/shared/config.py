@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     stream_consumer_group: str = "processors"
     stream_max_len: int = 10000
 
+    # Chat history
+    chat_history_max_turns: int = 10
+    chat_history_ttl_seconds: int = 3600
+
     # Service URLs (internal container networking)
     sms_gateway_url: str = "http://sms-gateway:8001"
     message_router_url: str = "http://message-router:8002"
