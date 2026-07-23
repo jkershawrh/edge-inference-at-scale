@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edge Inference at Scale — Live Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e4e4e7;font-family:'Inter',system-ui,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* ── Top bar ── */
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:20px 32px;border-bottom:1px solid #27272a;flex-shrink:0}
+.topbar h1{font-size:1.5rem;font-weight:700;color:#fff;letter-spacing:-0.02em}
+.topbar .subtitle{font-size:0.8rem;color:#71717a;margin-top:2px}
+.status-group{display:flex;align-items:center;gap:24px}
+.status-pill{display:flex;align-items:center;gap:8px;font-size:0.875rem;font-weight:600}
+.status-dot{width:10px;height:10px;border-radius:50%;background:#71717a}
+.status-dot.online{background:#22c55e;box-shadow:0 0 8px #22c55e80;animation:pulse 2s infinite}
+.status-dot.offline{background:#ef4444;box-shadow:0 0 8px #ef444480}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.uptime{font-size:0.8rem;color:#71717a}
+.uptime span{font-family:'JetBrains Mono',monospace;color:#a1a1aa}
+
+/* ── Dashboard ── */
+.dashboard{padding:24px 32px;display:flex;flex-direction:column;gap:20px;flex:1}
+
+/* ── Stat tiles ── */
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.tile{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:24px}
+.tile .label{font-size:0.7rem;color:#71717a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+.tile .value{font-family:'JetBrains Mono',monospace;font-size:2.5rem;font-weight:700;color:#fff;line-height:1.1}
+.tile .detail{font-size:0.75rem;color:#52525b;margin-top:8px}
+.latency-good{color:#22c55e !important}
+.latency-warn{color:#eab308 !important}
+.latency-bad{color:#ef4444 !important}
+
+/* ── Pipeline breakdown ── */
+.pipeline-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.pipe-card{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:20px}
+.pipe-card h3{font-size:0.7rem;color:#71717a;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px}
+.pipe-item{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid #1f1f23}
+.pipe-item:last-child{border-bottom:none}
+.pipe-item .name{font-size:0.85rem;color:#a1a1aa}
+.pipe-item .count{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:600;color:#fff}
+.pipe-item .count.fail{color:#ef4444}
+
+/* ── Service health grid ── */
+.section-label{font-size:0.7rem;color:#52525b;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px}
+.health-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:12px}
+.health-tile{background:#18181b;border:1px solid #27272a;border-radius:10px;padding:16px 12px;text-align:center;transition:border-color .3s}
+.health-tile.ok{border-color:#22c55e30}
+.health-tile.down{border-color:#ef444430}
+.svc-name{font-size:0.7rem;color:#71717a;margin-bottom:8px;white-space:nowrap}
+.svc-indicator{display:flex;align-items:center;justify-content:center;gap:6px;font-size:0.75rem;font-weight:600}
+.svc-indicator .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.svc-indicator.healthy .dot{background:#22c55e}
+.svc-indicator.healthy .lbl{color:#22c55e}
+.svc-indicator.unhealthy .dot{background:#ef4444}
+.svc-indicator.unhealthy .lbl{color:#ef4444}
+.svc-indicator.unknown .dot{background:#52525b}
+.svc-indicator.unknown .lbl{color:#52525b}
+
+/* ── Footer ── */
+.footer{padding:14px 32px;border-top:1px solid #27272a;display:flex;justify-content:space-between;align-items:center;font-size:0.7rem;color:#3f3f46;flex-shrink:0}
+.footer .rh{color:#EE0000;font-weight:600}
+.footer .intel{color:#0071C5;font-weight:600}
+.footer .arch{font-family:'JetBrains Mono',monospace;letter-spacing:0.04em}
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<header class="topbar">
+  <div>
+    <h1>Edge Inference at Scale</h1>
+    <div class="subtitle">Micronode &mdash; Summit Connect Live Demo</div>
+  </div>
+  <div class="status-group">
+    <div class="status-pill">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText" style="color:#71717a">CONNECTING</span>
+    </div>
+    <div class="uptime">Uptime <span id="uptime">--:--:--</span></div>
+  </div>
+</header>
+
+<!-- ── Dashboard ── -->
+<main class="dashboard">
+
+  <!-- Row 1: Key metrics -->
+  <section class="stat-row">
+    <div class="tile">
+      <div class="label">Total SMS Processed</div>
+      <div class="value" id="totalSms">0</div>
+      <div class="detail">Messages received &amp; classified</div>
+    </div>
+    <div class="tile">
+      <div class="label">Avg Inference Latency</div>
+      <div class="value" id="avgLatency">--</div>
+      <div class="detail" id="latencyDetail">Waiting for data</div>
+    </div>
+    <div class="tile">
+      <div class="label">RAG-Direct Responses</div>
+      <div class="value" id="ragDirect">0</div>
+      <div class="detail" id="ragDirectPct">0% of queries skipped LLM</div>
+    </div>
+    <div class="tile">
+      <div class="label">BitNet Model</div>
+      <div class="value" id="modelName" style="font-size:1.2rem;word-break:break-all">--</div>
+      <div class="detail" id="modelMem">Memory: --</div>
+    </div>
+  </section>
+
+  <!-- Row 2: Pipeline breakdown -->
+  <section class="pipeline-row">
+    <div class="pipe-card">
+      <h3>Messages by Type</h3>
+      <div class="pipe-item"><span class="name">Query</span><span class="count" id="mQuery">0</span></div>
+      <div class="pipe-item"><span class="name">Emergency</span><span class="count" id="mEmergency">0</span></div>
+      <div class="pipe-item"><span class="name">Command</span><span class="count" id="mCommand">0</span></div>
+      <div class="pipe-item"><span class="name">Greeting</span><span class="count" id="mTemplate">0</span></div>
+    </div>
+    <div class="pipe-card">
+      <h3>Routing</h3>
+      <div class="pipe-item"><span class="name">RAG-routed</span><span class="count" id="rRag">0</span></div>
+      <div class="pipe-item"><span class="name">RAG-direct</span><span class="count" id="rDirect">0</span></div>
+      <div class="pipe-item"><span class="name">LLM-routed</span><span class="count" id="rLlm">0</span></div>
+    </div>
+    <div class="pipe-card">
+      <h3>Outcomes</h3>
+      <div class="pipe-item"><span class="name">Responded</span><span class="count" id="oResponded">0</span></div>
+      <div class="pipe-item"><span class="name">Router failures</span><span class="count fail" id="oFailed">0</span></div>
+      <div class="pipe-item"><span class="name">LLM failures</span><span class="count fail" id="oLlmFail">0</span></div>
+    </div>
+  </section>
+
+  <!-- Row 3: Service health -->
+  <div class="section-label">Service Health</div>
+  <section class="health-grid" id="healthGrid"></section>
+</main>
+
+<!-- ── Footer ── -->
+<footer class="footer">
+  <div>Powered by <span class="rh">Red Hat</span> + <span class="intel">Intel</span> &nbsp;|&nbsp; BitNet b1.58-2B-4T &nbsp;|&nbsp; CPU-only Edge AI</div>
+  <div class="arch">SMS &rarr; RAG &rarr; BitNet &rarr; SMS</div>
+</footer>
+
+<script>
+/* ── Config ── */
+const API = (new URLSearchParams(location.search).get('api') || '').replace(/\/+$/, '');
+const POLL_MS = 3000;
+
+/* ── Service definitions for health grid ── */
+const SERVICES = [
+  { id: 'sms-gateway',    label: 'SMS Gateway' },
+  { id: 'message-router', label: 'Message Router' },
+  { id: 'llm-inference',  label: 'LLM Inference' },
+  { id: 'rag-service',    label: 'RAG Service' },
+  { id: 'privacy-filter', label: 'Privacy Filter' },
+  { id: 'redis',          label: 'Redis' },
+  { id: 'chromadb',       label: 'ChromaDB' },
+];
+
+/* Build health grid skeleton */
+const grid = document.getElementById('healthGrid');
+SERVICES.forEach(s => {
+  const tile = document.createElement('div');
+  tile.className = 'health-tile';
+  tile.id = 'svc-' + s.id;
+  tile.innerHTML =
+    '<div class="svc-name">' + s.label + '</div>' +
+    '<div class="svc-indicator unknown"><span class="dot"></span><span class="lbl">--</span></div>';
+  grid.appendChild(tile);
+});
+
+/* ── Helpers ── */
+const _prev = {};
+function animateValue(el, target, fmt) {
+  if (!el) return;
+  const key = el.id;
+  const from = _prev[key] !== undefined ? _prev[key] : target;
+  _prev[key] = target;
+  if (from === target) { el.textContent = fmt ? fmt(target) : target; return; }
+  const t0 = performance.now();
+  const dur = 500;
+  (function step(now) {
+    const p = Math.min((now - t0) / dur, 1);
+    const ease = p * (2 - p);
+    const v = Math.round(from + (target - from) * ease);
+    el.textContent = fmt ? fmt(v) : v;
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function fmtUptime(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function setOnline(ok) {
+  const dot = document.getElementById('statusDot');
+  const txt = document.getElementById('statusText');
+  dot.className = 'status-dot ' + (ok ? 'online' : 'offline');
+  txt.textContent = ok ? 'ONLINE' : 'OFFLINE';
+  txt.style.color = ok ? '#22c55e' : '#ef4444';
+}
+
+function setSvc(id, status) {
+  const tile = document.getElementById('svc-' + id);
+  if (!tile) return;
+  const ind = tile.querySelector('.svc-indicator');
+  const lbl = tile.querySelector('.lbl');
+  const isOk = status === 'healthy';
+  const isDown = status === 'unhealthy' || status === 'unreachable';
+  ind.className = 'svc-indicator ' + (isOk ? 'healthy' : isDown ? 'unhealthy' : 'unknown');
+  lbl.textContent = isOk ? 'OK' : isDown ? 'DOWN' : '--';
+  tile.className = 'health-tile' + (isOk ? ' ok' : isDown ? ' down' : '');
+}
+
+async function fetchJ(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+/* ── Main refresh loop ── */
+async function refresh() {
+  try {
+    const [health, llm, router, rag] = await Promise.all([
+      fetchJ('/services/health').catch(() => null),
+      fetchJ('/llm/stats').catch(() => null),
+      fetchJ('/router/statistics').catch(() => null),
+      fetchJ('/rag/stats').catch(() => null),
+    ]);
+
+    const alive = !!(health || llm || router);
+    setOnline(alive);
+    if (!alive) { SERVICES.forEach(s => setSvc(s.id, 'unknown')); return; }
+
+    /* ── Router statistics ── */
+    if (router) {
+      const s = router.stats || {};
+      document.getElementById('uptime').textContent = fmtUptime(router.uptime_seconds || 0);
+
+      animateValue(document.getElementById('totalSms'), s.messages_received || 0);
+      animateValue(document.getElementById('mQuery'), s.query_messages || 0);
+      animateValue(document.getElementById('mEmergency'), s.emergency_messages || 0);
+      animateValue(document.getElementById('mCommand'), s.command_messages || 0);
+      animateValue(document.getElementById('mTemplate'), s.template_messages || 0);
+      animateValue(document.getElementById('rRag'), s.messages_routed_rag || 0);
+      animateValue(document.getElementById('rDirect'), s.rag_direct_responses || 0);
+      animateValue(document.getElementById('rLlm'), s.messages_routed_llm || 0);
+      animateValue(document.getElementById('oResponded'), s.messages_responded || 0);
+      animateValue(document.getElementById('oFailed'), s.messages_failed || 0);
+
+      const ragD = s.rag_direct_responses || 0;
+      const totalQ = s.query_messages || 0;
+      animateValue(document.getElementById('ragDirect'), ragD);
+      const pct = totalQ > 0 ? Math.round((ragD / totalQ) * 100) : 0;
+      document.getElementById('ragDirectPct').textContent = pct + '% of queries skipped LLM';
+    }
+
+    /* ── LLM statistics ── */
+    if (llm) {
+      const ms = llm.average_latency_ms || 0;
+      const el = document.getElementById('avgLatency');
+      if (ms > 0) {
+        el.textContent = (ms / 1000).toFixed(1) + 's';
+        el.className = 'value ' + (ms < 5000 ? 'latency-good' : ms < 15000 ? 'latency-warn' : 'latency-bad');
+        document.getElementById('latencyDetail').textContent = Math.round(ms) + 'ms average';
+      } else {
+        el.textContent = '--';
+        el.className = 'value';
+        document.getElementById('latencyDetail').textContent = 'No inferences yet';
+      }
+      document.getElementById('modelName').textContent = llm.model_name || '--';
+      document.getElementById('modelMem').textContent = 'Memory: ' + (llm.model_memory_mb || '--') + ' MB';
+      animateValue(document.getElementById('oLlmFail'), llm.requests_failed || 0);
+    }
+
+    /* ── Service health tiles ── */
+    if (health) {
+      ['sms-gateway', 'message-router', 'llm-inference', 'rag-service', 'privacy-filter'].forEach(id => {
+        setSvc(id, health[id] ? health[id].status : 'unknown');
+      });
+    }
+    /* Redis: inferred from message-router reachability */
+    setSvc('redis', health && health['message-router'] && health['message-router'].status === 'healthy' ? 'healthy' : 'unknown');
+    /* ChromaDB: from RAG stats */
+    setSvc('chromadb', rag && rag.chromadb && rag.chromadb.status === 'available' ? 'healthy' : rag ? 'unhealthy' : 'unknown');
+
+  } catch (e) {
+    setOnline(false);
+    SERVICES.forEach(s => setSvc(s.id, 'unknown'));
+  }
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>
