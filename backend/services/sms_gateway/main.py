@@ -16,7 +16,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from backend.shared.config import settings
@@ -110,7 +111,11 @@ class SMSGateway:
         # Driver selection
         if settings.sms_mode == "twilio":
             logger.info("SMS mode: twilio")
-            self.active_driver: Any = TwilioDriver()
+            self.active_driver: Any = TwilioDriver(
+                account_sid=settings.twilio_account_sid or "",
+                auth_token=settings.twilio_auth_token or "",
+                phone_number=settings.twilio_phone_number or "",
+            )
         else:
             logger.info("SMS mode: sim (in-memory simulator)")
             self.active_driver = SimDriver()
@@ -397,6 +402,55 @@ async def sms_history():
     """Return combined sent and received messages sorted by timestamp."""
     history = await gateway.get_history()
     return {"messages": history, "count": len(history)}
+
+
+# -- Twilio webhooks --------------------------------------------------------
+
+@app.post("/twilio/webhook")
+async def twilio_webhook(
+    From: str = Form(...),
+    To: str = Form(...),
+    Body: str = Form(...),
+    MessageSid: str = Form(""),
+):
+    """Accept an inbound SMS from Twilio's webhook.
+
+    Twilio POSTs form-encoded data with fields ``From``, ``To``, ``Body``,
+    ``MessageSid``, etc.  We record the message via the active driver's
+    ``receive_sms`` and queue it for processing through the normal pipeline.
+    """
+    logger.info(
+        "Twilio webhook: from=%s to=%s sid=%s body=%s",
+        From, To, MessageSid, Body[:40],
+    )
+
+    envelope = await gateway.receive_message(
+        sender=From,
+        content=Body,
+        receiver=To,
+    )
+
+    # Return a TwiML response so Twilio knows we handled the message
+    twiml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response><Message>Processing your request...</Message></Response>"
+    )
+    return Response(content=twiml, media_type="text/xml")
+
+
+@app.post("/twilio/status")
+async def twilio_status(request: Request):
+    """Accept delivery status callbacks from Twilio.
+
+    These are informational — we log them and return 200.
+    """
+    form = await request.form()
+    logger.info(
+        "Twilio status callback: sid=%s status=%s",
+        form.get("MessageSid", ""),
+        form.get("MessageStatus", ""),
+    )
+    return Response(status_code=200)
 
 
 # ---------------------------------------------------------------------------

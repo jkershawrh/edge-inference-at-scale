@@ -4,3 +4,4 @@ pydantic>=2.5.0
 pydantic-settings>=2.1.0
 httpx>=0.25.0
 redis>=5.0.0
+twilio>=9.0.0
