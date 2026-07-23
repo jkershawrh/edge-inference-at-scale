@@ -1,0 +1,252 @@
+# Evaluation Queries — EDD Response Quality Framework
+# Ground-truth test queries for the SMS -> RAG -> LLM -> SMS pipeline.
+# Each query defines expected keywords, entities, and forbidden patterns
+# to score responses against without ML-based evaluation.
+#
+# Source data: data/summit_connect/{sessions,speakers,venues,schedule,city_guide}.json
+
+eval_queries:
+
+  # ---------------------------------------------------------------------------
+  # Schedule queries
+  # ---------------------------------------------------------------------------
+
+  - id: sched_01
+    query: "What time is the keynote?"
+    category: schedule
+    expected_keywords: ["9:00", "keynote", "Main Hall"]
+    forbidden_keywords: ["unfortunately", "I don't know", "I cannot"]
+    expected_entities:
+      - "9:00"
+      - "Main Hall"
+      - "Day 1"
+    max_acceptable_latency_ms: 15000
+
+  - id: sched_02
+    query: "What's happening on Day 2?"
+    category: schedule
+    expected_keywords: ["breakout", "session"]
+    forbidden_keywords: ["unfortunately", "I don't know"]
+    expected_entities:
+      - "breakout"
+      - "Day 2"
+    max_acceptable_latency_ms: 15000
+
+  - id: sched_03
+    query: "When is the conference dinner?"
+    category: schedule
+    expected_keywords: ["dinner", "19:00"]
+    forbidden_keywords: ["I don't know", "I cannot"]
+    expected_entities:
+      - "19:00"
+      - "Grand Ballroom"
+      - "Day 2"
+    max_acceptable_latency_ms: 15000
+
+  - id: sched_04
+    query: "What time does registration open?"
+    category: schedule
+    expected_keywords: ["registration", "7:00"]
+    forbidden_keywords: ["I don't know", "I cannot"]
+    expected_entities:
+      - "7:00"
+      - "North Lobby"
+    max_acceptable_latency_ms: 15000
+
+  - id: sched_05
+    query: "Are there workshops?"
+    category: schedule
+    expected_keywords: ["workshop"]
+    forbidden_keywords: ["I don't know", "no workshops"]
+    expected_entities:
+      - "Day 1"
+      - "A1"
+    max_acceptable_latency_ms: 15000
+
+  - id: sched_06
+    query: "What happens on the last day?"
+    category: schedule
+    expected_keywords: ["lab", "closing"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Day 3"
+      - "Hands-On"
+    max_acceptable_latency_ms: 15000
+
+  # ---------------------------------------------------------------------------
+  # Session queries
+  # ---------------------------------------------------------------------------
+
+  - id: sess_01
+    query: "What sessions are about edge computing?"
+    category: session
+    expected_keywords: ["edge", "inference"]
+    forbidden_keywords: ["I don't know", "no sessions"]
+    expected_entities:
+      - "Edge Inference at Scale"
+    max_acceptable_latency_ms: 15000
+
+  - id: sess_02
+    query: "Tell me about the BitNet session"
+    category: session
+    expected_keywords: ["BitNet", "1.58"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Min Zhang"
+      - "A2"
+    max_acceptable_latency_ms: 15000
+
+  - id: sess_03
+    query: "Any security sessions?"
+    category: session
+    expected_keywords: ["security", "container"]
+    forbidden_keywords: ["I don't know", "no security"]
+    expected_entities:
+      - "UBI9"
+      - "Tara O'Brien"
+    max_acceptable_latency_ms: 15000
+
+  - id: sess_04
+    query: "What's the hands-on lab about?"
+    category: session
+    expected_keywords: ["lab", "SMS"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Build Your Own SMS AI Assistant"
+      - "Day 3"
+    max_acceptable_latency_ms: 15000
+
+  - id: sess_05
+    query: "Who is speaking about OpenShift?"
+    category: session
+    expected_keywords: ["OpenShift"]
+    forbidden_keywords: ["I don't know", "nobody"]
+    expected_entities:
+      - "Priya Patel"
+    max_acceptable_latency_ms: 15000
+
+  - id: sess_06
+    query: "What is the panel discussion about?"
+    category: session
+    expected_keywords: ["panel", "edge"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "AI at the Edge"
+      - "Main Hall"
+    max_acceptable_latency_ms: 15000
+
+  # ---------------------------------------------------------------------------
+  # Venue queries
+  # ---------------------------------------------------------------------------
+
+  - id: venue_01
+    query: "Where is the keynote?"
+    category: venue
+    expected_keywords: ["Main Hall"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Main Hall"
+      - "Level 2"
+    max_acceptable_latency_ms: 15000
+
+  - id: venue_02
+    query: "Where can I eat?"
+    category: venue
+    expected_keywords: ["cafeteria"]
+    forbidden_keywords: ["I don't know", "no food"]
+    expected_entities:
+      - "Main Cafeteria"
+    max_acceptable_latency_ms: 15000
+
+  - id: venue_03
+    query: "Is there WiFi?"
+    category: venue
+    expected_keywords: ["WiFi", "SummitConnect"]
+    forbidden_keywords: ["I don't know", "no WiFi"]
+    expected_entities:
+      - "SummitConnect-Guest"
+      - "no password"
+    max_acceptable_latency_ms: 15000
+
+  - id: venue_04
+    query: "Where is first aid?"
+    category: venue
+    expected_keywords: ["first aid", "North Lobby"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "North Lobby"
+      - "Level 1"
+    max_acceptable_latency_ms: 15000
+
+  - id: venue_05
+    query: "How do I get to the venue?"
+    category: venue
+    expected_keywords: ["shuttle"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "shuttle"
+      - "parking"
+    max_acceptable_latency_ms: 15000
+
+  # ---------------------------------------------------------------------------
+  # General / city-guide queries
+  # ---------------------------------------------------------------------------
+
+  - id: gen_01
+    query: "What is Summit Connect?"
+    category: general
+    expected_keywords: ["conference", "Summit Connect"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "3"
+      - "July"
+    max_acceptable_latency_ms: 15000
+
+  - id: gen_02
+    query: "What's the weather like?"
+    category: general
+    expected_keywords: ["sunny", "88"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "88"
+      - "sunny"
+    max_acceptable_latency_ms: 15000
+
+  - id: gen_03
+    query: "Best restaurants nearby?"
+    category: general
+    expected_keywords: ["restaurant"]
+    forbidden_keywords: ["I don't know", "no restaurants"]
+    expected_entities:
+      - "Edge Cafe"
+    max_acceptable_latency_ms: 15000
+
+  - id: gen_04
+    query: "Where is the closest pharmacy?"
+    category: general
+    expected_keywords: ["CVS", "pharmacy"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "CVS"
+      - "200 Main Street"
+    max_acceptable_latency_ms: 15000
+
+  - id: gen_05
+    query: "Emergency contact?"
+    category: emergency
+    expected_keywords: ["5555"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "5555"
+      - "security"
+    max_acceptable_latency_ms: 5000
+
+  - id: gen_06
+    query: "Where is the nearest hospital?"
+    category: emergency
+    expected_keywords: ["hospital"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Summit Medical Center"
+      - "500 Hospital Drive"
+    max_acceptable_latency_ms: 5000

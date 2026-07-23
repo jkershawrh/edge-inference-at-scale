@@ -119,12 +119,39 @@ stages:
 
   stage_3_benchmarks:
     name: "EDD - Experiment-Driven Development"
-    description: "Benchmark rubric — inference latency, RAG retrieval quality, message throughput"
+    description: "Benchmark rubric — inference latency, RAG retrieval quality, message throughput, response evaluation"
     threshold: 80
     gate: stage_2_integration
-    criteria: {}
-    # Governed by tests/benchmark_rubric.yaml and tests/claim_registry.yaml.
-    # Benchmarks run against live compose stack.
+    criteria:
+      eval_query_pass_rate:
+        description: ">=60% of evaluation queries pass composite score threshold (keyword, entity, forbidden, SMS length, latency, repetition)"
+        points: 30
+        required: true
+        test_command: "python tests/evaluation/run_eval.py"
+        pass_threshold: 0.6
+      eval_keyword_accuracy:
+        description: "Average keyword accuracy across all eval queries >= 50%"
+        points: 15
+        required: false
+      eval_entity_accuracy:
+        description: "Average entity accuracy across all eval queries >= 40%"
+        points: 15
+        required: false
+      eval_sms_compliance:
+        description: ">=90% of responses fit within 160-char SMS limit"
+        points: 15
+        required: true
+      eval_repetition_quality:
+        description: "Average repetition score >= 0.6 (responses are not excessively repetitive)"
+        points: 10
+        required: false
+      benchmark_latency:
+        description: "SMS end-to-end latency under 15s per benchmark_rubric.yaml"
+        points: 15
+        required: true
+    # Governed by tests/benchmark_rubric.yaml, tests/claim_registry.yaml,
+    # and tests/evaluation/eval_queries.yaml.
+    # Benchmarks and eval queries run against live compose stack.
 
   stage_4_bdd:
     name: "BDD - Behavior-Driven Development"

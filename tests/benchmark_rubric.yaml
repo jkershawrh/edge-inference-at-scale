@@ -60,3 +60,39 @@ benchmark_rubric:
       description: "Time from docker compose up to all health checks passing"
       max_seconds: 60
       required_fields: ["startup_time_seconds", "services_healthy"]
+
+  # -------------------------------------------------------------------------
+  # Response quality benchmarks — EDD evaluation framework
+  # Measured by: python tests/evaluation/run_eval.py
+  # -------------------------------------------------------------------------
+  response_quality:
+    version: "1.0"
+    description: "Response quality thresholds for the SMS pipeline evaluation suite"
+    test_command: "python tests/evaluation/run_eval.py"
+    queries_file: "tests/evaluation/eval_queries.yaml"
+
+    thresholds:
+      keyword_accuracy:
+        description: "Average fraction of expected keywords found in responses"
+        min: 0.5
+        unit: "ratio (0-1)"
+
+      entity_accuracy:
+        description: "Average fraction of expected entities found in responses"
+        min: 0.4
+        unit: "ratio (0-1)"
+
+      repetition_score:
+        description: "Average repetition quality score (1.0 = no repetition)"
+        min: 0.6
+        unit: "ratio (0-1)"
+
+      sms_compliance:
+        description: "Fraction of responses that fit within 160-char SMS limit"
+        min: 0.9
+        unit: "ratio (0-1)"
+
+      pass_rate:
+        description: "Fraction of eval queries that pass composite score threshold"
+        min: 0.6
+        unit: "ratio (0-1)"
