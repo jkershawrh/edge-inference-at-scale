@@ -1,0 +1,54 @@
+{
+  "hunt_intro": "Welcome to the Edge AI Treasure Hunt! 7 clues to crack. Text CLUE 1 to start. Each answer unlocks the next. Decode them all to claim your prize at the demo station.",
+  "clues": [
+    {
+      "id": 1,
+      "clue": "CLUE 1: I weigh 400MB but hold 2.4 billion secrets. My weights are only three values. What am I? (Hint: ask the system about its architecture)",
+      "answer_pattern": "bitnet",
+      "success": "Correct! BitNet b1.58-2B-4T. Text CLUE 2 for your next challenge.",
+      "hint": "Try texting: What model does this system use?"
+    },
+    {
+      "id": 2,
+      "clue": "CLUE 2: The architect behind this SMS system goes by 'Kersh'. What company does Kersh work for? (Hint: ask about speakers)",
+      "answer_pattern": "red.?hat",
+      "success": "Correct! Red Hat. Text CLUE 3 for your next challenge.",
+      "hint": "Try texting: Who built the SMS AI assistant?"
+    },
+    {
+      "id": 3,
+      "clue": "CLUE 3: The BitNet model has 2.4 billion parameters but only uses 3 possible weight values. How many megabytes does the model file take? (Hint: ask about the architecture)",
+      "answer_pattern": "400",
+      "success": "400MB for 2.4B params — that's 1-bit efficiency! Text CLUE 4.",
+      "hint": "Try texting: How big is the BitNet model?"
+    },
+    {
+      "id": 4,
+      "clue": "CLUE 4: How many CPU cores does one edge node use? Multiply by the number of days the conference runs. What's the answer?",
+      "answer_pattern": "24|twenty.?four",
+      "success": "8 cores x 3 days = 24. Text CLUE 5.",
+      "hint": "Try texting: How many CPU cores does this system use? And: How many days is Summit Connect?"
+    },
+    {
+      "id": 5,
+      "clue": "CLUE 5: Intel's matrix instruction set that accelerates AI has 3 letters. Red Hat's edge Kubernetes has 10 letters. Combine them into one word.",
+      "answer_pattern": "amxmicroshift|amx.*microshift",
+      "success": "AMXMicroShift — the Intel + Red Hat edge stack! Text CLUE 6.",
+      "hint": "Try texting: What Intel technology accelerates AI? And: What is Red Hat's edge Kubernetes?"
+    },
+    {
+      "id": 6,
+      "clue": "CLUE 6: What percentage of conference questions can be answered in under 1 second without calling the LLM? (Hint: ask about RAG-direct)",
+      "answer_pattern": "60|70|sixty|seventy",
+      "success": "60-70%% instant answers via RAG-direct. Final clue! Text CLUE 7.",
+      "hint": "Try texting: What is RAG-direct? How fast is it?"
+    },
+    {
+      "id": 7,
+      "clue": "CLUE 7: Take the first letter of the Model name (B), the OS image format (B), and the container base version (U). What 3 letters do you get?",
+      "answer_pattern": "bbu|bus|bub|sub|ubb",
+      "success": "YOU CRACKED THE CODE! Screenshot this message and show it at the demo station to claim your prize. Congratulations, edge AI decoder!",
+      "hint": "Model = BitNet (B), OS = bootc (B), container = UBI9 (U). The letters are B, B, U."
+    }
+  ]
+}

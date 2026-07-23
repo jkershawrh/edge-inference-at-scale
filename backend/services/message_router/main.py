@@ -9,10 +9,12 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import httpx
@@ -432,6 +434,70 @@ class MessageRouter:
     # Main pipeline
     # ------------------------------------------------------------------
 
+    async def _handle_treasure_hunt(self, sender: str, content: str) -> Optional[str]:
+        """Handle treasure hunt commands. Returns response or None if not a hunt message."""
+        text = content.strip().lower()
+
+        # Load hunt data (lazy, cached)
+        if not hasattr(self, "_hunt_data"):
+            try:
+                hunt_path = Path(__file__).parent.parent.parent.parent / "data" / "summit_connect" / "treasure_hunt.json"
+                if hunt_path.exists():
+                    self._hunt_data = json.loads(hunt_path.read_text())
+                else:
+                    self._hunt_data = None
+            except Exception:
+                self._hunt_data = None
+
+        if self._hunt_data is None:
+            return None
+
+        clues = self._hunt_data.get("clues", [])
+
+        # "HUNT" — start the hunt
+        if text == "hunt":
+            await self.chat_store.set_hunt_state(sender, 1)
+            self.stats.setdefault("hunt_started", 0)
+            self.stats["hunt_started"] += 1
+            return self._hunt_data.get("hunt_intro", "Treasure hunt not available.")
+
+        # "HINT" — get hint for current clue
+        if text == "hint":
+            state = await self.chat_store.get_hunt_state(sender)
+            if state == 0:
+                return "You haven't started the hunt yet. Text HUNT to begin."
+            clue = next((c for c in clues if c["id"] == state), None)
+            return clue["hint"] if clue else "No hint available."
+
+        # "CLUE N" — show a specific clue (if unlocked)
+        clue_match = re.match(r"clue\s*(\d+)", text)
+        if clue_match:
+            requested = int(clue_match.group(1))
+            state = await self.chat_store.get_hunt_state(sender)
+            if state == 0:
+                return "Text HUNT to start the treasure hunt first."
+            if requested > state:
+                return f"You haven't unlocked Clue {requested} yet. Solve Clue {state} first."
+            clue = next((c for c in clues if c["id"] == requested), None)
+            return clue["clue"] if clue else "Clue not found."
+
+        # Check if it's an answer to the current clue
+        state = await self.chat_store.get_hunt_state(sender)
+        if state > 0 and state <= len(clues):
+            clue = next((c for c in clues if c["id"] == state), None)
+            if clue and re.search(clue["answer_pattern"], text, re.IGNORECASE):
+                next_state = state + 1
+                await self.chat_store.set_hunt_state(sender, next_state)
+                self.stats.setdefault("hunt_clues_solved", 0)
+                self.stats["hunt_clues_solved"] += 1
+                if state == len(clues):
+                    self.stats.setdefault("hunt_completed", 0)
+                    self.stats["hunt_completed"] += 1
+                return clue["success"]
+
+        # Not a hunt message
+        return None
+
     async def process_message(self, message: SMSMessage) -> str:
         """Full processing pipeline: classify -> route -> respond."""
         self.stats["messages_received"] += 1
@@ -440,6 +506,12 @@ class MessageRouter:
             message.sender,
             message.content,
         )
+
+        # 0. Check for treasure hunt commands (before classification)
+        hunt_response = await self._handle_treasure_hunt(message.sender, message.content)
+        if hunt_response is not None:
+            await self.send_response(message.sender, message.receiver, hunt_response)
+            return hunt_response
 
         # 1. Classify
         processed = self.classify_message(message)

@@ -131,6 +131,17 @@ def build_city_docs(city: dict) -> list[dict]:
     return docs
 
 
+def build_architecture_docs(arch: dict) -> list[dict]:
+    docs = []
+    for entry in arch.get("architecture", []):
+        docs.append({
+            "text": entry["text"],
+            "metadata": {"category": entry.get("category", "architecture")},
+            "doc_id": entry["id"],
+        })
+    return docs
+
+
 def main():
     print("Building Summit Connect RAG corpus...")
 
@@ -140,6 +151,7 @@ def main():
     all_docs.extend(build_speaker_docs(load_json("speakers.json")))
     all_docs.extend(build_venue_docs(load_json("venues.json")))
     all_docs.extend(build_city_docs(load_json("city_guide.json")))
+    all_docs.extend(build_architecture_docs(load_json("architecture.json")))
 
     print(f"Generated {len(all_docs)} documents")
 

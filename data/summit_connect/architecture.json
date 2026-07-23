@@ -1,0 +1,16 @@
+{
+  "architecture": [
+    {"id": "arch_overview", "text": "This system uses SMS to LLM to SMS architecture. You text a phone number, the message goes through RAG retrieval, then to a BitNet 1-bit model on CPU, and the answer comes back via SMS.", "category": "architecture"},
+    {"id": "arch_bitnet", "text": "The LLM is BitNet b1.58-2B-4T, a 2.4 billion parameter model with 1-bit ternary weights. Every weight is -1, 0, or 1. Matrix multiply becomes integer addition. No GPU needed. Model size is about 400MB.", "category": "architecture"},
+    {"id": "arch_rag", "text": "RAG means Retrieval-Augmented Generation. Your question is searched against a knowledge base using vector embeddings. Relevant documents are fed as context to the LLM for grounded answers.", "category": "architecture"},
+    {"id": "arch_edge", "text": "This runs on a micronode — 8 CPU cores and 16GB RAM, simulating a field-deployable edge board like an Orange Pi 5 Plus. No cloud, no GPU, no internet required.", "category": "architecture"},
+    {"id": "arch_redhat", "text": "Red Hat provides RHEL image-mode (bootc) for the immutable OS, MicroShift for lightweight Kubernetes, UBI9 container base images, and RHACM for fleet management.", "category": "architecture"},
+    {"id": "arch_intel", "text": "Intel provides Xeon CPUs with AVX-512 for BitNet ternary acceleration, OpenVINO for embedding inference, AMX for larger models, and TDX for confidential AI.", "category": "architecture"},
+    {"id": "arch_scale", "text": "Scaling means deploying more edge nodes, not bigger ones. Each node is self-contained. A 3-node fleet handles about 90 requests per minute.", "category": "architecture"},
+    {"id": "arch_rag_direct", "text": "RAG-direct returns high-confidence corpus matches instantly without calling the LLM. About 60-70 percent of conference questions are answered in under 1 second this way.", "category": "architecture"},
+    {"id": "arch_usecase", "text": "This architecture works for disaster relief, warzones, remote communities. Anywhere 2G cellular works, people text in and get knowledge back. No app needed.", "category": "architecture"},
+    {"id": "arch_privacy", "text": "All messages are processed locally on the edge node. PII like credit cards and SSNs are detected and blocked. Phone numbers are never shared. Messages expire after the event.", "category": "architecture"},
+    {"id": "arch_builder", "text": "This system was designed and built by Kersh, a Senior Solutions Architect at Red Hat based in Wichita, KS. The project combines EVY (SMS platform) with the edge-ai-cpu-inference quickstart.", "category": "architecture"},
+    {"id": "arch_chat_history", "text": "The system remembers your last 10 messages. You can have follow-up conversations. Text /reset to clear your chat history.", "category": "architecture"}
+  ]
+}
