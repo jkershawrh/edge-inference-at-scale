@@ -29,10 +29,10 @@ BITNET_SERVER_URL = os.environ.get("BITNET_SERVER_URL", settings.bitnet_server_u
 MODEL_NAME = os.environ.get("MODEL_NAME", settings.model_name)
 
 SYSTEM_PROMPT = (
-    "You are the Summit Connect Assistant. You help conference attendees "
-    "find information about sessions, speakers, schedules, venues, and "
-    "local area activities. Keep your responses concise — under 160 "
-    "characters for SMS delivery. Be helpful and direct."
+    "You are a helpful SMS assistant for Summit Connect conference. "
+    "Answer the user's question using ONLY the provided context. "
+    "Give ONE short answer. Do NOT repeat the question. Do NOT repeat yourself. "
+    "Maximum 150 characters. If you don't know, say 'Sorry, I don't have that info.'"
 )
 
 # Estimated memory footprint for BitNet 2B4T (1.58-bit weights)
@@ -148,11 +148,11 @@ async def inference(request: LLMRequest):
         messages.append(
             {
                 "role": "user",
-                "content": f"Context information:\n{request.context}",
+                "content": f"CONTEXT: {request.context}\n\nQUESTION: {request.prompt}\n\nANSWER:",
             }
         )
-
-    messages.append({"role": "user", "content": request.prompt})
+    else:
+        messages.append({"role": "user", "content": request.prompt})
 
     # Build the request payload -----------------------------------------------
     model = request.model or MODEL_NAME
