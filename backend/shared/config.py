@@ -77,12 +77,12 @@ class Settings(BaseSettings):
     sms_router_timeout_seconds: float = 60.0
     llm_request_timeout_seconds: float = 60.0
     llm_max_inflight_requests: int = 2
-    rag_direct_threshold: float = 0.8
+    rag_direct_threshold: float = 0.7
     rag_chunk_size_chars: int = 600
     rag_chunk_overlap_chars: int = 120
 
     # Security
-    secret_key: str = "change_this_secret_key_in_production"
+    secret_key: str = "change_this_secret_key_in_production"  # overridden by SECRET_KEY env var
 
     class Config:
         env_file = ".env"

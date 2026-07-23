@@ -433,6 +433,8 @@ async def twilio_webhook(
                 logger.warning("Twilio signature validation FAILED — rejecting request")
                 raise HTTPException(status_code=403, detail="Invalid Twilio signature")
         except ImportError:
+            if settings.sms_mode == "twilio":
+                raise HTTPException(status_code=500, detail="twilio package required for signature validation in twilio mode")
             logger.warning("twilio package not installed — skipping signature validation")
     logger.info(
         "Twilio webhook: from=%s to=%s sid=%s body=%s",

@@ -7,7 +7,7 @@ import re
 import hashlib
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from enum import Enum
 
@@ -112,7 +112,7 @@ class PrivacyFilter:
             "sanitized_messages": 0,
             "consent_checks": 0,
             "rate_limited_users": 0,
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
         
         # Load persistent data
@@ -160,7 +160,7 @@ class PrivacyFilter:
             blocklist_data = {
                 'patterns': list(self.blocked_patterns),
                 'users': list(self.blocked_users),
-                'last_updated': datetime.utcnow().isoformat()
+                'last_updated': datetime.now(timezone.utc).isoformat()
             }
             with open(self.blocklist_file, 'w') as f:
                 json.dump(blocklist_data, f, indent=2)
@@ -171,7 +171,7 @@ class PrivacyFilter:
     def _log_audit_event(self, event_type: str, details: Dict[str, Any]):
         """Log an audit event."""
         audit_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
             "details": details
         }
@@ -239,7 +239,7 @@ class PrivacyFilter:
     
     def check_rate_limit(self, phone_number: str) -> Dict[str, any]:
         """Check if user has exceeded rate limits."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         
         # Get user's message history
         if phone_number not in self.message_counts:
@@ -279,20 +279,20 @@ class PrivacyFilter:
         if phone_number not in self.message_counts:
             self.message_counts[phone_number] = []
         
-        self.message_counts[phone_number].append(datetime.utcnow())
+        self.message_counts[phone_number].append(datetime.now(timezone.utc))
     
     def manage_consent(self, phone_number: str, data_categories: List[str], consent_status: ConsentStatus, expiry_days: int = 365) -> Dict[str, Any]:
         """Manage user consent for data processing."""
         try:
-            consent_id = hashlib.md5(f"{phone_number}_{datetime.utcnow().isoformat()}".encode()).hexdigest()[:8]
-            expiry_date = datetime.utcnow() + timedelta(days=expiry_days)
+            consent_id = hashlib.md5(f"{phone_number}_{datetime.now(timezone.utc).isoformat()}".encode()).hexdigest()[:8]
+            expiry_date = datetime.now(timezone.utc) + timedelta(days=expiry_days)
             
             consent_record = {
                 "consent_id": consent_id,
                 "phone_number": phone_number,
                 "data_categories": data_categories,
                 "consent_status": consent_status.value,
-                "granted_at": datetime.utcnow().isoformat(),
+                "granted_at": datetime.now(timezone.utc).isoformat(),
                 "expires_at": expiry_date.isoformat(),
                 "is_active": consent_status == ConsentStatus.GRANTED
             }
@@ -327,7 +327,7 @@ class PrivacyFilter:
         for consent_id, record in self.consent_records.items():
             if (record["phone_number"] == phone_number and 
                 record["is_active"] and
-                datetime.fromisoformat(record["expires_at"]) > datetime.utcnow()):
+                datetime.fromisoformat(record["expires_at"]) > datetime.now(timezone.utc)):
                 
                 # Check if consent covers the requested categories
                 if any(category in record["data_categories"] for category in data_categories):
@@ -456,12 +456,12 @@ class PrivacyFilter:
             "valid": True,
             "sanitized": sanitized,
             "rate_check": rate_check,
-            "validation_timestamp": datetime.utcnow().isoformat()
+            "validation_timestamp": datetime.now(timezone.utc).isoformat()
         }
     
     def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive statistics."""
-        self.stats["last_updated"] = datetime.utcnow().isoformat()
+        self.stats["last_updated"] = datetime.now(timezone.utc).isoformat()
         
         return {
             **self.stats,
@@ -488,7 +488,7 @@ class PrivacyFilter:
     def cleanup_expired_consents(self) -> int:
         """Remove expired consent records."""
         expired_count = 0
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
         
         consent_ids_to_remove = []
         for consent_id, record in self.consent_records.items():
@@ -544,7 +544,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -86,7 +86,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -118,7 +118,7 @@ async def receive_sms(message: SMSMessage):
 
 @app.post("/sms/send")
 async def send_sms(message: SMSMessage):
-    return await gateway.proxy("sms-gateway", "/sms/send", "POST", message.model_dump(mode="json"))
+    return await gateway.proxy("sms-gateway", "/sms/send", "POST", {"phone_number": message.receiver, "content": message.content})
 
 
 @app.get("/sms/history")

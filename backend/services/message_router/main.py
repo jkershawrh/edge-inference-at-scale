@@ -144,17 +144,27 @@ class MessageRouter:
         content_lower = content.lower()
 
         # --- Emergency detection ---
-        for keyword in EMERGENCY_KEYWORDS:
-            if keyword in content_lower:
-                self.stats["emergency_messages"] += 1
-                return ProcessedMessage(
-                    original_message=message,
-                    message_type=MessageType.EMERGENCY,
-                    intent="emergency",
-                    requires_rag=False,
-                    requires_llm=False,
-                    priority=MessagePriority.EMERGENCY,
-                )
+        words = set(content_lower.split())
+        multi_word_keywords = [k for k in EMERGENCY_KEYWORDS if " " in k]
+        single_word_keywords = [k for k in EMERGENCY_KEYWORDS if " " not in k]
+
+        emergency_match = bool(words & set(single_word_keywords))
+        if not emergency_match:
+            for keyword in multi_word_keywords:
+                if keyword in content_lower:
+                    emergency_match = True
+                    break
+
+        if emergency_match:
+            self.stats["emergency_messages"] += 1
+            return ProcessedMessage(
+                original_message=message,
+                message_type=MessageType.EMERGENCY,
+                intent="emergency",
+                requires_rag=False,
+                requires_llm=False,
+                priority=MessagePriority.EMERGENCY,
+            )
 
         # --- Command detection ---
         if content_lower.startswith(COMMAND_PREFIX):
@@ -269,19 +279,10 @@ class MessageRouter:
         chunks = _chunk_sms_response(text)
         success = True
         for i, chunk in enumerate(chunks):
-            sms = SMSMessage(
-                id=str(uuid.uuid4()),
-                sender=sender,
-                receiver=recipient,
-                content=chunk,
-                timestamp=datetime.utcnow(),
-                priority=MessagePriority.NORMAL,
-                metadata={"part": i + 1, "total_parts": len(chunks)},
-            )
             try:
                 response = await self.http_client.post(
                     f"{self.sms_gateway_url}/sms/send",
-                    json=sms.model_dump(mode="json"),
+                    json={"phone_number": recipient, "content": chunk},
                     timeout=settings.sms_router_timeout_seconds,
                 )
                 response.raise_for_status()
@@ -513,6 +514,25 @@ class MessageRouter:
             await self.send_response(message.sender, message.receiver, hunt_response)
             return hunt_response
 
+        # Privacy filter check
+        try:
+            if self.http_client:
+                pf_resp = await self.http_client.post(
+                    f"{self.privacy_filter_url}/validate",
+                    json=message.model_dump(mode="json"),
+                    timeout=5.0,
+                )
+                if pf_resp.status_code == 200:
+                    pf_result = pf_resp.json()
+                    if not pf_result.get("valid", True):
+                        reason = pf_result.get("reason", "blocked")
+                        logger.warning("Privacy filter blocked message from %s: %s", message.sender, reason)
+                        response_text = "Your message was blocked. Please avoid sharing personal information via SMS."
+                        await self.send_response(message.sender, message.receiver, response_text)
+                        return response_text
+        except Exception as exc:
+            logger.warning("Privacy filter unavailable, continuing: %s", exc)
+
         # 1. Classify
         processed = self.classify_message(message)
         self.stats["messages_classified"] += 1
@@ -698,7 +718,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

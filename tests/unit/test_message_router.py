@@ -143,17 +143,16 @@ class TestClassifyCommand:
         result = self.router.classify_message(msg)
         assert result.requires_llm is False
 
-    def test_help_command_contains_emergency_keyword(self):
-        """'/help' contains 'help' which is an emergency keyword.
+    def test_help_command_not_false_emergency(self):
+        """'/help' contains 'help' but uses word-boundary matching.
 
-        The router checks emergency keywords before command prefix,
-        so '/help' is classified as EMERGENCY. This is intentional --
-        the word 'help' signals potential distress.
+        The router uses word-boundary matching for emergency keywords,
+        so '/help' is correctly classified as COMMAND, not EMERGENCY.
+        The token '/help' does not match the word 'help'.
         """
         msg = _make_sms("/help")
         result = self.router.classify_message(msg)
-        # 'help' is an emergency keyword, checked before '/' prefix
-        assert result.message_type == MessageType.EMERGENCY
+        assert result.message_type == MessageType.COMMAND
 
     @pytest.mark.asyncio
     async def test_help_response_lists_commands(self):
@@ -283,13 +282,13 @@ class TestRAGContextIncludedInLLMRequest:
         """When RAG returns context below direct threshold, it is included in the LLM request."""
         self.router.http_client = MagicMock()
 
-        # Mock RAG response — score below RAG_DIRECT_THRESHOLD (0.8) so LLM is called
+        # Mock RAG response — score below RAG_DIRECT_THRESHOLD (0.7) so LLM is called
         rag_response = MagicMock()
         rag_response.status_code = 200
         rag_response.raise_for_status = MagicMock()
         rag_response.json = MagicMock(return_value={
             "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-            "scores": [0.7],
+            "scores": [0.65],
         })
 
         # Mock LLM response
