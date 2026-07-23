@@ -21,3 +21,4 @@ data:
   MODEL_NAME: {{ .Values.bitnet.model | quote }}
   EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}
   LLM_REQUEST_TIMEOUT_SECONDS: "120"
+  HOME: "/tmp"
