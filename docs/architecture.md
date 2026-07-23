@@ -108,9 +108,12 @@ Message Router (consumes from stream)
     ├── [if query] ──► RAG Service
     │                   ├── Embed query (OpenVINO + MiniLM)
     │                   ├── Vector search (ChromaDB)
-    │                   └── Return top-k context documents
+    │                   └── Return top-k context documents + scores
     │
-    ├── [if query] ──► LLM Inference
+    ├── [if RAG score >= 0.8 and doc <= 160 chars]
+    │       └── RAG-direct: return corpus doc as SMS (skip LLM, < 1s)
+    │
+    ├── [else] ──► LLM Inference
     │                   ├── System prompt + RAG context + user query
     │                   ├── BitNet b1.58-2B-4T via llama-server
     │                   ├── AVX-512 accelerated integer inference
@@ -139,7 +142,39 @@ Redis Streams are viable at the edge because Redis itself runs with ~50MB RAM. T
 
 ## Node Profiles
 
-### lilEVY (Edge Node) — The Demo
+### Micronode (Simulated Edge Board) — The Demo
+
+Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class). This is what we deploy for the Summit Connect live demo.
+
+| Resource | Allocation | Rationale |
+|----------|-----------|-----------|
+| CPU | 8 cores total | BitNet gets 4, ChromaDB gets 1, services share the rest |
+| RAM | 16 GB total | BitNet model (~400MB) + ChromaDB ONNX (~200MB) + services + OS |
+| Storage | 20 GB | OS + containers + RAG corpus + Redis AOF |
+| Network | 2G cellular (GSM) or ethernet | SMS in/out |
+| Power | 25-45W | Solar viable for field deployment |
+
+**Service allocation within the micronode:**
+
+| Service | CPU | Memory |
+|---------|-----|--------|
+| BitNet Server | 4.0 | 4 Gi |
+| ChromaDB | 1.0 | 2 Gi |
+| RAG Service | 0.5 | 2 Gi |
+| Message Router | 0.5 | 512 Mi |
+| SMS Gateway | 0.5 | 512 Mi |
+| LLM Inference | 0.5 | 512 Mi |
+| API Gateway | 0.25 | 256 Mi |
+| Redis | 0.25 | 256 Mi |
+| Privacy Filter | 0.25 | 256 Mi |
+| **Total** | **7.75** | **10.5 Gi** |
+
+**Expected performance:**
+- RAG-direct response (high-confidence corpus match): **< 1 second**
+- BitNet inference (open-ended question): **5-10 seconds** on dedicated hardware
+- Throughput: **10-20 requests/minute** (BitNet), **hundreds/minute** (RAG-direct)
+
+### lilEVY (Edge Node) — Original
 
 | Resource | Allocation | Rationale |
 |----------|-----------|-----------|

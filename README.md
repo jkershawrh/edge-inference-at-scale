@@ -88,19 +88,25 @@ curl http://localhost:8000/llm/stats           # Inference latency
 curl http://localhost:8000/router/statistics   # Message throughput
 ```
 
-## Edge Node Footprint
+## Micronode Footprint
+
+Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class):
 
 | Service | CPU | Memory | Role |
 |---------|-----|--------|------|
-| BitNet Server | 2.0 | 2 GB | LLM inference engine |
-| RAG Service | 1.0 | 2 GB | Vector search + OpenVINO embeddings |
-| LLM Wrapper | 0.5 | 512 MB | Request formatting, response truncation |
-| SMS Gateway | 0.5 | 256 MB | Message receive/send + event stream |
-| Message Router | 0.5 | 256 MB | Classification and orchestration |
-| Privacy Filter | 0.25 | 128 MB | PII detection, rate limiting |
-| API Gateway | 0.5 | 256 MB | Service routing + metrics |
+| BitNet Server | 4.0 | 4 GB | LLM inference — `--threads 8 --ctx-size 512` |
+| ChromaDB | 1.0 | 2 GB | Vector store + ONNX MiniLM embeddings |
+| RAG Service | 0.5 | 2 GB | Hybrid search, RAG-direct fallback |
+| Message Router | 0.5 | 512 MB | Classify → RAG-direct or LLM → respond |
+| SMS Gateway | 0.5 | 512 MB | SMS receive/send + Redis Streams |
+| LLM Inference | 0.5 | 512 MB | BitNet server wrapper |
+| API Gateway | 0.25 | 256 MB | Service routing + metrics |
+| Redis | 0.25 | 256 MB | Event stream + message queue |
+| Privacy Filter | 0.25 | 256 MB | PII detection, rate limiting |
 
-**Total: ~5 CPU, ~5.5 GB RAM** — fits on any Intel Xeon edge node.
+**Total: ~7.75 CPU, ~10.5 GB RAM** — fits on an 8-core / 16 GB edge board with OS headroom.
+
+**RAG-direct fallback**: High-confidence corpus matches (score >= 0.8, under 160 chars) return instantly without calling the LLM. Queries like "WiFi password?", "where's lunch?", "emergency contact?" resolve in < 1 second.
 
 ## Scaling
 
