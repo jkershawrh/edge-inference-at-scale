@@ -1,0 +1,650 @@
+# Edge Inference at Scale — 3-Node Fleet Demo
+# Simulates 3 independent edge nodes behind a load balancer,
+# sharing Redis and ChromaDB infrastructure, managed by a fleet orchestrator.
+# Total budget: 8 CPU / 16 GB RAM split across nodes (~2.5 CPU each)
+
+services:
+
+  # ============================================================
+  # Shared Infrastructure
+  # ============================================================
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma-data:/chroma
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8000) 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - edge-network
+
+  node-manager:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.node_manager.main:app", "--host", "0.0.0.0", "--port", "8006"]
+    ports:
+      - "8006:8006"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256m
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8006/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  load-balancer:
+    image: nginx:alpine
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./scripts/nginx-lb.conf:/etc/nginx/conf.d/default.conf:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+    depends_on:
+      node-1-gateway:
+        condition: service_healthy
+      node-2-gateway:
+        condition: service_healthy
+      node-3-gateway:
+        condition: service_healthy
+    networks:
+      - edge-network
+
+  # ============================================================
+  # Node 1 — edge-node-001
+  # ============================================================
+
+  node-1-bitnet:
+    image: localhost/bitnet-cpp:latest
+    command: ["--model", "/models/ggml-model-i2_s.gguf",
+              "--host", "0.0.0.0", "--port", "8080",
+              "--ctx-size", "512", "--threads", "4",
+              "-np", "1", "--alias", "bitnet-2b4t"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8080) 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+    networks:
+      - edge-network
+
+  node-1-gateway:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - NODE_ID=edge-node-001
+      - SMS_MODE=sim
+      - SMS_GATEWAY_URL=http://node-1-sms:8001
+      - MESSAGE_ROUTER_URL=http://node-1-router:8002
+      - LLM_INFERENCE_URL=http://node-1-llm:8003
+      - RAG_SERVICE_URL=http://node-1-rag:8004
+      - PRIVACY_FILTER_URL=http://node-1-privacy:8005
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 192m
+    depends_on:
+      node-1-sms:
+        condition: service_healthy
+      node-1-router:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8000/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-1-sms:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.sms_gateway.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      - SMS_MODE=sim
+      - MESSAGE_ROUTER_URL=http://node-1-router:8002
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - SMS_ROUTER_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-1-router:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.message_router.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      - LLM_SERVICE_URL=http://node-1-llm:8003
+      - RAG_SERVICE_URL=http://node-1-rag:8004
+      - PRIVACY_FILTER_URL=http://node-1-privacy:8005
+      - SMS_GATEWAY_URL=http://node-1-sms:8001
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - RAG_DIRECT_THRESHOLD=0.8
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-1-llm:
+        condition: service_healthy
+      node-1-rag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8002/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-1-llm:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.llm_inference.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      - BITNET_SERVER_URL=http://node-1-bitnet:8080
+      - MODEL_NAME=bitnet-2b4t
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-1-bitnet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8003/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-1-rag:
+    build:
+      context: ./backend
+      dockerfile: Containerfile.rag
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - SUMMIT_DATA_DIR=/data/summit_connect
+      - HOME=/tmp
+    volumes:
+      - rag-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 1g
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8004/health').status_code)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge-network
+
+  node-1-privacy:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.privacy_filter.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      - HOME=/tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 192m
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8005/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  # ============================================================
+  # Node 2 — edge-node-002
+  # ============================================================
+
+  node-2-bitnet:
+    image: localhost/bitnet-cpp:latest
+    command: ["--model", "/models/ggml-model-i2_s.gguf",
+              "--host", "0.0.0.0", "--port", "8080",
+              "--ctx-size", "512", "--threads", "4",
+              "-np", "1", "--alias", "bitnet-2b4t"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8080) 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+    networks:
+      - edge-network
+
+  node-2-gateway:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - NODE_ID=edge-node-002
+      - SMS_MODE=sim
+      - SMS_GATEWAY_URL=http://node-2-sms:8001
+      - MESSAGE_ROUTER_URL=http://node-2-router:8002
+      - LLM_INFERENCE_URL=http://node-2-llm:8003
+      - RAG_SERVICE_URL=http://node-2-rag:8004
+      - PRIVACY_FILTER_URL=http://node-2-privacy:8005
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 192m
+    depends_on:
+      node-2-sms:
+        condition: service_healthy
+      node-2-router:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8000/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-2-sms:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.sms_gateway.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      - SMS_MODE=sim
+      - MESSAGE_ROUTER_URL=http://node-2-router:8002
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - SMS_ROUTER_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-2-router:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.message_router.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      - LLM_SERVICE_URL=http://node-2-llm:8003
+      - RAG_SERVICE_URL=http://node-2-rag:8004
+      - PRIVACY_FILTER_URL=http://node-2-privacy:8005
+      - SMS_GATEWAY_URL=http://node-2-sms:8001
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - RAG_DIRECT_THRESHOLD=0.8
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-2-llm:
+        condition: service_healthy
+      node-2-rag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8002/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-2-llm:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.llm_inference.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      - BITNET_SERVER_URL=http://node-2-bitnet:8080
+      - MODEL_NAME=bitnet-2b4t
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-2-bitnet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8003/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-2-rag:
+    build:
+      context: ./backend
+      dockerfile: Containerfile.rag
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - SUMMIT_DATA_DIR=/data/summit_connect
+      - HOME=/tmp
+    volumes:
+      - rag-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 1g
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8004/health').status_code)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge-network
+
+  node-2-privacy:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.privacy_filter.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      - HOME=/tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 192m
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8005/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  # ============================================================
+  # Node 3 — edge-node-003
+  # ============================================================
+
+  node-3-bitnet:
+    image: localhost/bitnet-cpp:latest
+    command: ["--model", "/models/ggml-model-i2_s.gguf",
+              "--host", "0.0.0.0", "--port", "8080",
+              "--ctx-size", "512", "--threads", "4",
+              "-np", "1", "--alias", "bitnet-2b4t"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "(echo > /dev/tcp/localhost/8080) 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 90s
+    networks:
+      - edge-network
+
+  node-3-gateway:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      - NODE_ID=edge-node-003
+      - SMS_MODE=sim
+      - SMS_GATEWAY_URL=http://node-3-sms:8001
+      - MESSAGE_ROUTER_URL=http://node-3-router:8002
+      - LLM_INFERENCE_URL=http://node-3-llm:8003
+      - RAG_SERVICE_URL=http://node-3-rag:8004
+      - PRIVACY_FILTER_URL=http://node-3-privacy:8005
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 192m
+    depends_on:
+      node-3-sms:
+        condition: service_healthy
+      node-3-router:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8000/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-3-sms:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.sms_gateway.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      - SMS_MODE=sim
+      - MESSAGE_ROUTER_URL=http://node-3-router:8002
+      - REDIS_URL=redis://redis:6379/0
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - SMS_ROUTER_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-3-router:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.message_router.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      - LLM_SERVICE_URL=http://node-3-llm:8003
+      - RAG_SERVICE_URL=http://node-3-rag:8004
+      - PRIVACY_FILTER_URL=http://node-3-privacy:8005
+      - SMS_GATEWAY_URL=http://node-3-sms:8001
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+      - RAG_DIRECT_THRESHOLD=0.8
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-3-llm:
+        condition: service_healthy
+      node-3-rag:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8002/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-3-llm:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.llm_inference.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    environment:
+      - BITNET_SERVER_URL=http://node-3-bitnet:8080
+      - MODEL_NAME=bitnet-2b4t
+      - LLM_REQUEST_TIMEOUT_SECONDS=60
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 256m
+    depends_on:
+      node-3-bitnet:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8003/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+  node-3-rag:
+    build:
+      context: ./backend
+      dockerfile: Containerfile.rag
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - SUMMIT_DATA_DIR=/data/summit_connect
+      - HOME=/tmp
+    volumes:
+      - rag-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 1g
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8004/health').status_code)"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - edge-network
+
+  node-3-privacy:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    command: ["python3.11", "-m", "uvicorn", "backend.services.privacy_filter.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    environment:
+      - HOME=/tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 192m
+    healthcheck:
+      test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8005/health').status_code)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edge-network
+
+networks:
+  edge-network:
+    driver: bridge
+
+volumes:
+  chroma-data:
+  rag-data:
