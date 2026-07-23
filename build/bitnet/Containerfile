@@ -11,12 +11,10 @@ RUN git clone --recursive https://github.com/microsoft/BitNet.git
 
 WORKDIR /build/BitNet
 
-# Install torch CPU-only, then remaining deps
-# The upstream requirements.txt has conditional torch entries that sed misses
+# Install torch CPU-only first, then deps with --no-deps to avoid torch==2.11.0 pin
 RUN pip3 install torch --index-url https://download.pytorch.org/whl/cpu && \
-    python3 -c "lines=[l for l in open('requirements.txt') if 'torch' not in l.lower()]; open('requirements.txt','w').writelines(lines)" && \
-    cat requirements.txt && \
-    pip3 install -r requirements.txt
+    pip3 install --no-deps -r requirements.txt && \
+    pip3 install numpy sentencepiece gguf "protobuf<5" huggingface_hub tokenizers safetensors tqdm pyyaml filelock regex requests packaging
 
 # Pre-patch const-correctness bug in ternary kernel
 RUN find . -name "*.cpp" -o -name "*.h" | \
