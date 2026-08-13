@@ -11,7 +11,7 @@ RUN microdnf install -y python3.11 python3.11-pip && \
 WORKDIR /app
 
 # Install CPU-only PyTorch first to avoid pulling CUDA
-RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 
 COPY requirements-rag.txt requirements.txt ./
 RUN python3.11 -m pip install --no-cache-dir pysqlite3-binary && \
