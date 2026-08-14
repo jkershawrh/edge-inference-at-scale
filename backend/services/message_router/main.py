@@ -553,7 +553,11 @@ class MessageRouter:
             response_text = self._handle_template(processed)
         else:
             # 3. Retrieve chat history for this user
-            history = await self.chat_store.get_history(message.sender)
+            try:
+                history = await self.chat_store.get_history(message.sender)
+            except Exception as exc:
+                logger.warning("Chat history unavailable, continuing without: %s", exc)
+                history = []
 
             # 3a. RAG retrieval (if needed)
             context = None
@@ -589,9 +593,12 @@ class MessageRouter:
                 )
 
             # Store this turn in chat history (only for QUERY messages)
-            await self.chat_store.add_turn(
-                message.sender, message.content, response_text
-            )
+            try:
+                await self.chat_store.add_turn(
+                    message.sender, message.content, response_text
+                )
+            except Exception as exc:
+                logger.warning("Failed to store chat turn: %s", exc)
 
         # 5. Send response back via SMS gateway
         sent = await self.send_response(
