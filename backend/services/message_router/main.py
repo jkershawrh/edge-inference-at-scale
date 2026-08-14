@@ -240,7 +240,7 @@ class MessageRouter:
     async def route_to_llm(
         self, prompt: str, context: Optional[str] = None, chat_history=None
     ) -> Optional[str]:
-        """Call the LLM inference service with concurrency control."""
+        """Call the LLM inference service with concurrency control and retry."""
         if self.http_client is None:
             logger.error("HTTP client not initialised")
             return None
@@ -254,20 +254,23 @@ class MessageRouter:
         )
 
         async with self.llm_semaphore:
-            try:
-                response = await self.http_client.post(
-                    f"{self.llm_service_url}/inference",
-                    json=llm_request.model_dump(),
-                    timeout=settings.llm_request_timeout_seconds,
-                )
-                response.raise_for_status()
-                data = response.json()
-                self.stats["messages_routed_llm"] += 1
-                llm_response = LLMResponse(**data)
-                return llm_response.response
-            except Exception as exc:
-                logger.warning("LLM service call failed: %s", exc)
-                return None
+            for attempt in range(2):
+                try:
+                    response = await self.http_client.post(
+                        f"{self.llm_service_url}/inference",
+                        json=llm_request.model_dump(),
+                        timeout=settings.llm_request_timeout_seconds,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                    self.stats["messages_routed_llm"] += 1
+                    llm_response = LLMResponse(**data)
+                    return llm_response.response
+                except Exception as exc:
+                    logger.warning("LLM service call failed (attempt %d): %s", attempt + 1, exc)
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+            return None
 
     async def send_response(self, recipient: str, sender: str, text: str) -> bool:
         """Send the response back via SMS gateway, chunking if necessary."""
