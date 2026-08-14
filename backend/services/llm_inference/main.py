@@ -63,17 +63,18 @@ async def lifespan(app: FastAPI):
     _http_client = httpx.AsyncClient(
         base_url=BITNET_SERVER_URL,
         timeout=httpx.Timeout(settings.llm_request_timeout_seconds, connect=10.0),
+        limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
     )
-    # Warm up connection pool with a health probe
-    for attempt in range(5):
+    # Warm up connection to BitNet
+    for attempt in range(10):
         try:
-            resp = await _http_client.get("/v1/models")
+            resp = await _http_client.get("/health")
             if resp.status_code == 200:
-                logger.info("BitNet connection warm — models: %s", resp.json().get("data", [{}])[0].get("id", "?"))
+                logger.info("BitNet connection warm (attempt %d)", attempt + 1)
                 break
         except Exception:
-            logger.info("BitNet not ready (attempt %d/5), retrying...", attempt + 1)
-            await asyncio.sleep(2)
+            pass
+        await asyncio.sleep(1)
     logger.info(
         "LLM Inference service started — BitNet server: %s, model: %s",
         BITNET_SERVER_URL,
