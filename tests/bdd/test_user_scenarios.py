@@ -5,6 +5,7 @@ Tests exercise the message router's full classify→route→respond pipeline
 with mocked downstream services.
 """
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -21,6 +22,21 @@ def _sms(content, sender="+15551234567"):
         content=content, timestamp=datetime.now(timezone.utc),
         priority=MessagePriority.NORMAL,
     )
+
+
+def _mock_chat_store(hunt_state=0):
+    """Create a mock ChatHistoryStore with treasure hunt state support."""
+    store = MagicMock()
+    store._hunt_state = hunt_state
+    store.get_hunt_state = AsyncMock(return_value=hunt_state)
+    store.set_hunt_state = AsyncMock()
+    store.clear_hunt_state = AsyncMock()
+    store.get_history = AsyncMock(return_value=[])
+    store.add_turn = AsyncMock()
+    store.clear_history = AsyncMock()
+    store.connect = AsyncMock()
+    store.close = AsyncMock()
+    return store
 
 
 def _mock_router(rag_docs=None, rag_scores=None, llm_response="Check the schedule."):
@@ -223,3 +239,202 @@ class TestResponseFitsSMS:
         for content in ["hello", "/status", "/schedule", "help emergency"]:
             result = await router.process_message(_sms(content))
             assert len(result) <= 320, f"Response too long for '{content}': {len(result)} chars"
+
+
+# ===================================================================
+# Scenario: Attendee starts the treasure hunt
+# ===================================================================
+
+class TestTreasureHuntStart:
+    """GIVEN an attendee at the booth
+    WHEN they text 'HUNT'
+    THEN they receive the treasure hunt intro with instructions"""
+
+    @pytest.mark.asyncio
+    async def test_hunt_start_returns_intro(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store()
+        result = await router.process_message(_sms("HUNT"))
+        assert "treasure hunt" in result.lower() or "clue" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_hunt_start_sets_state(self):
+        router = _mock_router()
+        store = _mock_chat_store()
+        router.chat_store = store
+        await router.process_message(_sms("HUNT"))
+        store.set_hunt_state.assert_called_once_with("+15551234567", 1)
+
+    @pytest.mark.asyncio
+    async def test_hunt_tracks_stats(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store()
+        await router.process_message(_sms("HUNT"))
+        assert router.stats.get("hunt_started", 0) >= 1
+
+
+# ===================================================================
+# Scenario: Attendee requests a clue
+# ===================================================================
+
+class TestTreasureHuntClue:
+    """GIVEN an attendee who has started the hunt
+    WHEN they text 'CLUE 1'
+    THEN they receive the first clue"""
+
+    @pytest.mark.asyncio
+    async def test_clue_1_shown(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store(hunt_state=1)
+        result = await router.process_message(_sms("CLUE 1"))
+        assert "clue 1" in result.lower() or "400mb" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_locked_clue_rejected(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store(hunt_state=1)
+        result = await router.process_message(_sms("CLUE 5"))
+        assert "unlock" in result.lower() or "solve" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_clue_before_hunt_start(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store(hunt_state=0)
+        result = await router.process_message(_sms("CLUE 1"))
+        assert "hunt" in result.lower()
+
+
+# ===================================================================
+# Scenario: Attendee answers a clue correctly
+# ===================================================================
+
+class TestTreasureHuntAnswer:
+    """GIVEN an attendee on clue 1
+    WHEN they text the correct answer 'bitnet'
+    THEN they advance to clue 2"""
+
+    @pytest.mark.asyncio
+    async def test_correct_answer_advances(self):
+        router = _mock_router()
+        store = _mock_chat_store(hunt_state=1)
+        router.chat_store = store
+        result = await router.process_message(_sms("bitnet"))
+        assert "correct" in result.lower() or "clue 2" in result.lower()
+        store.set_hunt_state.assert_called_with("+15551234567", 2)
+
+    @pytest.mark.asyncio
+    async def test_wrong_answer_falls_through(self):
+        router = _mock_router(
+            rag_docs=["Some info."],
+            rag_scores=[0.5],
+            llm_response="Try again!",
+        )
+        router.chat_store = _mock_chat_store(hunt_state=1)
+        result = await router.process_message(_sms("wrong answer xyz"))
+        assert "correct" not in result.lower()
+
+
+# ===================================================================
+# Scenario: Attendee asks for a hint
+# ===================================================================
+
+class TestTreasureHuntHint:
+    """GIVEN an attendee on clue 1
+    WHEN they text 'HINT'
+    THEN they receive the hint for their current clue"""
+
+    @pytest.mark.asyncio
+    async def test_hint_for_current_clue(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store(hunt_state=1)
+        result = await router.process_message(_sms("HINT"))
+        assert "texting" in result.lower() or "try" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_hint_before_starting(self):
+        router = _mock_router()
+        router.chat_store = _mock_chat_store(hunt_state=0)
+        result = await router.process_message(_sms("HINT"))
+        assert "haven't started" in result.lower() or "hunt" in result.lower()
+
+
+# ===================================================================
+# Scenario: Attendee completes the entire treasure hunt
+# ===================================================================
+
+class TestTreasureHuntCompletion:
+    """GIVEN an attendee on the final clue (clue 7)
+    WHEN they text the correct answer
+    THEN they see the victory message with prize instructions"""
+
+    @pytest.mark.asyncio
+    async def test_final_clue_victory(self):
+        router = _mock_router()
+        store = _mock_chat_store(hunt_state=7)
+        router.chat_store = store
+        result = await router.process_message(_sms("bbu"))
+        assert "cracked" in result.lower() or "prize" in result.lower() or "congratulations" in result.lower()
+        assert router.stats.get("hunt_completed", 0) >= 1
+
+    @pytest.mark.asyncio
+    async def test_full_hunt_walkthrough(self):
+        """Walk through all 7 clues sequentially."""
+        router = _mock_router()
+        store = _mock_chat_store(hunt_state=0)
+        router.chat_store = store
+
+        answers = [
+            (0, "HUNT", 1),
+            (1, "bitnet", 2),
+            (2, "red hat", 3),
+            (3, "400", 4),
+            (4, "24", 5),
+            (5, "amxmicroshift", 6),
+            (6, "70", 7),
+            (7, "bbu", 8),
+        ]
+
+        for initial_state, text, expected_next in answers:
+            store._hunt_state = initial_state
+            store.get_hunt_state = AsyncMock(return_value=initial_state)
+            result = await router.process_message(_sms(text))
+            assert isinstance(result, str) and len(result) > 0, f"Empty response for '{text}' at state {initial_state}"
+
+
+# ===================================================================
+# Scenario: Multiple attendees hunt independently
+# ===================================================================
+
+class TestTreasureHuntMultiUser:
+    """GIVEN two attendees both doing the hunt
+    WHEN they are on different clues
+    THEN each sees their own clue state"""
+
+    @pytest.mark.asyncio
+    async def test_independent_hunt_state(self):
+        router = _mock_router()
+        states = {}
+
+        async def mock_get(phone):
+            return states.get(phone, 0)
+
+        async def mock_set(phone, val):
+            states[phone] = val
+
+        store = _mock_chat_store()
+        store.get_hunt_state = AsyncMock(side_effect=mock_get)
+        store.set_hunt_state = AsyncMock(side_effect=mock_set)
+        router.chat_store = store
+
+        # User A starts the hunt
+        await router.process_message(_sms("HUNT", "+15550000001"))
+        assert states["+15550000001"] == 1
+
+        # User B starts too
+        await router.process_message(_sms("HUNT", "+15550000002"))
+        assert states["+15550000002"] == 1
+
+        # User A solves clue 1
+        await router.process_message(_sms("bitnet", "+15550000001"))
+        assert states["+15550000001"] == 2
+        assert states["+15550000002"] == 1  # B unchanged

@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-08-14T04:35:31.133682+00:00",
+  "mode": "mocked",
+  "semaphore_limit": 2,
+  "bursts": [],
+  "sustained_throughput_msg_per_min": 0.0,
+  "max_burst_before_degradation": 0,
+  "bottleneck_stage": "llm",
+  "degradation_curve": [
+    {
+      "burst_size": 1,
+      "p50_ms": 216.9,
+      "p95_ms": 216.9,
+      "p99_ms": 216.9,
+      "throughput_msg_per_sec": 4.61,
+      "completed": 1,
+      "failed": 0
+    },
+    {
+      "burst_size": 2,
+      "p50_ms": 216.8,
+      "p95_ms": 217.0,
+      "p99_ms": 217.0,
+      "throughput_msg_per_sec": 9.14,
+      "completed": 2,
+      "failed": 0
+    },
+    {
+      "burst_size": 5,
+      "p50_ms": 462.7,
+      "p95_ms": 625.9,
+      "p99_ms": 658.2,
+      "throughput_msg_per_sec": 7.48,
+      "completed": 5,
+      "failed": 0
+    },
+    {
+      "burst_size": 10,
+      "p50_ms": 622.7,
+      "p95_ms": 1030.8,
+      "p99_ms": 1031.0,
+      "throughput_msg_per_sec": 9.65,
+      "completed": 10,
+      "failed": 0
+    },
+    {
+      "burst_size": 20,
+      "p50_ms": 1134.6,
+      "p95_ms": 2052.7,
+      "p99_ms": 2053.6,
+      "throughput_msg_per_sec": 9.7,
+      "completed": 20,
+      "failed": 0
+    },
+    {
+      "burst_size": 50,
+      "p50_ms": 2706.5,
+      "p95_ms": 4939.2,
+      "p99_ms": 5149.7,
+      "throughput_msg_per_sec": 9.63,
+      "completed": 50,
+      "failed": 0
+    }
+  ]
+}

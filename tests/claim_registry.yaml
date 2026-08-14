@@ -84,3 +84,58 @@ claims:
     verification_status: verified
     verified_date: "2025-04-17"
     notes: "llama.cpp BitNet kernel uses AVX-512 VNNI and AMX for ternary weight matrix multiply. Falls back to scalar on unsupported CPUs."
+
+  - id: treasure-hunt-7-clues
+    statement: "Digital treasure hunt with 7 progressive clues"
+    value: "7 clues"
+    file: data/summit_connect/treasure_hunt.json
+    line: null
+    source: "treasure_hunt.json — 7 clue objects with answer_pattern regex, hints, and success messages"
+    source_url: null
+    verification_status: verified
+    verified_date: "2026-08-13"
+    notes: "Clues test knowledge of BitNet, Red Hat, model size, CPU cores, AMX+MicroShift, RAG-direct %, and bootc/UBI. State tracked in Redis per user."
+
+  - id: rag-direct-sub-second
+    statement: "RAG-direct responses in sub-second latency"
+    value: "<1s"
+    file: backend/services/message_router/main.py
+    line: null
+    source: "RAG-direct path skips LLM when top_score >= threshold and doc <= 160 chars"
+    source_url: null
+    verification_status: unverified
+    verified_date: null
+    notes: "Configured via RAG_DIRECT_THRESHOLD (default 0.7). Needs live stack measurement to verify sub-second claim. Projected based on ChromaDB local latency."
+
+  - id: semaphore-2-inflight
+    statement: "Concurrency control: 2 in-flight LLM requests"
+    value: "2"
+    file: backend/shared/config.py
+    line: null
+    source: "settings.llm_max_inflight_requests = 2"
+    source_url: null
+    verification_status: verified
+    verified_date: "2026-08-13"
+    notes: "asyncio.Semaphore limits concurrent BitNet requests. Primary bottleneck under burst load. Tunable but trades latency stability for throughput."
+
+  - id: capacity-burst-10
+    statement: "Single node handles 10-message burst with 100% completion"
+    value: "10 concurrent messages"
+    file: tests/benchmarks/test_capacity.py
+    line: null
+    source: "Mocked capacity test with realistic delay profile (50ms RAG, 200ms LLM stub)"
+    source_url: null
+    verification_status: unverified
+    verified_date: null
+    notes: "Mocked test passes. Live verification pending: CAPACITY_LIVE=1 pytest tests/benchmarks/test_capacity.py"
+
+  - id: sustained-throughput
+    statement: "Sustained throughput: ~8 messages/minute (projected)"
+    value: "~8 msg/min"
+    file: tests/benchmark_rubric.yaml
+    line: null
+    source: "Projected from semaphore=2, ~5-10s inference per message"
+    source_url: null
+    verification_status: unverified
+    verified_date: null
+    notes: "Projected estimate. 2 slots * ~8 msg/min = ~4-8 depending on inference time. Needs live measurement."

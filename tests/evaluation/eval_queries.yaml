@@ -250,3 +250,140 @@ eval_queries:
       - "Summit Medical Center"
       - "500 Hospital Drive"
     max_acceptable_latency_ms: 5000
+
+  # ---------------------------------------------------------------------------
+  # Treasure hunt queries
+  # ---------------------------------------------------------------------------
+
+  - id: hunt_start
+    query: "HUNT"
+    category: treasure_hunt
+    expected_keywords: ["Treasure Hunt", "7 clues", "CLUE 1"]
+    forbidden_keywords: ["I don't know", "error"]
+    expected_entities:
+      - "CLUE 1"
+      - "prize"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue1_show
+    query: "CLUE 1"
+    category: treasure_hunt
+    expected_keywords: ["400MB", "2.4 billion", "three values"]
+    forbidden_keywords: ["I don't know", "error"]
+    expected_entities:
+      - "400MB"
+      - "CLUE 1"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue1_answer
+    query: "bitnet"
+    category: treasure_hunt
+    expected_keywords: ["Correct", "BitNet", "CLUE 2"]
+    forbidden_keywords: ["wrong", "incorrect", "error"]
+    expected_entities:
+      - "BitNet"
+      - "CLUE 2"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue2_answer
+    query: "red hat"
+    category: treasure_hunt
+    expected_keywords: ["Correct", "Red Hat", "CLUE 3"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities:
+      - "Red Hat"
+      - "CLUE 3"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue3_answer
+    query: "400"
+    category: treasure_hunt
+    expected_keywords: ["400", "1-bit", "CLUE 4"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities:
+      - "400"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue4_answer
+    query: "24"
+    category: treasure_hunt
+    expected_keywords: ["8 cores", "3 days", "CLUE 5"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities:
+      - "24"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue5_answer
+    query: "amxmicroshift"
+    category: treasure_hunt
+    expected_keywords: ["AMX", "MicroShift", "CLUE 6"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities:
+      - "AMX"
+      - "MicroShift"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue6_answer
+    query: "70"
+    category: treasure_hunt
+    expected_keywords: ["RAG-direct", "CLUE 7"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities: []
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue7_answer
+    query: "bbu"
+    category: treasure_hunt
+    expected_keywords: ["CRACKED", "CODE", "prize"]
+    forbidden_keywords: ["wrong", "incorrect"]
+    expected_entities:
+      - "prize"
+      - "demo station"
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_hint
+    query: "HINT"
+    category: treasure_hunt
+    expected_keywords: ["texting"]
+    forbidden_keywords: ["error", "I don't know"]
+    expected_entities: []
+    max_acceptable_latency_ms: 1000
+
+  - id: hunt_clue_locked
+    query: "CLUE 5"
+    category: treasure_hunt
+    expected_keywords: ["unlocked", "Solve"]
+    forbidden_keywords: ["error"]
+    expected_entities: []
+    max_acceptable_latency_ms: 1000
+
+  # ---------------------------------------------------------------------------
+  # Architecture self-knowledge queries
+  # ---------------------------------------------------------------------------
+
+  - id: arch_01
+    query: "How does this system work?"
+    category: architecture
+    expected_keywords: ["SMS", "LLM"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "SMS"
+    max_acceptable_latency_ms: 15000
+
+  - id: arch_02
+    query: "What model does this use?"
+    category: architecture
+    expected_keywords: ["BitNet"]
+    forbidden_keywords: ["I don't know", "GPT"]
+    expected_entities:
+      - "BitNet"
+    max_acceptable_latency_ms: 15000
+
+  - id: arch_03
+    query: "Who built this?"
+    category: architecture
+    expected_keywords: ["Red Hat", "Intel"]
+    forbidden_keywords: ["I don't know"]
+    expected_entities:
+      - "Red Hat"
+    max_acceptable_latency_ms: 15000

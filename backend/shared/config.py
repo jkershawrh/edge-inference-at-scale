@@ -38,13 +38,12 @@ class Settings(BaseSettings):
     # Data
     summit_data_dir: str = "/data/summit_connect"
 
-    # Redis
-    redis_url: str = "redis://redis:6379/0"
+    # Kafka (AMQ Streams)
+    kafka_bootstrap_servers: str = "kafka:9092"
 
-    # Redis Streams
-    stream_name: str = "sms:inbound"
+    # Message stream
+    stream_topic: str = "sms.inbound"
     stream_consumer_group: str = "processors"
-    stream_max_len: int = 10000
 
     # Chat history
     chat_history_max_turns: int = 10

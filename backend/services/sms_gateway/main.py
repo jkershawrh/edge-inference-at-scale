@@ -37,12 +37,6 @@ try:
 except ImportError:
     _HAS_PARSER = False
 
-try:
-    from backend.services.sms_gateway.message_queue import SMSMessageQueue  # type: ignore[import-untyped]
-    _HAS_QUEUE = True
-except ImportError:
-    _HAS_QUEUE = False
-
 logger = logging.getLogger("sms-gateway")
 
 # ---------------------------------------------------------------------------
@@ -120,25 +114,15 @@ class SMSGateway:
             logger.info("SMS mode: sim (in-memory simulator)")
             self.active_driver = SimDriver()
 
-        # Optional message queue (Redis-backed if available)
-        self.message_queue: Optional[Any] = None
-        if _HAS_QUEUE:
-            try:
-                self.message_queue = SMSMessageQueue(
-                    redis_url=settings.redis_url,
-                )
-            except Exception:
-                logger.warning("Redis message queue unavailable -- falling back to in-memory only")
-
         # Optional parser
         self.message_parser: Optional[Any] = None
         if _HAS_PARSER:
             self.message_parser = MessageParser()
 
-        # Redis Streams event stream (producer side)
+        # Kafka event stream (producer side)
         self.event_stream = SMSEventStream(
-            redis_url=os.getenv("REDIS_URL", settings.redis_url),
-            stream_name=settings.stream_name,
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
+            topic=settings.stream_topic,
             group_name=settings.stream_consumer_group,
         )
 
@@ -172,9 +156,9 @@ class SMSGateway:
             raise RuntimeError("SMS driver failed to initialise")
         try:
             await self.event_stream.connect()
-            logger.info("Redis Streams event stream connected")
+            logger.info("Kafka event stream connected")
         except Exception:
-            logger.warning("Redis Streams unavailable -- will use HTTP-only forwarding")
+            logger.warning("Kafka unavailable -- will use HTTP-only forwarding")
         self._forward_task = asyncio.create_task(self._forward_worker())
         logger.info("SMS Gateway started (driver=%s)", type(self.active_driver).__name__)
 
@@ -262,8 +246,8 @@ class SMSGateway:
             self._inbound_queue.task_done()
 
     async def _forward_to_router(self, envelope: Dict[str, Any]) -> None:
-        """Forward a message via Redis Streams, falling back to HTTP POST."""
-        # --- Try Redis Streams first ---
+        """Forward a message via Kafka, falling back to HTTP POST."""
+        # --- Try Kafka first ---
         try:
             stream_fields = {
                 "sender": envelope.get("sender", ""),
@@ -283,7 +267,7 @@ class SMSGateway:
             return
         except Exception:
             logger.warning(
-                "Redis Streams publish failed for message from %s -- falling back to HTTP",
+                "Kafka publish failed for message from %s -- falling back to HTTP",
                 envelope.get("sender"),
             )
 
@@ -366,7 +350,7 @@ async def health():
 
 @app.get("/stream/health")
 async def stream_health():
-    """Return Redis Streams health information."""
+    """Return Kafka stream health information."""
     info = await gateway.event_stream.health()
     return {"stream": info}
 

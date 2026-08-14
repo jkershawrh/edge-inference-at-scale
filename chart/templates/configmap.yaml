@@ -9,7 +9,7 @@ data:
   NODE_ID: {{ .Values.nodeId | quote }}
   SMS_MODE: {{ .Values.smsMode | quote }}
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
-  REDIS_URL: "redis://{{ .Release.Name }}-redis:6379/0"
+  KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
   MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
   LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"

@@ -25,6 +25,9 @@ spec:
           ports:
             - containerPort: 8000
               protocol: TCP
+          env:
+            - name: PERSIST_DIRECTORY
+              value: /chroma/data
           readinessProbe:
             tcpSocket:
               port: 8000
@@ -40,13 +43,15 @@ spec:
           volumeMounts:
             - name: chroma-data
               mountPath: /chroma
+            - name: chroma-data
+              mountPath: /data
           resources:
             requests:
-              cpu: 250m
-              memory: 256Mi
+              cpu: {{ .Values.chromadb.resources.requests.cpu }}
+              memory: {{ .Values.chromadb.resources.requests.memory }}
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: {{ .Values.chromadb.resources.limits.cpu }}
+              memory: {{ .Values.chromadb.resources.limits.memory }}
       volumes:
         - name: chroma-data
           emptyDir: {}

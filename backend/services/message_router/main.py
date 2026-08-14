@@ -97,10 +97,10 @@ class MessageRouter:
             "SMS_GATEWAY_URL", settings.sms_gateway_url
         )
 
-        # Redis Streams event stream (consumer side)
+        # Kafka event stream (consumer side)
         self.event_stream = SMSEventStream(
-            redis_url=os.getenv("REDIS_URL", settings.redis_url),
-            stream_name=settings.stream_name,
+            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
+            topic=settings.stream_topic,
             group_name=settings.stream_consumer_group,
         )
         self.consumer_name = os.getenv("NODE_ID", settings.node_id)
@@ -108,7 +108,6 @@ class MessageRouter:
 
         # Chat history store
         self.chat_store = ChatHistoryStore(
-            redis_url=os.getenv("REDIS_URL", settings.redis_url),
             max_turns=settings.chat_history_max_turns,
             ttl_seconds=settings.chat_history_ttl_seconds,
         )
@@ -697,9 +696,9 @@ async def lifespan(app: FastAPI):
         router_instance._stream_task = asyncio.create_task(
             router_instance._stream_consumer_loop()
         )
-        logger.info("Redis Streams consumer loop started")
+        logger.info("Kafka consumer loop started")
     except Exception:
-        logger.warning("Redis Streams unavailable -- HTTP-only intake active")
+        logger.warning("Kafka unavailable -- HTTP-only intake active")
 
     yield
 

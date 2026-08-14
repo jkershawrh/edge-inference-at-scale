@@ -1,15 +1,15 @@
-"""Redis Streams helper for ordered, persistent SMS event delivery.
+"""Kafka helper for ordered, persistent SMS event delivery.
 
 Provides at-least-once delivery semantics between the SMS Gateway
-(producer) and the Message Router (consumer) using Redis Streams
-with consumer groups.
+(producer) and the Message Router (consumer) using Kafka with
+consumer groups.
 """
 
+import json
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import redis.asyncio as aioredis
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 
 from backend.shared.config import settings
 
@@ -17,81 +17,87 @@ logger = logging.getLogger("sms-stream")
 
 
 class SMSEventStream:
-    """Publish / consume SMS events via a Redis Stream with consumer groups."""
+    """Publish / consume SMS events via Kafka with consumer groups."""
 
     def __init__(
         self,
-        redis_url: str,
-        stream_name: str = "sms:inbound",
+        bootstrap_servers: str,
+        topic: str = "sms.inbound",
         group_name: str = "processors",
     ) -> None:
-        self.redis_url = redis_url
-        self.stream_name = stream_name
+        self.bootstrap_servers = bootstrap_servers
+        self.topic = topic
         self.group_name = group_name
-        self._redis: Optional[aioredis.Redis] = None
+        self._producer: Optional[AIOKafkaProducer] = None
+        self._consumer: Optional[AIOKafkaConsumer] = None
+        # Map message_id -> TopicPartition + offset for manual commit
+        self._pending: Dict[str, Tuple[TopicPartition, int]] = {}
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def connect(self) -> None:
-        """Connect to Redis and ensure the stream + consumer group exist."""
-        self._redis = aioredis.from_url(
-            self.redis_url,
-            decode_responses=True,
+        """Create and start the Kafka producer and consumer."""
+        self._producer = AIOKafkaProducer(
+            bootstrap_servers=self.bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
         )
-        # Create the consumer group (and the stream via MKSTREAM) if needed.
-        try:
-            await self._redis.xgroup_create(
-                name=self.stream_name,
-                groupname=self.group_name,
-                id="0",
-                mkstream=True,
-            )
-            logger.info(
-                "Created consumer group '%s' on stream '%s'",
-                self.group_name,
-                self.stream_name,
-            )
-        except aioredis.ResponseError as exc:
-            # "BUSYGROUP Consumer Group name already exists" is expected.
-            if "BUSYGROUP" in str(exc):
-                logger.debug(
-                    "Consumer group '%s' already exists on stream '%s'",
-                    self.group_name,
-                    self.stream_name,
-                )
-            else:
-                raise
-        logger.info("SMSEventStream connected to %s", self.redis_url)
+        await self._producer.start()
+        logger.info(
+            "Kafka producer started, bootstrap_servers=%s",
+            self.bootstrap_servers,
+        )
+
+        self._consumer = AIOKafkaConsumer(
+            self.topic,
+            bootstrap_servers=self.bootstrap_servers,
+            group_id=self.group_name,
+            enable_auto_commit=False,
+            auto_offset_reset="earliest",
+            value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+        )
+        await self._consumer.start()
+        logger.info(
+            "Kafka consumer started, topic='%s', group='%s'",
+            self.topic,
+            self.group_name,
+        )
+        logger.info(
+            "SMSEventStream connected to %s", self.bootstrap_servers,
+        )
 
     async def close(self) -> None:
-        """Close the Redis connection."""
-        if self._redis is not None:
-            await self._redis.aclose()
-            self._redis = None
-            logger.info("SMSEventStream connection closed")
+        """Stop the Kafka producer and consumer."""
+        if self._producer is not None:
+            await self._producer.stop()
+            self._producer = None
+            logger.info("Kafka producer stopped")
+        if self._consumer is not None:
+            await self._consumer.stop()
+            self._consumer = None
+            logger.info("Kafka consumer stopped")
+        self._pending.clear()
+        logger.info("SMSEventStream connection closed")
 
     # ------------------------------------------------------------------
     # Producer
     # ------------------------------------------------------------------
 
     async def publish(self, message_data: dict) -> str:
-        """XADD a message to the stream and return the generated ID.
+        """Send a message to the Kafka topic and return a message ID.
 
         Expected fields: sender, receiver, content, timestamp, priority.
-        The stream is capped at ``settings.stream_max_len`` entries.
+        Returns a string of the form ``"partition-offset"``.
         """
-        if self._redis is None:
+        if self._producer is None:
             raise RuntimeError("SMSEventStream is not connected")
 
-        msg_id: str = await self._redis.xadd(
-            name=self.stream_name,
-            fields=message_data,
-            maxlen=settings.stream_max_len,
-            approximate=True,
+        metadata = await self._producer.send_and_wait(
+            self.topic, value=message_data,
         )
-        logger.info("Published message %s to stream '%s'", msg_id, self.stream_name)
+        msg_id = f"{metadata.partition}-{metadata.offset}"
+        logger.info("Published message %s to topic '%s'", msg_id, self.topic)
         return msg_id
 
     # ------------------------------------------------------------------
@@ -103,37 +109,44 @@ class SMSEventStream:
         consumer_name: str,
         count: int = 1,
         block_ms: int = 5000,
-    ) -> List[Tuple[str, Dict[str, str]]]:
-        """XREADGROUP: fetch new messages for *consumer_name*.
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        """Fetch new messages for *consumer_name*.
 
         Returns a list of ``(message_id, fields)`` tuples.
         Blocks for up to *block_ms* milliseconds when no messages are
         available.
         """
-        if self._redis is None:
+        if self._consumer is None:
             raise RuntimeError("SMSEventStream is not connected")
 
-        result = await self._redis.xreadgroup(
-            groupname=self.group_name,
-            consumername=consumer_name,
-            streams={self.stream_name: ">"},
-            count=count,
-            block=block_ms,
+        result = await self._consumer.getmany(
+            timeout_ms=block_ms,
+            max_records=count,
         )
 
-        messages: List[Tuple[str, Dict[str, str]]] = []
-        if result:
-            # result is [[stream_name, [(id, fields), ...]]]
-            for _stream, entries in result:
-                for msg_id, fields in entries:
-                    messages.append((msg_id, fields))
+        messages: List[Tuple[str, Dict[str, Any]]] = []
+        for tp, records in result.items():
+            for record in records:
+                msg_id = f"{record.partition}-{record.offset}"
+                self._pending[msg_id] = (tp, record.offset)
+                messages.append((msg_id, record.value))
         return messages
 
     async def ack(self, message_id: str) -> None:
-        """Acknowledge successful processing of a message."""
-        if self._redis is None:
+        """Commit the offset for a successfully processed message."""
+        if self._consumer is None:
             raise RuntimeError("SMSEventStream is not connected")
-        await self._redis.xack(self.stream_name, self.group_name, message_id)
+
+        if message_id not in self._pending:
+            logger.warning(
+                "Cannot ACK unknown message %s (not in pending)", message_id,
+            )
+            return
+
+        tp, offset = self._pending.pop(message_id)
+        # Commit the *next* offset (offset + 1) so the consumer resumes
+        # after this message on restart.
+        await self._consumer.commit({tp: offset + 1})
         logger.debug("ACKed message %s", message_id)
 
     # ------------------------------------------------------------------
@@ -141,40 +154,49 @@ class SMSEventStream:
     # ------------------------------------------------------------------
 
     async def pending(self) -> dict:
-        """Return XPENDING summary for the consumer group."""
-        if self._redis is None:
+        """Return consumer lag info for the subscribed topic."""
+        if self._consumer is None:
             raise RuntimeError("SMSEventStream is not connected")
-        info = await self._redis.xpending(self.stream_name, self.group_name)
+
+        partitions = self._consumer.assignment()
+        lag_details = []
+        total_lag = 0
+        for tp in partitions:
+            position = await self._consumer.position(tp)
+            end_offsets = await self._consumer.end_offsets([tp])
+            end = end_offsets[tp]
+            lag = max(0, end - position)
+            total_lag += lag
+            lag_details.append(
+                {
+                    "partition": tp.partition,
+                    "position": position,
+                    "end_offset": end,
+                    "lag": lag,
+                }
+            )
         return {
-            "pending_count": info.get("pending", 0) if isinstance(info, dict) else info[0],
-            "min_id": info.get("min", None) if isinstance(info, dict) else info[1],
-            "max_id": info.get("max", None) if isinstance(info, dict) else info[2],
-            "consumers": info.get("consumers", []) if isinstance(info, dict) else info[3],
+            "total_lag": total_lag,
+            "pending_local": len(self._pending),
+            "partitions": lag_details,
         }
 
     async def health(self) -> dict:
-        """Return high-level stream info (length, groups, last generated ID)."""
-        if self._redis is None:
+        """Return topic metadata for the configured topic."""
+        if self._consumer is None:
             return {"status": "disconnected"}
         try:
-            info = await self._redis.xinfo_stream(self.stream_name)
-            groups = await self._redis.xinfo_groups(self.stream_name)
+            partitions = self._consumer.partitions_for_topic(self.topic)
             return {
                 "status": "connected",
-                "stream": self.stream_name,
-                "length": info.get("length", 0),
-                "last_generated_id": info.get("last-generated-id", None),
-                "groups": len(groups),
-                "group_details": [
-                    {
-                        "name": g.get("name"),
-                        "consumers": g.get("consumers"),
-                        "pending": g.get("pending"),
-                        "last_delivered_id": g.get("last-delivered-id"),
-                    }
-                    for g in groups
+                "topic": self.topic,
+                "partitions": len(partitions) if partitions else 0,
+                "group": self.group_name,
+                "assignment": [
+                    {"topic": tp.topic, "partition": tp.partition}
+                    for tp in self._consumer.assignment()
                 ],
             }
         except Exception as exc:
-            logger.warning("Stream health check failed: %s", exc)
+            logger.warning("Topic health check failed: %s", exc)
             return {"status": "error", "error": str(exc)}

@@ -9,8 +9,8 @@ HELM ?= helm
 PODMAN ?= podman
 
 .PHONY: help test-all test-contracts test-unit test-integration test-benchmarks \
-        test-evaluation test-publication lint build compose-up compose-down \
-        scale-up scale-down dashboard deploy
+        test-evaluation test-bdd test-capacity test-capacity-live test-publication \
+        lint build compose-up compose-down scale-up scale-down dashboard deploy
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -32,8 +32,18 @@ test-integration: ## Stage 2 — Pipeline integration tests
 test-evaluation: ## Stage 3 — Response quality evaluation (requires live API)
 	$(PYTHON) tests/evaluation/run_eval.py
 
-# ── Stage 4: Benchmarks (BDD) ────────────────────────────────────────
-test-benchmarks: ## Stage 4 — Performance benchmarks
+# ── Stage 3b: Capacity & Burst Benchmarks ────────────────────────────
+test-capacity: ## Stage 3b — Capacity tests (mocked, runs in CI)
+	$(PYTEST) tests/benchmarks/test_capacity.py -v --tb=short
+
+test-capacity-live: ## Stage 3b — Capacity tests against live stack (needs docker compose up)
+	CAPACITY_LIVE=1 $(PYTEST) tests/benchmarks/test_capacity.py::TestLiveCapacity -v --tb=short
+
+# ── Stage 4: BDD ────────────────────────────────────────────────────
+test-bdd: ## Stage 4 — BDD user scenarios (includes treasure hunt)
+	$(PYTEST) tests/bdd/ -v --tb=short
+
+test-benchmarks: ## Stage 4 — All benchmarks (unit + capacity)
 	$(PYTEST) tests/benchmarks/ -v --tb=short
 
 # ── Stage 5: Publication ─────────────────────────────────────────────
@@ -51,7 +61,8 @@ test-all: ## Run all gated stages sequentially
 	@$(MAKE) test-contracts   && echo "Stage 0: Contracts    ✅" || (echo "Stage 0: Contracts    ❌" && exit 1)
 	@$(MAKE) test-unit        && echo "Stage 1: Unit/TDD     ✅" || (echo "Stage 1: Unit/TDD     ❌" && exit 1)
 	@$(MAKE) test-integration && echo "Stage 2: Integration  ✅" || (echo "Stage 2: Integration  ❌" && exit 1)
-	@$(MAKE) test-benchmarks  && echo "Stage 4: Benchmarks   ✅" || (echo "Stage 4: Benchmarks   ❌" && exit 1)
+	@$(MAKE) test-capacity    && echo "Stage 3b: Capacity    ✅" || (echo "Stage 3b: Capacity    ❌" && exit 1)
+	@$(MAKE) test-bdd         && echo "Stage 4: BDD          ✅" || (echo "Stage 4: BDD          ❌" && exit 1)
 	@$(MAKE) test-publication && echo "Stage 5: Publication  ✅" || (echo "Stage 5: Publication  ❌" && exit 1)
 	@echo ""
 	@echo "ALL STAGES GREEN ✅"

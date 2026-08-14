@@ -1,58 +1,62 @@
-"""Per-user chat history backed by Redis lists.
+"""Per-user chat history backed by an in-memory dict with TTL eviction.
 
 Stores conversation turns (user + assistant pairs) per phone number so
 the LLM can receive prior context.  Also provides lightweight treasure
 hunt state helpers used by Feature 3.
 
-Follows the same ``redis.asyncio`` pattern established in ``streams.py``.
+Pure-stdlib implementation -- no external dependencies required.
 """
 
-import json
+import asyncio
 import logging
+import time
 from typing import Dict, List, Optional
-
-import redis.asyncio as aioredis
 
 logger = logging.getLogger("chat-history")
 
+_HUNT_TTL_SECONDS = 86400  # 24 hours
+
 
 class ChatHistoryStore:
-    """Manage per-user chat history and treasure hunt state in Redis."""
+    """Manage per-user chat history and treasure hunt state in memory."""
 
     def __init__(
         self,
-        redis_url: str,
-        key_prefix: str = "chat:",
         max_turns: int = 10,
         ttl_seconds: int = 3600,
     ) -> None:
-        self.redis_url = redis_url
-        self.key_prefix = key_prefix
         self.max_turns = max_turns
         self.ttl_seconds = ttl_seconds
-        self._redis: Optional[aioredis.Redis] = None
+
+        # chat history: phone -> list of {"role": ..., "content": ...}
+        self._history: Dict[str, List[Dict[str, str]]] = {}
+        self._history_ts: Dict[str, float] = {}
+
+        # treasure hunt state: phone -> clue number
+        self._hunt_state: Dict[str, int] = {}
+        self._hunt_ts: Dict[str, float] = {}
+
+        self._eviction_task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
     async def connect(self) -> None:
-        """Connect to Redis."""
-        self._redis = aioredis.from_url(
-            self.redis_url,
-            decode_responses=True,
-            socket_timeout=3,
-            socket_connect_timeout=3,
-            retry_on_timeout=True,
-        )
-        logger.info("ChatHistoryStore connected to %s", self.redis_url)
+        """Start the background eviction loop."""
+        self._eviction_task = asyncio.create_task(self._evict_loop())
+        logger.info("ChatHistoryStore connected (in-memory, ttl=%ds)", self.ttl_seconds)
 
     async def close(self) -> None:
-        """Close the Redis connection."""
-        if self._redis is not None:
-            await self._redis.aclose()
-            self._redis = None
-            logger.info("ChatHistoryStore connection closed")
+        """Cancel the background eviction loop."""
+        if self._eviction_task is not None:
+            self._eviction_task.cancel()
+            try:
+                await self._eviction_task
+            except asyncio.CancelledError:
+                pass
+            self._eviction_task = None
+            logger.info("ChatHistoryStore closed")
 
     # ------------------------------------------------------------------
     # Chat history
@@ -62,50 +66,41 @@ class ChatHistoryStore:
         self, phone_number: str, user_message: str, assistant_response: str
     ) -> None:
         """Append a user/assistant turn and trim to *max_turns*."""
-        if self._redis is None:
-            logger.warning("ChatHistoryStore not connected — skipping add_turn")
-            return
-        key = f"{self.key_prefix}{phone_number}"
         try:
-            user_entry = json.dumps({"role": "user", "content": user_message})
-            assistant_entry = json.dumps({"role": "assistant", "content": assistant_response})
-            await self._redis.rpush(key, user_entry, assistant_entry)
+            if phone_number not in self._history:
+                self._history[phone_number] = []
+
+            self._history[phone_number].append({"role": "user", "content": user_message})
+            self._history[phone_number].append({"role": "assistant", "content": assistant_response})
+
             # Keep only the most recent max_turns * 2 entries (pairs)
-            await self._redis.ltrim(key, -(self.max_turns * 2), -1)
-            await self._redis.expire(key, self.ttl_seconds)
+            max_entries = self.max_turns * 2
+            if len(self._history[phone_number]) > max_entries:
+                self._history[phone_number] = self._history[phone_number][-max_entries:]
+
+            self._history_ts[phone_number] = time.monotonic()
         except Exception as exc:
             logger.warning("Failed to store chat turn for %s: %s", phone_number, exc)
 
     async def get_history(self, phone_number: str) -> List[Dict[str, str]]:
         """Return the conversation history for *phone_number*.
 
-        Returns an empty list when Redis is unavailable (graceful degradation).
+        Returns an empty list when no history exists (graceful degradation).
         """
-        if self._redis is None:
-            logger.warning("ChatHistoryStore not connected — returning empty history")
-            return []
-        key = f"{self.key_prefix}{phone_number}"
         try:
-            raw_entries = await self._redis.lrange(key, 0, -1)
-            history: List[Dict[str, str]] = []
-            for entry in raw_entries:
-                try:
-                    parsed = json.loads(entry)
-                    history.append({"role": parsed["role"], "content": parsed["content"]})
-                except (json.JSONDecodeError, KeyError) as exc:
-                    logger.warning("Skipping malformed history entry: %s", exc)
-            return history
+            history = self._history.get(phone_number, [])
+            if history:
+                self._history_ts[phone_number] = time.monotonic()
+            return list(history)  # return a copy
         except Exception as exc:
             logger.warning("Failed to retrieve history for %s: %s", phone_number, exc)
             return []
 
     async def clear_history(self, phone_number: str) -> None:
         """Delete the conversation history for *phone_number*."""
-        if self._redis is None:
-            return
-        key = f"{self.key_prefix}{phone_number}"
         try:
-            await self._redis.delete(key)
+            self._history.pop(phone_number, None)
+            self._history_ts.pop(phone_number, None)
         except Exception as exc:
             logger.warning("Failed to clear history for %s: %s", phone_number, exc)
 
@@ -115,29 +110,68 @@ class ChatHistoryStore:
 
     async def get_hunt_state(self, phone_number: str) -> int:
         """Return the current clue number (0 if not started)."""
-        if self._redis is None:
-            return 0
         try:
-            value = await self._redis.get(f"hunt:{phone_number}")
-            return int(value) if value is not None else 0
+            return self._hunt_state.get(phone_number, 0)
         except Exception as exc:
             logger.warning("Failed to get hunt state for %s: %s", phone_number, exc)
             return 0
 
     async def set_hunt_state(self, phone_number: str, clue_number: int) -> None:
         """Set the current clue number with a 24-hour TTL."""
-        if self._redis is None:
-            return
         try:
-            await self._redis.set(f"hunt:{phone_number}", clue_number, ex=86400)
+            self._hunt_state[phone_number] = clue_number
+            self._hunt_ts[phone_number] = time.monotonic()
         except Exception as exc:
             logger.warning("Failed to set hunt state for %s: %s", phone_number, exc)
 
     async def clear_hunt_state(self, phone_number: str) -> None:
         """Clear the treasure hunt state for *phone_number*."""
-        if self._redis is None:
-            return
         try:
-            await self._redis.delete(f"hunt:{phone_number}")
+            self._hunt_state.pop(phone_number, None)
+            self._hunt_ts.pop(phone_number, None)
         except Exception as exc:
             logger.warning("Failed to clear hunt state for %s: %s", phone_number, exc)
+
+    # ------------------------------------------------------------------
+    # Background eviction
+    # ------------------------------------------------------------------
+
+    async def _evict_loop(self) -> None:
+        """Periodically scan timestamps and evict expired entries."""
+        while True:
+            try:
+                await asyncio.sleep(60)
+                now = time.monotonic()
+
+                # Evict expired chat histories
+                expired_history = [
+                    phone
+                    for phone, ts in self._history_ts.items()
+                    if now - ts > self.ttl_seconds
+                ]
+                for phone in expired_history:
+                    self._history.pop(phone, None)
+                    self._history_ts.pop(phone, None)
+
+                # Evict expired hunt states (24h TTL)
+                expired_hunt = [
+                    phone
+                    for phone, ts in self._hunt_ts.items()
+                    if now - ts > _HUNT_TTL_SECONDS
+                ]
+                for phone in expired_hunt:
+                    self._hunt_state.pop(phone, None)
+                    self._hunt_ts.pop(phone, None)
+
+                total_evicted = len(expired_history) + len(expired_hunt)
+                if total_evicted:
+                    logger.info(
+                        "Evicted %d expired entries (%d history, %d hunt)",
+                        total_evicted,
+                        len(expired_history),
+                        len(expired_hunt),
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Eviction loop error: %s", exc)

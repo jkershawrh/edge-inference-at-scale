@@ -96,3 +96,92 @@ benchmark_rubric:
         description: "Fraction of eval queries that pass composite score threshold"
         min: 0.6
         unit: "ratio (0-1)"
+
+    categories:
+      schedule:
+        description: "Event schedule queries (keynote times, day agendas)"
+        min_pass_rate: 0.6
+      session:
+        description: "Session content queries (speakers, topics, rooms)"
+        min_pass_rate: 0.5
+      venue:
+        description: "Venue queries (WiFi, food, first aid, directions)"
+        min_pass_rate: 0.6
+      general:
+        description: "General/city guide queries (weather, restaurants, pharmacy)"
+        min_pass_rate: 0.5
+      emergency:
+        description: "Emergency queries (hospital, security contacts)"
+        min_pass_rate: 0.8
+      treasure_hunt:
+        description: "Treasure hunt commands and answers"
+        min_pass_rate: 0.9
+      architecture:
+        description: "Architecture self-knowledge (what model, who built it)"
+        min_pass_rate: 0.5
+
+  # -------------------------------------------------------------------------
+  # Capacity and burst benchmarks
+  # Measured by: pytest tests/benchmarks/test_capacity.py
+  # -------------------------------------------------------------------------
+  capacity:
+    version: "1.0"
+    description: "Single-node capacity under bursty SMS traffic"
+    test_command: "pytest tests/benchmarks/test_capacity.py -v"
+    live_test_command: "CAPACITY_LIVE=1 pytest tests/benchmarks/test_capacity.py::TestLiveCapacity -v"
+    results_file: "tests/benchmarks/capacity_results.json"
+
+    # Booth scenario assumptions:
+    #   - Conference: 200-500 attendees, 20-50% engage with SMS demo
+    #   - Burst: 5-15 people text within 30 seconds after a talk mention
+    #   - Sustained: 2-4 messages/minute during busy periods
+    #   - Peak: 20+ simultaneous texts right after keynote CTA
+
+    thresholds:
+      single_message_p50:
+        description: "Median latency for a single message with no contention"
+        max_ms: 15000
+        target_ms: 8000
+
+      burst_5_completion:
+        description: "5 concurrent messages all complete successfully"
+        min_completion_rate: 1.0
+
+      burst_10_completion:
+        description: "10 concurrent messages all complete successfully"
+        min_completion_rate: 1.0
+
+      burst_10_p95:
+        description: "p95 latency for 10-message burst"
+        max_ms: 60000
+        target_ms: 30000
+        notes: "With semaphore=2 and 5s LLM: 5 rounds * 5s = 25s theoretical minimum for p95"
+
+      burst_20_completion:
+        description: "20 concurrent messages — all should complete, latency may degrade"
+        min_completion_rate: 0.95
+
+      sustained_rate:
+        description: "Sustained throughput without queue growth"
+        min_msg_per_min: 4
+        target_msg_per_min: 8
+        notes: "Bottlenecked by LLM semaphore (2 slots) and inference time (~5-10s/msg)"
+
+      rag_direct_p50:
+        description: "RAG-direct messages bypass LLM — should be sub-second"
+        max_ms: 1000
+        target_ms: 200
+
+    bottleneck_analysis:
+      primary: "LLM semaphore (2 in-flight requests)"
+      secondary: "BitNet CPU inference time (~5-10s per completion)"
+      mitigation_options:
+        - "Increase semaphore to 3-4 (trades latency stability for throughput)"
+        - "Tune RAG-direct threshold down to serve more queries from corpus"
+        - "Pre-warm common queries in a response cache"
+        - "Multi-node fleet with RHACM load balancing"
+      scaling_model:
+        single_node_max_concurrent: 20
+        single_node_sustained_msg_per_min: 8
+        fleet_3_node_sustained_msg_per_min: 24
+        notes: "Linear scaling with fleet size. Each node independently serves its semaphore capacity."

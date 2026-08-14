@@ -125,63 +125,107 @@ stages:
     criteria:
       eval_query_pass_rate:
         description: ">=60% of evaluation queries pass composite score threshold (keyword, entity, forbidden, SMS length, latency, repetition)"
-        points: 30
+        points: 20
         required: true
         test_command: "python tests/evaluation/run_eval.py"
         pass_threshold: 0.6
       eval_keyword_accuracy:
         description: "Average keyword accuracy across all eval queries >= 50%"
-        points: 15
+        points: 10
         required: false
       eval_entity_accuracy:
         description: "Average entity accuracy across all eval queries >= 40%"
-        points: 15
+        points: 10
         required: false
       eval_sms_compliance:
         description: ">=90% of responses fit within 160-char SMS limit"
-        points: 15
+        points: 10
         required: true
       eval_repetition_quality:
         description: "Average repetition score >= 0.6 (responses are not excessively repetitive)"
+        points: 5
+        required: false
+      eval_treasure_hunt:
+        description: "Treasure hunt eval queries pass (HUNT start, clue display, answers, hints)"
         points: 10
+        required: true
+      eval_architecture_knowledge:
+        description: "Architecture self-knowledge queries pass (how it works, what model, who built)"
+        points: 5
         required: false
       benchmark_latency:
         description: "SMS end-to-end latency under 15s per benchmark_rubric.yaml"
-        points: 15
+        points: 10
         required: true
+      capacity_burst_10:
+        description: "10-message burst completes with 0 failures (mocked or live)"
+        points: 10
+        required: true
+        test_command: "pytest tests/benchmarks/test_capacity.py::TestBurstCapacity::test_burst_of_10"
+      capacity_degradation_curve:
+        description: "Degradation curve generated for burst sizes 1-50"
+        points: 5
+        required: false
+        test_command: "pytest tests/benchmarks/test_capacity.py::TestDegradationCurve"
+      capacity_semaphore_bottleneck:
+        description: "Semaphore identified as bottleneck; doubling slots improves throughput >30%"
+        points: 5
+        required: false
+        test_command: "pytest tests/benchmarks/test_capacity.py::TestSemaphoreBottleneck::test_semaphore_2_vs_4"
     # Governed by tests/benchmark_rubric.yaml, tests/claim_registry.yaml,
     # and tests/evaluation/eval_queries.yaml.
     # Benchmarks and eval queries run against live compose stack.
+    # Capacity tests: mocked in CI, CAPACITY_LIVE=1 for real numbers.
 
   stage_4_bdd:
     name: "BDD - Behavior-Driven Development"
-    description: "User scenarios — send SMS, get response, emergency handling, rate limiting"
+    description: "User scenarios — send SMS, get response, emergency handling, rate limiting, treasure hunt"
     threshold: 85
     gate: stage_3_benchmarks
     criteria:
       scenario_send_question_get_answer:
         description: "User sends 'What sessions are about edge computing?' and receives a relevant response"
-        points: 20
+        points: 12
         required: true
       scenario_emergency_message:
         description: "User sends 'help fire emergency' and gets immediate security guidance"
-        points: 20
+        points: 12
         required: true
       scenario_rate_limiting:
         description: "User sending > max_sms_per_minute receives 429 Too Many Requests"
-        points: 15
+        points: 10
         required: true
       scenario_greeting_flow:
         description: "User sends 'hello' and receives Summit Connect welcome message"
-        points: 15
+        points: 10
         required: true
       scenario_long_response_chunked:
         description: "Response exceeding 160 chars arrives as multi-part SMS"
-        points: 15
+        points: 10
         required: true
       scenario_command_help:
         description: "User sends '/help' and receives command listing"
-        points: 15
+        points: 8
+        required: true
+      scenario_hunt_start:
+        description: "User texts 'HUNT' and receives treasure hunt intro with clue instructions"
+        points: 8
+        required: true
+      scenario_hunt_clue_flow:
+        description: "User can request clues, answer correctly to advance, and receive hints"
+        points: 8
+        required: true
+      scenario_hunt_completion:
+        description: "User completes all 7 clues and receives victory message with prize instructions"
+        points: 8
+        required: true
+      scenario_hunt_multi_user:
+        description: "Two concurrent users maintain independent treasure hunt state"
+        points: 7
+        required: true
+      scenario_mixed_traffic:
+        description: "Mixed greetings + queries + hunts process correctly under concurrency"
+        points: 7
         required: true
 
   stage_5_publication:

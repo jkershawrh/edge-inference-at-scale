@@ -1,9 +1,8 @@
-"""Unit tests for SMSEventStream (Redis Streams helper).
+"""Unit tests for SMSEventStream (Kafka helper).
 
-All Redis I/O is mocked — no running Redis instance required.
+All Kafka I/O is mocked — no running Kafka instance required.
 """
 
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,38 +16,47 @@ from backend.shared.streams import SMSEventStream
 
 
 def _make_stream(
-    redis_url: str = "redis://localhost:6379/0",
-    stream_name: str = "sms:inbound",
+    bootstrap_servers: str = "localhost:9092",
+    topic: str = "sms.inbound",
     group_name: str = "processors",
 ) -> SMSEventStream:
     return SMSEventStream(
-        redis_url=redis_url,
-        stream_name=stream_name,
+        bootstrap_servers=bootstrap_servers,
+        topic=topic,
         group_name=group_name,
     )
 
 
-def _mock_redis():
-    """Return an AsyncMock that behaves like an ``aioredis.Redis`` instance."""
-    r = AsyncMock()
-    r.xgroup_create = AsyncMock()
-    r.xadd = AsyncMock(return_value="1700000000000-0")
-    r.xreadgroup = AsyncMock(return_value=None)
-    r.xack = AsyncMock()
-    r.xinfo_stream = AsyncMock(return_value={
-        "length": 42,
-        "last-generated-id": "1700000000000-0",
-    })
-    r.xinfo_groups = AsyncMock(return_value=[
-        {
-            "name": "processors",
-            "consumers": 1,
-            "pending": 0,
-            "last-delivered-id": "1700000000000-0",
-        }
-    ])
-    r.aclose = AsyncMock()
-    return r
+def _mock_producer():
+    p = AsyncMock()
+    p.start = AsyncMock()
+    p.stop = AsyncMock()
+    metadata = MagicMock()
+    metadata.partition = 0
+    metadata.offset = 42
+    p.send_and_wait = AsyncMock(return_value=metadata)
+    return p
+
+
+def _mock_consumer():
+    c = AsyncMock()
+    c.start = AsyncMock()
+    c.stop = AsyncMock()
+    c.getmany = AsyncMock(return_value={})
+    c.commit = AsyncMock()
+    c.assignment = MagicMock(return_value=[])
+    c.partitions_for_topic = MagicMock(return_value={0})
+    c.position = AsyncMock(return_value=0)
+    c.end_offsets = AsyncMock(return_value={})
+    return c
+
+
+def _mock_record(partition=0, offset=0, value=None):
+    rec = MagicMock()
+    rec.partition = partition
+    rec.offset = offset
+    rec.value = value or {"sender": "+15551234567", "content": "Hi"}
+    return rec
 
 
 # ===================================================================
@@ -57,55 +65,39 @@ def _mock_redis():
 
 
 class TestConnect:
-    """SMSEventStream.connect() creates a consumer group via MKSTREAM."""
+    """SMSEventStream.connect() creates Kafka producer and consumer."""
 
     @pytest.mark.asyncio
-    async def test_connect_creates_consumer_group(self):
+    async def test_connect_starts_producer_and_consumer(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
+        mock_p = _mock_producer()
+        mock_c = _mock_consumer()
 
-        with patch("backend.shared.streams.aioredis.from_url", return_value=mock_r):
+        with patch("backend.shared.streams.AIOKafkaProducer", return_value=mock_p), \
+             patch("backend.shared.streams.AIOKafkaConsumer", return_value=mock_c):
             await stream.connect()
 
-        mock_r.xgroup_create.assert_called_once_with(
-            name="sms:inbound",
-            groupname="processors",
-            id="0",
-            mkstream=True,
-        )
-
-    @pytest.mark.asyncio
-    async def test_connect_handles_existing_group(self):
-        """ResponseError with 'BUSYGROUP' is caught silently."""
-        import redis.asyncio as aioredis
-
-        stream = _make_stream()
-        mock_r = _mock_redis()
-        mock_r.xgroup_create = AsyncMock(
-            side_effect=aioredis.ResponseError("BUSYGROUP Consumer Group name already exists")
-        )
-
-        with patch("backend.shared.streams.aioredis.from_url", return_value=mock_r):
-            # Should NOT raise
-            await stream.connect()
-
-        # The stream object should still be connected
-        assert stream._redis is mock_r
+        mock_p.start.assert_called_once()
+        mock_c.start.assert_called_once()
 
 
 class TestClose:
-    """SMSEventStream.close() tears down the Redis connection."""
+    """SMSEventStream.close() stops producer and consumer."""
 
     @pytest.mark.asyncio
-    async def test_close_calls_aclose(self):
+    async def test_close_stops_both(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
-        stream._redis = mock_r
+        mock_p = _mock_producer()
+        mock_c = _mock_consumer()
+        stream._producer = mock_p
+        stream._consumer = mock_c
 
         await stream.close()
 
-        mock_r.aclose.assert_called_once()
-        assert stream._redis is None
+        mock_p.stop.assert_called_once()
+        mock_c.stop.assert_called_once()
+        assert stream._producer is None
+        assert stream._consumer is None
 
 
 # ===================================================================
@@ -114,31 +106,26 @@ class TestClose:
 
 
 class TestPublish:
-    """SMSEventStream.publish() wraps XADD."""
+    """SMSEventStream.publish() wraps Kafka send_and_wait."""
 
     @pytest.mark.asyncio
-    async def test_publish_calls_xadd(self):
+    async def test_publish_calls_send_and_wait(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
-        stream._redis = mock_r
+        stream._producer = _mock_producer()
 
         fields = {"sender": "+15551234567", "content": "Hello"}
-        await stream.publish(fields)
+        msg_id = await stream.publish(fields)
 
-        mock_r.xadd.assert_called_once()
-        call_kwargs = mock_r.xadd.call_args
-        assert call_kwargs.kwargs["name"] == "sms:inbound"
-        assert call_kwargs.kwargs["fields"] is fields
+        stream._producer.send_and_wait.assert_called_once_with(
+            "sms.inbound", value=fields,
+        )
+        assert msg_id == "0-42"
 
     @pytest.mark.asyncio
-    async def test_publish_returns_message_id(self):
+    async def test_publish_raises_when_disconnected(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
-        mock_r.xadd = AsyncMock(return_value="1700000000001-0")
-        stream._redis = mock_r
-
-        msg_id = await stream.publish({"sender": "+1", "content": "test"})
-        assert msg_id == "1700000000001-0"
+        with pytest.raises(RuntimeError, match="not connected"):
+            await stream.publish({"sender": "+1"})
 
 
 # ===================================================================
@@ -147,51 +134,63 @@ class TestPublish:
 
 
 class TestConsume:
-    """SMSEventStream.consume() wraps XREADGROUP."""
+    """SMSEventStream.consume() wraps Kafka getmany."""
 
     @pytest.mark.asyncio
     async def test_consume_returns_messages(self):
+        from aiokafka import TopicPartition
         stream = _make_stream()
-        mock_r = _mock_redis()
+        stream._consumer = _mock_consumer()
 
-        # Redis XREADGROUP returns [[stream_name, [(id, fields), ...]]]
-        mock_r.xreadgroup = AsyncMock(return_value=[
-            ("sms:inbound", [
-                ("1700000000000-0", {"sender": "+15551234567", "content": "Hi"}),
-                ("1700000000001-0", {"sender": "+15559999999", "content": "Bye"}),
-            ])
-        ])
-        stream._redis = mock_r
+        tp = TopicPartition("sms.inbound", 0)
+        records = [
+            _mock_record(0, 0, {"sender": "+15551234567", "content": "Hi"}),
+            _mock_record(0, 1, {"sender": "+15559999999", "content": "Bye"}),
+        ]
+        stream._consumer.getmany = AsyncMock(return_value={tp: records})
 
         messages = await stream.consume(consumer_name="worker-1", count=10)
 
         assert len(messages) == 2
-        assert messages[0] == ("1700000000000-0", {"sender": "+15551234567", "content": "Hi"})
-        assert messages[1] == ("1700000000001-0", {"sender": "+15559999999", "content": "Bye"})
+        assert messages[0][0] == "0-0"
+        assert messages[0][1]["content"] == "Hi"
+        assert messages[1][0] == "0-1"
+        assert messages[1][1]["content"] == "Bye"
 
     @pytest.mark.asyncio
     async def test_consume_empty_returns_empty_list(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
-        mock_r.xreadgroup = AsyncMock(return_value=None)
-        stream._redis = mock_r
+        stream._consumer = _mock_consumer()
+        stream._consumer.getmany = AsyncMock(return_value={})
 
         messages = await stream.consume(consumer_name="worker-1")
         assert messages == []
 
 
 class TestAck:
-    """SMSEventStream.ack() wraps XACK."""
+    """SMSEventStream.ack() commits the offset."""
 
     @pytest.mark.asyncio
-    async def test_ack_calls_xack(self):
+    async def test_ack_commits_offset(self):
+        from aiokafka import TopicPartition
         stream = _make_stream()
-        mock_r = _mock_redis()
-        stream._redis = mock_r
+        stream._consumer = _mock_consumer()
 
-        await stream.ack("1700000000000-0")
+        tp = TopicPartition("sms.inbound", 0)
+        stream._pending["0-5"] = (tp, 5)
 
-        mock_r.xack.assert_called_once_with("sms:inbound", "processors", "1700000000000-0")
+        await stream.ack("0-5")
+
+        stream._consumer.commit.assert_called_once_with({tp: 6})
+        assert "0-5" not in stream._pending
+
+    @pytest.mark.asyncio
+    async def test_ack_unknown_message_warns(self):
+        stream = _make_stream()
+        stream._consumer = _mock_consumer()
+
+        await stream.ack("unknown-id")
+        stream._consumer.commit.assert_not_called()
 
 
 # ===================================================================
@@ -200,33 +199,25 @@ class TestAck:
 
 
 class TestHealth:
-    """SMSEventStream.health() returns stream metadata."""
+    """SMSEventStream.health() returns topic metadata."""
 
     @pytest.mark.asyncio
-    async def test_health_returns_stream_info(self):
+    async def test_health_returns_topic_info(self):
         stream = _make_stream()
-        mock_r = _mock_redis()
-        stream._redis = mock_r
+        stream._consumer = _mock_consumer()
+        stream._consumer.partitions_for_topic = MagicMock(return_value={0, 1})
 
         info = await stream.health()
 
         assert info["status"] == "connected"
-        assert info["stream"] == "sms:inbound"
-        assert info["length"] == 42
-        assert info["last_generated_id"] == "1700000000000-0"
-        assert info["groups"] == 1
-        assert len(info["group_details"]) == 1
-        assert info["group_details"][0]["name"] == "processors"
-
-        mock_r.xinfo_stream.assert_called_once_with("sms:inbound")
-        mock_r.xinfo_groups.assert_called_once_with("sms:inbound")
+        assert info["topic"] == "sms.inbound"
+        assert info["partitions"] == 2
+        assert info["group"] == "processors"
 
     @pytest.mark.asyncio
     async def test_health_when_disconnected(self):
         stream = _make_stream()
-        # _redis is None by default (never connected)
-        assert stream._redis is None
+        assert stream._consumer is None
 
         info = await stream.health()
-
         assert info == {"status": "disconnected"}

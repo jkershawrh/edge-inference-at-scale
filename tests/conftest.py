@@ -175,24 +175,25 @@ def mock_bitnet_server_unavailable():
     return httpx.MockTransport(_handler)
 
 
+
 # ---------------------------------------------------------------------------
-# Mock Redis
+# Mock ChatHistoryStore (in-memory — no external deps)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def mock_redis():
-    """A mock Redis client with common async operations stubbed."""
-    redis = MagicMock()
-    redis.ping = AsyncMock(return_value=True)
-    redis.get = AsyncMock(return_value=None)
-    redis.set = AsyncMock(return_value=True)
-    redis.delete = AsyncMock(return_value=1)
-    redis.lpush = AsyncMock(return_value=1)
-    redis.rpop = AsyncMock(return_value=None)
-    redis.llen = AsyncMock(return_value=0)
-    redis.close = AsyncMock()
-    return redis
+def mock_chat_store():
+    """A mock ChatHistoryStore with common async operations stubbed."""
+    store = MagicMock()
+    store.connect = AsyncMock()
+    store.close = AsyncMock()
+    store.get_history = AsyncMock(return_value=[])
+    store.add_turn = AsyncMock()
+    store.clear_history = AsyncMock()
+    store.get_hunt_state = AsyncMock(return_value=0)
+    store.set_hunt_state = AsyncMock()
+    store.clear_hunt_state = AsyncMock()
+    return store
 
 
 # ---------------------------------------------------------------------------

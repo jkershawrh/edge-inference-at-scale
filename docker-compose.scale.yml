@@ -9,19 +9,29 @@ services:
   # Shared Infrastructure
   # ============================================================
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+  kafka:
+    image: bitnami/kafka:latest
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LOG_RETENTION_HOURS=24
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: 256m
+          cpus: "0.5"
+          memory: 512m
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     networks:
       - edge-network
 
@@ -146,7 +156,7 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-1-router:8002
-      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -155,7 +165,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      redis:
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
@@ -332,7 +342,7 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-2-router:8002
-      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -341,7 +351,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      redis:
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
@@ -518,7 +528,7 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-3-router:8002
-      - REDIS_URL=redis://redis:6379/0
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -527,7 +537,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      redis:
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
