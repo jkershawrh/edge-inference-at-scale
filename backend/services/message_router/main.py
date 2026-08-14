@@ -669,7 +669,9 @@ router_instance = MessageRouter()
 async def lifespan(app: FastAPI):
     """Startup / shutdown lifecycle."""
     logger.info("Starting Message Router service")
-    router_instance.http_client = httpx.AsyncClient()
+    router_instance.http_client = httpx.AsyncClient(
+        timeout=httpx.Timeout(settings.llm_request_timeout_seconds, connect=5.0),
+    )
     logger.info(
         "Service URLs - LLM: %s | RAG: %s | SMS GW: %s | Privacy: %s",
         router_instance.llm_service_url,
