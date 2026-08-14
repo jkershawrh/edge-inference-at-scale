@@ -41,6 +41,9 @@ class ChatHistoryStore:
         self._redis = aioredis.from_url(
             self.redis_url,
             decode_responses=True,
+            socket_timeout=3,
+            socket_connect_timeout=3,
+            retry_on_timeout=True,
         )
         logger.info("ChatHistoryStore connected to %s", self.redis_url)
 

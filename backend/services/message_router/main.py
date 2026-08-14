@@ -509,7 +509,11 @@ class MessageRouter:
         )
 
         # 0. Check for treasure hunt commands (before classification)
-        hunt_response = await self._handle_treasure_hunt(message.sender, message.content)
+        try:
+            hunt_response = await self._handle_treasure_hunt(message.sender, message.content)
+        except Exception as exc:
+            logger.warning("Treasure hunt check failed, skipping: %s", exc)
+            hunt_response = None
         if hunt_response is not None:
             await self.send_response(message.sender, message.receiver, hunt_response)
             return hunt_response
