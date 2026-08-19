@@ -64,7 +64,11 @@ async def lifespan(app: FastAPI):
     _http_client = httpx.AsyncClient(
         base_url=BITNET_SERVER_URL,
         timeout=httpx.Timeout(settings.llm_request_timeout_seconds, connect=10.0),
-        limits=httpx.Limits(max_connections=4, max_keepalive_connections=2),
+        limits=httpx.Limits(
+            max_connections=4,
+            max_keepalive_connections=2,
+            keepalive_expiry=3,
+        ),
     )
     # Warm up connection to BitNet
     for attempt in range(10):
