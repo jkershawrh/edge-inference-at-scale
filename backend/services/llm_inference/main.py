@@ -184,40 +184,36 @@ async def inference(request: LLMRequest):
         "max_tokens": request.max_length,
     }
 
-    # Call the BitNet server (retry once on stale keepalive) ------------------
+    # Call the BitNet server (retry once on transient errors) -----------------
     last_exc: Exception | None = None
-    for _attempt in range(2):
+    for _attempt in range(3):
         try:
             resp = await _http_client.post("/v1/chat/completions", json=payload)
             resp.raise_for_status()
             break
-        except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
-            last_exc = exc
-            continue
         except httpx.TimeoutException:
             _stats["requests_failed"] += 1
             raise HTTPException(
                 status_code=502,
                 detail="BitNet server request timed out",
             )
-        except httpx.HTTPStatusError as exc:
-            _stats["requests_failed"] += 1
-            raise HTTPException(
-                status_code=502,
-                detail=f"BitNet server returned {exc.response.status_code}: {exc.response.text}",
-            )
+        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+            logger.warning("BitNet call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
+            last_exc = exc
+            if _attempt < 2:
+                await asyncio.sleep(0.5)
+                continue
         except Exception as exc:
-            _stats["requests_failed"] += 1
-            logger.exception("Unexpected error calling BitNet server")
-            raise HTTPException(
-                status_code=502,
-                detail=f"BitNet server error: {exc}",
-            )
+            logger.warning("BitNet call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
+            last_exc = exc
+            if _attempt < 2:
+                await asyncio.sleep(0.5)
+                continue
     else:
         _stats["requests_failed"] += 1
         raise HTTPException(
             status_code=502,
-            detail=f"Cannot connect to BitNet server at {BITNET_SERVER_URL}: {last_exc}",
+            detail=f"BitNet server error after 3 attempts: {type(last_exc).__name__}: {last_exc}",
         )
 
     # Parse response -----------------------------------------------------------
