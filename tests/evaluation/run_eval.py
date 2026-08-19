@@ -33,13 +33,15 @@ RESULTS_FILE = Path(__file__).parent / "results.json"
 
 
 _eval_sender_counter = 0
+HUNT_SENDER = "+15550000000"
 
 
-def send_query(query_text: str) -> tuple[str, float]:
+def send_query(query_text: str, sender: str | None = None) -> tuple[str, float]:
     """Send *query_text* to the SMS pipeline and return (response, latency_ms)."""
-    global _eval_sender_counter
-    _eval_sender_counter += 1
-    sender = f"+1555{_eval_sender_counter:07d}"
+    if sender is None:
+        global _eval_sender_counter
+        _eval_sender_counter += 1
+        sender = f"+1555{_eval_sender_counter:07d}"
     payload = json.dumps({
         "sender": sender,
         "receiver": "+15559876543",
@@ -125,7 +127,8 @@ def main() -> int:
         query_text = spec["query"]
         logger.info("Sending query %s: %r", qid, query_text)
 
-        response_text, latency_ms = send_query(query_text)
+        sender = HUNT_SENDER if qid.startswith("hunt_") else None
+        response_text, latency_ms = send_query(query_text, sender=sender)
 
         if not response_text:
             logger.warning("Empty response for %s", qid)

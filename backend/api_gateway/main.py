@@ -26,7 +26,7 @@ class APIGateway:
         self.client: httpx.AsyncClient | None = None
 
     async def initialize(self):
-        self.client = httpx.AsyncClient(timeout=15.0)
+        self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0))
 
     async def shutdown(self):
         if self.client:
