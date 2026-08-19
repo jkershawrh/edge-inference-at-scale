@@ -6,7 +6,7 @@ bitnet:
   image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
   model: bitnet-2b4t
   threads: 8
-  ctxSize: 512
+  ctxSize: 2048
   slots: 2
   resources:
     requests:
