@@ -197,13 +197,14 @@ async def inference(request: LLMRequest):
                 status_code=502,
                 detail="BitNet server request timed out",
             )
-        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
-            logger.warning("BitNet call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text[:200] if exc.response else "no body"
+            logger.warning("BitNet call failed (attempt %d/3, %s %s): %s", _attempt + 1, exc.response.status_code, type(exc).__name__, body)
             last_exc = exc
             if _attempt < 2:
                 await asyncio.sleep(0.5)
                 continue
-        except Exception as exc:
+        except (httpx.TransportError, Exception) as exc:
             logger.warning("BitNet call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
             last_exc = exc
             if _attempt < 2:
