@@ -32,10 +32,20 @@ PASS_RATE_GATE = 0.6
 RESULTS_FILE = Path(__file__).parent / "results.json"
 
 
+_eval_sender_counter = 0
+
+
 def send_query(query_text: str) -> tuple[str, float]:
     """Send *query_text* to the SMS pipeline and return (response, latency_ms)."""
-    payload = json.dumps({"message": query_text}).encode("utf-8")
-    url = f"{API_URL}/api/v1/sms/receive"
+    global _eval_sender_counter
+    _eval_sender_counter += 1
+    sender = f"+1555{_eval_sender_counter:07d}"
+    payload = json.dumps({
+        "sender": sender,
+        "receiver": "+15559876543",
+        "content": query_text,
+    }).encode("utf-8")
+    url = f"{API_URL}/router/route"
 
     req = urllib.request.Request(
         url,

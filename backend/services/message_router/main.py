@@ -45,14 +45,12 @@ SMS_MAX_LENGTH = 160
 
 EMERGENCY_KEYWORDS = [
     "emergency",
-    "help",
     "fire",
     "medical",
     "injury",
     "injured",
     "ambulance",
-    "security",
-    "threat",
+    "security threat",
     "active shooter",
     "bomb",
     "evacuation",

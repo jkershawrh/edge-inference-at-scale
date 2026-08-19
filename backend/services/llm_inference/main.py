@@ -6,6 +6,7 @@ inference for the Summit Connect SMS assistant.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import time
@@ -179,34 +180,40 @@ async def inference(request: LLMRequest):
         "max_tokens": request.max_length,
     }
 
-    # Call the BitNet server ---------------------------------------------------
-    try:
-        resp = await _http_client.post("/v1/chat/completions", json=payload)
-        resp.raise_for_status()
-    except httpx.ConnectError:
+    # Call the BitNet server (retry once on stale keepalive) ------------------
+    last_exc: Exception | None = None
+    for _attempt in range(2):
+        try:
+            resp = await _http_client.post("/v1/chat/completions", json=payload)
+            resp.raise_for_status()
+            break
+        except (httpx.ConnectError, httpx.RemoteProtocolError) as exc:
+            last_exc = exc
+            continue
+        except httpx.TimeoutException:
+            _stats["requests_failed"] += 1
+            raise HTTPException(
+                status_code=502,
+                detail="BitNet server request timed out",
+            )
+        except httpx.HTTPStatusError as exc:
+            _stats["requests_failed"] += 1
+            raise HTTPException(
+                status_code=502,
+                detail=f"BitNet server returned {exc.response.status_code}: {exc.response.text}",
+            )
+        except Exception as exc:
+            _stats["requests_failed"] += 1
+            logger.exception("Unexpected error calling BitNet server")
+            raise HTTPException(
+                status_code=502,
+                detail=f"BitNet server error: {exc}",
+            )
+    else:
         _stats["requests_failed"] += 1
         raise HTTPException(
             status_code=502,
-            detail=f"Cannot connect to BitNet server at {BITNET_SERVER_URL}",
-        )
-    except httpx.TimeoutException:
-        _stats["requests_failed"] += 1
-        raise HTTPException(
-            status_code=502,
-            detail="BitNet server request timed out",
-        )
-    except httpx.HTTPStatusError as exc:
-        _stats["requests_failed"] += 1
-        raise HTTPException(
-            status_code=502,
-            detail=f"BitNet server returned {exc.response.status_code}: {exc.response.text}",
-        )
-    except Exception as exc:
-        _stats["requests_failed"] += 1
-        logger.exception("Unexpected error calling BitNet server")
-        raise HTTPException(
-            status_code=502,
-            detail=f"BitNet server error: {exc}",
+            detail=f"Cannot connect to BitNet server at {BITNET_SERVER_URL}: {last_exc}",
         )
 
     # Parse response -----------------------------------------------------------

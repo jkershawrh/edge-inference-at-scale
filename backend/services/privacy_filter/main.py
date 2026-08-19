@@ -73,7 +73,7 @@ class PrivacyFilter:
                 "sensitivity": "medium"
             },
             "bank_account": {
-                "pattern": re.compile(r'\b\d{8,12}\b'),
+                "pattern": re.compile(r'\b(?:account|acct|routing)\s*#?\s*\d{8,12}\b', re.IGNORECASE),
                 "category": DataCategory.FINANCIAL,
                 "sensitivity": "high"
             },
