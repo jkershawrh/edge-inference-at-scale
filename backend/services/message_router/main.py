@@ -8,10 +8,12 @@ Rebranded from EVY for Summit Connect.
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import time
 import uuid
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.shared.config import settings
 from backend.shared.models import (
+    AnswerAttribution,
     ChannelMessage,
     LLMRequest,
     LLMResponse,
@@ -31,6 +34,7 @@ from backend.shared.models import (
     MessageType,
     ProcessedMessage,
     RAGQuery,
+    RAGResult,
     ServiceHealth,
     SMSMessage,
 )
@@ -141,6 +145,13 @@ class MessageRouter:
         # not expose sender content or other message-level data.
         self.timing_totals_ms: Dict[str, float] = {}
         self.timing_counts: Dict[str, int] = {}
+        # Context-local state keeps attribution correct when multiple field
+        # channels are processed concurrently.  The bounded audit contains no
+        # prompts, answers, sender identifiers, or filesystem paths.
+        self._answer_trace: ContextVar[Optional[Dict[str, object]]] = ContextVar(
+            "message_router_answer_trace", default=None
+        )
+        self.answer_attribution_audit: List[Dict[str, object]] = []
 
     def _record_stage_timing(self, stage: str, started_at: float) -> None:
         """Record one monotonic duration sample for a pipeline stage."""
@@ -239,6 +250,9 @@ class MessageRouter:
         Returns a 3-tuple: (joined context string or None, top score, top document text).
         """
         started_at = time.perf_counter()
+        self._answer_trace.set(
+            {"retrieval_status": "unavailable", "evidence": []}
+        )
         try:
             if self.http_client is None:
                 logger.error("HTTP client not initialised")
@@ -253,10 +267,49 @@ class MessageRouter:
             response.raise_for_status()
             data = response.json()
 
-            documents = data.get("documents", [])
-            scores = data.get("scores", [])
+            if "metadata" not in data and isinstance(data.get("documents"), list):
+                data = {**data, "metadata": [{} for _ in data["documents"]]}
+            validated_result = RAGResult.model_validate(data)
+            documents = validated_result.documents
+            scores = validated_result.scores
+            result_metadata = validated_result.metadata
             top_score = scores[0] if scores else 0.0
             top_doc = documents[0] if documents else None
+
+            evidence = []
+            for index, _document in enumerate(documents[:10]):
+                metadata = (
+                    result_metadata[index]
+                    if index < len(result_metadata)
+                    and isinstance(result_metadata[index], dict)
+                    else {}
+                )
+                document_id = (
+                    metadata.get("parent_doc_id")
+                    or metadata.get("doc_id")
+                    or metadata.get("id")
+                )
+                score = scores[index] if index < len(scores) else None
+                if (
+                    isinstance(document_id, str)
+                    and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", document_id)
+                    and isinstance(score, (int, float))
+                    and not isinstance(score, bool)
+                    and math.isfinite(float(score))
+                    and 0.0 <= float(score) <= 1.0
+                ):
+                    evidence.append(
+                        {"document_id": document_id, "score": float(score)}
+                    )
+
+            self._answer_trace.set(
+                {
+                    "retrieval_status": "grounded" if documents else "no_evidence",
+                    "active_corpus_digest": validated_result.active_corpus_digest,
+                    "active_corpus_sequence": validated_result.active_corpus_sequence,
+                    "evidence": evidence,
+                }
+            )
 
             if documents:
                 self.stats["messages_routed_rag"] += 1
@@ -264,6 +317,9 @@ class MessageRouter:
             return None, 0.0, None
         except Exception as exc:
             logger.warning("RAG service call failed: %s", exc)
+            self._answer_trace.set(
+                {"retrieval_status": "unavailable", "evidence": []}
+            )
             return None, 0.0, None
         finally:
             self._record_stage_timing("rag", started_at)
@@ -540,13 +596,63 @@ class MessageRouter:
         # Not a hunt message
         return None
 
-    async def process_message(self, message: ChannelMessage) -> str:
-        """Measure and execute one complete channel-to-channel pipeline."""
+    def _set_answer_mode(self, response_mode: str) -> None:
+        trace = dict(self._answer_trace.get() or {})
+        if trace:
+            trace["response_mode"] = response_mode
+            self._answer_trace.set(trace)
+
+    def _finalize_answer_attribution(
+        self, message: ChannelMessage, *, failed: bool = False
+    ) -> Optional[Dict[str, object]]:
+        trace = dict(self._answer_trace.get() or {})
+        if not trace:
+            return None
+        mode = "error" if failed else trace.get("response_mode")
+        if not isinstance(mode, str):
+            mode = "error"
+        record = AnswerAttribution(
+            channel=message.channel,
+            retrieval_status=trace.get("retrieval_status", "unavailable"),
+            response_mode=mode,
+            grounded=mode in {"rag_direct", "llm_grounded"},
+            active_corpus_digest=trace.get("active_corpus_digest"),
+            active_corpus_sequence=trace.get("active_corpus_sequence"),
+            evidence=trace.get("evidence", []),
+        ).model_dump(mode="json")
+        self.answer_attribution_audit.append(record)
+        if len(self.answer_attribution_audit) > 1000:
+            del self.answer_attribution_audit[:-1000]
+        return record
+
+    def get_answer_attribution_audit(self, limit: int = 100) -> List[Dict[str, object]]:
+        """Return bounded provenance records without message or response text."""
+        bounded = max(0, min(int(limit), 1000))
+        if bounded == 0:
+            return []
+        return [dict(item) for item in self.answer_attribution_audit[-bounded:]]
+
+    async def process_message_with_attribution(
+        self, message: ChannelMessage
+    ) -> tuple[str, Optional[Dict[str, object]]]:
+        """Execute one pipeline request and return its safe internal provenance."""
         started_at = time.perf_counter()
+        token = self._answer_trace.set(None)
         try:
-            return await self._process_message(message)
+            response = await self._process_message(message)
+            attribution = self._finalize_answer_attribution(message)
+            return response, attribution
+        except Exception:
+            self._finalize_answer_attribution(message, failed=True)
+            raise
         finally:
             self._record_stage_timing("pipeline", started_at)
+            self._answer_trace.reset(token)
+
+    async def process_message(self, message: ChannelMessage) -> str:
+        """Measure and execute one complete channel-to-channel pipeline."""
+        response, _attribution = await self.process_message_with_attribution(message)
+        return response
 
     async def _process_message(self, message: ChannelMessage) -> str:
         """Full processing pipeline: classify -> route -> respond."""
@@ -634,6 +740,7 @@ class MessageRouter:
                 )
             ):
                 response_text = top_doc
+                self._set_answer_mode("rag_direct")
                 self.stats.setdefault("rag_direct_responses", 0)
                 self.stats["rag_direct_responses"] += 1
                 logger.info("RAG-direct response (score=%.2f): %.60s...", top_score, top_doc)
@@ -641,10 +748,12 @@ class MessageRouter:
             # 4. LLM inference (if needed and RAG-direct didn't fire)
             elif processed.message_type == MessageType.EMERGENCY:
                 response_text = settings.emergency_grounding_failure_message
+                self._set_answer_mode("refused_emergency_grounding")
                 self.stats.setdefault("emergency_grounding_refusals", 0)
                 self.stats["emergency_grounding_refusals"] += 1
             elif settings.rag_grounding_required and not context:
                 response_text = settings.grounding_failure_message
+                self._set_answer_mode("refused_grounding")
                 self.stats.setdefault("grounding_refusals", 0)
                 self.stats["grounding_refusals"] += 1
             elif processed.requires_llm:
@@ -653,6 +762,9 @@ class MessageRouter:
                 )
                 if llm_result:
                     response_text = llm_result
+                    self._set_answer_mode(
+                        "llm_grounded" if context else "llm_ungrounded"
+                    )
                 else:
                     response_text = (
                         "Sorry, I couldn't process your request right now. "
@@ -842,12 +954,17 @@ async def stream_health():
 async def route_message(message: ChannelMessage) -> Dict:
     """Full pipeline: classify, retrieve, infer, respond."""
     try:
-        response_text = await router_instance.process_message(message)
-        return {
+        response_text, attribution = await router_instance.process_message_with_attribution(
+            message
+        )
+        result = {
             "status": "success",
             "response": response_text,
             "message_id": message.id,
         }
+        if attribution is not None:
+            result["attribution"] = attribution
+        return result
     except Exception as exc:
         logger.exception("Error processing message: %s", exc)
         router_instance.stats["messages_failed"] += 1

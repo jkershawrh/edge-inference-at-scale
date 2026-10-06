@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence
 
 from .corpus_package import validate_corpus_package
+from .recovery_authorization import VerifiedRecoveryAuthorization
 
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 _ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
@@ -99,6 +100,12 @@ class SmokeTestResult:
 
 @dataclass(frozen=True)
 class RecoveryAuthorization:
+    """Release-bound/pre-authorized recovery input.
+
+    This compatibility record is not an exceptional downgrade authorization.
+    External exceptional authorization must use the signed-record verifier and
+    :meth:`CorpusActivationManager.recover_exceptionally`.
+    """
     authorization_id: str
     target_digest: str
     sequence_floor: int
@@ -263,6 +270,11 @@ class CorpusActivationManager:
     def recover(self, candidate: ReleaseCandidate, authorization: RecoveryAuthorization,
                 verifier: Optional[Verifier] = None, indexer: Optional[Indexer] = None,
                 smoke_tester: Optional[SmokeTester] = None) -> ActivationReceipt:
+        """Use the existing release-bound/pre-authorized recovery path.
+
+        This method does not accept external exceptional-downgrade authority;
+        callers with that signed record must use ``recover_exceptionally``.
+        """
         self._ensure_configured()
         before = self.current()
         valid = (authorization.authorization_id not in set(before.get("used_recovery_authorizations", []))
@@ -274,11 +286,72 @@ class CorpusActivationManager:
             receipt = self._receipt(candidate, before, before["active_digest"], "rejected",
                                     "RECOVERY_NOT_AUTHORIZED", "ACTIVE", "REJECTED")
             raise RecoveryRejected("recovery authorization does not match node state", receipt)
-        return self._prepare_and_commit(candidate, before, "recovery", authorization.authorization_id,
+        return self._prepare_and_commit(candidate, before, "recovery", [authorization.authorization_id],
                                         verifier, indexer, smoke_tester)
 
+    def recover_exceptionally(
+        self,
+        candidate: ReleaseCandidate,
+        authorization: VerifiedRecoveryAuthorization,
+        verifier: Optional[Verifier] = None,
+        indexer: Optional[Indexer] = None,
+        smoke_tester: Optional[SmokeTester] = None,
+    ) -> ActivationReceipt:
+        """Activate an older, non-pre-authorized release with signed authority."""
+        self._ensure_configured()
+        if not isinstance(authorization, VerifiedRecoveryAuthorization):
+            raise TypeError("exceptional recovery requires a verified signed authorization")
+        before = self.current()
+        if authorization.blocked_safety_classes:
+            receipt = self._receipt(
+                candidate,
+                before,
+                before["active_digest"],
+                "rejected",
+                "RECOVERY_RESTRICTIONS_UNENFORCEABLE",
+                "ACTIVE",
+                "REJECTED",
+            )
+            raise RecoveryRejected(
+                "runtime cannot yet enforce signed recovery safety restrictions",
+                receipt,
+            )
+        markers = authorization.replay_markers
+        used = set(before.get("used_recovery_authorizations", []))
+        valid = (
+            candidate.digest == authorization.target_digest
+            and candidate.sequence == authorization.target_sequence
+            and authorization.current_digest == before["active_digest"]
+            and authorization.sequence_floor == before["sequence_floor"]
+            and authorization.event_id == self.expected_event_id
+            and authorization.site_id == self.site_id
+            and not used.intersection(markers)
+        )
+        if not valid:
+            receipt = self._receipt(
+                candidate,
+                before,
+                before["active_digest"],
+                "rejected",
+                "RECOVERY_NOT_AUTHORIZED",
+                "ACTIVE",
+                "REJECTED",
+            )
+            raise RecoveryRejected(
+                "signed recovery authorization does not match node state", receipt
+            )
+        return self._prepare_and_commit(
+            candidate,
+            before,
+            "recovery",
+            markers,
+            verifier,
+            indexer,
+            smoke_tester,
+        )
+
     def _prepare_and_commit(self, candidate: ReleaseCandidate, before: Mapping[str, Any],
-                            mode: str, authorization_id: Optional[str],
+                            mode: str, authorization_markers: Optional[Sequence[str]],
                             verifier: Optional[Verifier], indexer: Optional[Indexer],
                             smoke_tester: Optional[SmokeTester]) -> ActivationReceipt:
         package_dir, index_dir = self._release_dir(candidate.digest) / "package", self._release_dir(candidate.digest) / "index"
@@ -305,8 +378,8 @@ class CorpusActivationManager:
             self._record_state(candidate, ActivationState.CANARY_TESTED); last_state = ActivationState.CANARY_TESTED
             self._record_state(candidate, ActivationState.READY); last_state = ActivationState.READY
             used: Sequence[str] = before.get("used_recovery_authorizations", [])
-            if authorization_id:
-                used = list(used) + [authorization_id]
+            if authorization_markers:
+                used = list(used) + list(authorization_markers)
             next_current = {"active_digest": candidate.digest, "active_sequence": candidate.sequence,
                             "sequence_floor": max(int(before["sequence_floor"]), candidate.sequence),
                             "mode": mode, "device_counter": int(before.get("device_counter", 0)),

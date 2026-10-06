@@ -1,6 +1,6 @@
 """Shared data models for Edge Inference at Scale services."""
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Optional, Dict, Any, List, Literal
 from datetime import datetime
 from enum import Enum
 
@@ -86,6 +86,64 @@ class RAGResult(BaseModel):
     documents: List[str]
     scores: List[float]
     metadata: List[Dict[str, Any]]
+    active_corpus_digest: Optional[str] = Field(
+        default=None, pattern=r"^sha256:[a-f0-9]{64}$"
+    )
+    active_corpus_sequence: Optional[int] = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_corpus_identity(self) -> "RAGResult":
+        if (self.active_corpus_digest is None) != (
+            self.active_corpus_sequence is None
+        ):
+            raise ValueError("active corpus digest and sequence must be returned together")
+        return self
+
+
+class RAGEvidenceReference(BaseModel):
+    """Bounded retrieval evidence safe for internal answer attribution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+    score: float = Field(ge=0.0, le=1.0)
+
+
+class AnswerAttribution(BaseModel):
+    """Internal provenance record; deliberately excludes prompts and paths."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1.0"] = "1.0"
+    channel: MessageChannel
+    retrieval_status: Literal["grounded", "no_evidence", "unavailable"]
+    response_mode: Literal[
+        "rag_direct",
+        "llm_grounded",
+        "llm_ungrounded",
+        "refused_grounding",
+        "refused_emergency_grounding",
+        "error",
+    ]
+    grounded: bool
+    active_corpus_digest: Optional[str] = Field(
+        default=None, pattern=r"^sha256:[a-f0-9]{64}$"
+    )
+    active_corpus_sequence: Optional[int] = Field(default=None, ge=1)
+    evidence: List[RAGEvidenceReference] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_coherent_attribution(self) -> "AnswerAttribution":
+        if (self.active_corpus_digest is None) != (
+            self.active_corpus_sequence is None
+        ):
+            raise ValueError("active corpus digest and sequence must be recorded together")
+        expected_grounded = self.response_mode in {"rag_direct", "llm_grounded"}
+        if self.grounded is not expected_grounded:
+            raise ValueError("grounded flag does not match response mode")
+        if self.retrieval_status != "grounded" and self.evidence:
+            raise ValueError("unavailable retrieval cannot claim evidence")
+        return self
 
 
 class RAGAddDocumentRequest(BaseModel):

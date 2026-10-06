@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import httpx
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -152,6 +153,150 @@ async def test_unavailable_rag_fails_closed_without_llm(
     router.route_to_llm.assert_not_awaited()
     if emergency:
         router.chat_store.add_turn.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "channel",
+    [
+        MessageChannel.SMS,
+        MessageChannel.DISCORD,
+        MessageChannel.LORA,
+    ],
+)
+async def test_field_answer_attribution_is_internal_bounded_and_channel_neutral(
+    monkeypatch: pytest.MonkeyPatch, channel: MessageChannel
+) -> None:
+    monkeypatch.setattr(settings, "rag_grounding_required", True)
+    active_digest = "sha256:" + "a" * 64
+    guidance = "Water is available at Ridge School from 08:00 to 18:00."
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/validate":
+            return httpx.Response(200, json={"valid": True})
+        if request.url.path == "/search":
+            return httpx.Response(
+                200,
+                json={
+                    "documents": [guidance, "Unselected secondary evidence"],
+                    "scores": [0.98, 0.71],
+                    "metadata": [
+                        {"parent_doc_id": "water-point-ridge"},
+                        {"parent_doc_id": "/var/lib/corpus/secret.json"},
+                    ],
+                    "active_corpus_digest": active_digest,
+                    "active_corpus_sequence": 7,
+                },
+            )
+        return httpx.Response(404)
+
+    router = _field_router()
+    router.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    message = ChannelMessage(
+        sender=f"{channel.value}:resident-private",
+        receiver=f"{channel.value}:lil-evy",
+        content="Where can I get safe water?",
+        channel=channel,
+    )
+    try:
+        response, attribution = await router.process_message_with_attribution(message)
+    finally:
+        await router.http_client.aclose()
+
+    assert response == guidance
+    assert attribution == {
+        "schema_version": "1.0",
+        "channel": channel.value,
+        "retrieval_status": "grounded",
+        "response_mode": "rag_direct",
+        "grounded": True,
+        "active_corpus_digest": active_digest,
+        "active_corpus_sequence": 7,
+        "evidence": [{"document_id": "water-point-ridge", "score": 0.98}],
+    }
+    assert router.get_answer_attribution_audit() == [attribution]
+    serialized = json.dumps(attribution)
+    assert message.content not in serialized
+    assert message.sender not in serialized
+    assert "/var/lib" not in serialized
+    assert guidance not in serialized
+
+
+@pytest.mark.asyncio
+async def test_fail_closed_attribution_does_not_invent_corpus_or_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "rag_grounding_required", True)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/validate":
+            return httpx.Response(200, json={"valid": True})
+        if request.url.path == "/search":
+            raise httpx.ConnectError("offline RAG", request=request)
+        return httpx.Response(404)
+
+    router = _field_router()
+    router.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    message = ChannelMessage(
+        sender="sms:private-resident",
+        receiver="sms:lil-evy",
+        content="Where is safe drinking water available?",
+        channel=MessageChannel.SMS,
+    )
+    try:
+        response, attribution = await router.process_message_with_attribution(message)
+    finally:
+        await router.http_client.aclose()
+
+    assert response == settings.grounding_failure_message
+    assert attribution["retrieval_status"] == "unavailable"
+    assert attribution["response_mode"] == "refused_grounding"
+    assert attribution["grounded"] is False
+    assert attribution["active_corpus_digest"] is None
+    assert attribution["active_corpus_sequence"] is None
+    assert attribution["evidence"] == []
+    router.route_to_llm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_malformed_corpus_identity_cannot_be_attached_to_field_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(settings, "rag_grounding_required", True)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/validate":
+            return httpx.Response(200, json={"valid": True})
+        if request.url.path == "/search":
+            return httpx.Response(
+                200,
+                json={
+                    "documents": ["Unbound guidance must not be served."],
+                    "scores": [0.99],
+                    "metadata": [{"parent_doc_id": "unbound-document"}],
+                    "active_corpus_digest": "sha256:" + "a" * 64,
+                },
+            )
+        return httpx.Response(404)
+
+    router = _field_router()
+    router.http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    message = ChannelMessage(
+        sender="sms:resident",
+        receiver="sms:lil-evy",
+        content="Where is the shelter?",
+        channel=MessageChannel.SMS,
+    )
+    try:
+        response, attribution = await router.process_message_with_attribution(message)
+    finally:
+        await router.http_client.aclose()
+
+    assert response == settings.grounding_failure_message
+    assert attribution["retrieval_status"] == "unavailable"
+    assert attribution["active_corpus_digest"] is None
+    assert attribution["evidence"] == []
+    router.route_to_llm.assert_not_awaited()
 
 
 def _write_signed_package(

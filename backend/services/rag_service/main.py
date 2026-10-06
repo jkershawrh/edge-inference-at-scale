@@ -338,13 +338,27 @@ class RAGService:
         try:
             results = await self._hybrid_search(query)
             self.stats["successful_searches"] += 1
-            return results
+            return self._attribute_search_result(results)
         except Exception as e:
             logger.error(f"Search error: {e}")
             self.stats["failed_searches"] += 1
-            return RAGResult(documents=[], scores=[], metadata=[])
+            return self._attribute_search_result(
+                RAGResult(documents=[], scores=[], metadata=[])
+            )
         finally:
             self._record_stage_timing("search_total", started_at)
+
+    def _attribute_search_result(self, result: RAGResult) -> RAGResult:
+        """Bind retrieval evidence to the exact activation-managed corpus."""
+        if self.active_release is None:
+            return result
+        status = self.active_release.status
+        return result.model_copy(
+            update={
+                "active_corpus_digest": status.digest,
+                "active_corpus_sequence": status.sequence,
+            }
+        )
 
     async def _hybrid_search(self, query: RAGQuery) -> RAGResult:
         vector_results = []

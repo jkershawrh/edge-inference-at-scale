@@ -122,6 +122,21 @@ activation. Live hot-swap and the authenticated activation POST endpoint remain
 separate control-plane work; callers cannot activate arbitrary local paths
 through the RAG API.
 
+The transport-independent activation control core is available for that future
+operator endpoint. It uses constant-time bearer authentication, confines every
+candidate beneath a configured local intake root, rejects symlink traversal,
+and returns only a bounded receipt projection. Device receipts can be signed by
+a node-held Ed25519 key. The control is intentionally not mounted as a RAG HTTP
+route yet: activation and serving must not diverge before the operator can
+coordinate the required RAG restart or a fully tested atomic live reload.
+
+Exceptional downgrade uses a separately signed recovery authorization bound to
+the event, site, current digest, sequence floor, target digest, trust generation,
+validity window, and two independent approvers. Authorization ID and nonce are
+single-use. A recovery carrying safety-class restrictions is rejected until the
+serving path can enforce those restrictions; Lil EVY does not accept policy it
+cannot honor.
+
 ## Promotion gates
 
 Before promoting a package to field nodes:

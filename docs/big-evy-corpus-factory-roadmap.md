@@ -394,6 +394,12 @@ Already implemented:
 - Signed-by-default disconnected transfer sets with closed-world manifests,
   content-addressed artifacts, site/event/classification checks, media replay
   protection, sequence floors, and crash-recoverable atomic import
+- Constant-time authenticated activation control with intake-root confinement,
+  node-held Ed25519 receipt signing, and bounded operator responses
+- Signed exceptional-recovery authorization with event/site/state/time/trust
+  binding, independent approvers, and durable authorization/nonce replay guards
+- Per-answer internal attribution binding retrieval evidence to the active corpus
+  digest and sequence without adding a second edge-network request
 
 Still required before this is production-grade:
 
@@ -404,8 +410,8 @@ Still required before this is production-grade:
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody
-- Activation operator/API integration, signed recovery authorization validation,
-  and fleet compliance inventory
+- Activation operator/HTTP integration, recovery safety-class enforcement, and
+  fleet compliance inventory
 - Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1

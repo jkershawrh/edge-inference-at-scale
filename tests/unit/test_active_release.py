@@ -300,6 +300,13 @@ async def test_rag_runtime_loads_only_the_verified_active_package(
     assert service.active_release is not None
     assert service.active_release.status.digest == pointer["active_digest"]
     assert set(service.document_manager.documents) == {"shelter"}
+    attributed = service._attribute_search_result(
+        rag_main.RAGResult(
+            documents=["verified guidance"], scores=[0.99], metadata=[{}]
+        )
+    )
+    assert attributed.active_corpus_digest == pointer["active_digest"]
+    assert attributed.active_corpus_sequence == 4
     assert service.get_stats()["activation"] == {
         "active_digest": pointer["active_digest"],
         "active_sequence": 4,
