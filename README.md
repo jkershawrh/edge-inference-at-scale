@@ -154,6 +154,21 @@ The complete connected Big EVY sourcing, governance, evaluation, distribution,
 and Lil EVY activation plan is saved in
 [docs/big-evy-corpus-factory-roadmap.md](docs/big-evy-corpus-factory-roadmap.md).
 
+The first factory/runtime contract is now executable: allowlisted files become
+immutable evidence snapshots, provenance-linked canonical documents, and
+deterministic chunks; four independent promotion layers bind to the exact
+release/model/retrieval identities; and Lil EVY stages, verifies, tests, and
+atomically activates a signed corpus without lowering its anti-rollback floor.
+
+```bash
+make test-corpus-factory
+python scripts/evaluate_corpus_release.py --help
+```
+
+These are connected-lab building blocks, not permission to onboard live crisis
+data. Source authority, licensing, local-language review, production signing,
+and release approval remain human-controlled gates.
+
 ## Micronode Footprint
 
 Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class):

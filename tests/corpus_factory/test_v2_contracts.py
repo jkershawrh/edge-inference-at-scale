@@ -107,6 +107,22 @@ def test_required_local_validation_cannot_be_incomplete():
         validate_instance(record)
 
 
+@pytest.mark.parametrize("safety_class", ["advisory", "standard", "high", "critical"])
+def test_canonical_document_uses_evaluation_safety_taxonomy(safety_class):
+    record = _valid("canonical_document")
+    record["safety_class"] = safety_class
+    if safety_class != "critical":
+        record["validity"]["stale_action"] = "warn"
+    validate_instance(record)
+
+
+def test_legacy_safety_class_is_rejected():
+    record = _valid("canonical_document")
+    record["safety_class"] = "important"
+    with pytest.raises(ContractValidationError, match="safety_class"):
+        validate_instance(record)
+
+
 def test_validator_does_not_mutate_input():
     record = _valid("canonical_document")
     original = copy.deepcopy(record)

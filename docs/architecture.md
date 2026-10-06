@@ -248,7 +248,7 @@ anti-rollback activation, and release promotion gates.
 | Workloads | Helm chart | MicroShift (Kubernetes API) |
 | BitNet server | Container image (UBI9) | Pod on MicroShift |
 | Backend services | Container images (UBI9) | Pods on MicroShift |
-| RAG corpus | JSON → ChromaDB | Loaded at first boot or via GitOps sync |
+| RAG corpus | Signed immutable OCI release → local index | Verified, smoke-tested, and atomically activated by digest |
 | Fleet policies | RHACM policies | Applied from central hub |
 
 ### Development Path (docker-compose)

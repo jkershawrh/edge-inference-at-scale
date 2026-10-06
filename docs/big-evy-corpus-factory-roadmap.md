@@ -370,17 +370,29 @@ Already implemented:
 - OCI carrier image and OpenShift init installation
 - Corpus-content plus embedding-specific Chroma collections
 - Retrieval and end-to-end answer evaluation entry points
+- Strict v2 source, canonical-document, chunk, review, release, and receipt
+  schemas with golden valid/invalid fixtures
+- Allowlisted local intake, immutable content-addressed evidence, registry-owned
+  stable identities, canonical provenance, and deterministic exact-span chunks
+- Four-layer release, retrieval, grounded-answer, and edge-profile promotion gate
+  bound to exact artifact and runtime digests
+- Fail-closed Lil EVY staging, explicit verification results, local indexing,
+  smoke testing, atomic activation, monotonic receipt counters, anti-rollback
+  sequence floors, authorized recovery, and schema-valid signed receipts
+- Trust, signing/encryption, anti-rollback, trusted-time, and separation-of-duty
+  architecture decisions
 
 Still required before this is production-grade:
 
-- v2 source, document, chunk, attestation, manifest, and receipt schemas
-- Immutable raw evidence and source authority registry
-- Human approval and conflict/freshness policy
-- Monotonic release sequence and anti-rollback enforcement
+- Declarative source authority registry and hardened network acquisition adapters
+- Human review workflow, contradiction detection, translation approval, and
+  deployed conflict/freshness policy
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
-- Secure disconnected import/export and atomic activation operator
-- Signed receipts and fleet compliance inventory
+- Secure disconnected export/import, encrypted transfer sets, and media custody
+- Activation operator/API integration, signed recovery authorization validation,
+  and fleet compliance inventory
+- Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1
 

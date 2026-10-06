@@ -8,7 +8,7 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-contracts test-unit test-integration test-benchmarks \
+.PHONY: help test-all test-contracts test-corpus-factory test-unit test-integration test-benchmarks \
         test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
@@ -17,11 +17,14 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 # ── Stage 0: Contracts (CDD) ──────────────────────────────────────────
-test-contracts: ## Stage 0 — Validate API contracts
+test-contracts: ## Stage 0 — Validate API and corpus contracts
 	$(PYTEST) tests/contracts/ tests/corpus_factory/ -v --tb=short
 
+test-corpus-factory: ## Validate Big EVY contracts, factory core, and promotion gates
+	$(PYTEST) tests/corpus_factory/ -v --tb=short
+
 # ── Stage 1: Unit (TDD) ──────────────────────────────────────────────
-test-unit: ## Stage 1 — Unit tests (143 tests, no external deps)
+test-unit: ## Stage 1 — Unit tests (no external services)
 	$(PYTEST) tests/unit/ -v --tb=short
 
 # ── Stage 2: Integration ─────────────────────────────────────────────
@@ -72,11 +75,8 @@ test-all: ## Run all gated stages sequentially
 
 # ── Lint ──────────────────────────────────────────────────────────────
 lint: ## Lint Python and Helm
-	$(PYTHON) -c "import ast, os, sys; \
-		errs = 0; \
-		[exec('try:\n ast.parse(open(os.path.join(r,f)).read())\nexcept SyntaxError as e:\n print(f\"  FAIL: {os.path.join(r,f)}: {e}\"); errs += 1', {'ast':ast,'os':os,'open':open,'print':print,'SyntaxError':SyntaxError,'errs':errs}) for r,_,fs in os.walk('backend') for f in fs if f.endswith('.py')]; \
-		print(f'Python syntax: {\"PASS\" if not errs else \"FAIL\"}')"
-	$(HELM) lint chart/ 2>/dev/null || true
+	$(PYTHON) -m compileall -q backend corpus_factory scripts tests
+	$(HELM) lint chart/
 	@echo "Lint complete"
 
 # ── Build ─────────────────────────────────────────────────────────────
