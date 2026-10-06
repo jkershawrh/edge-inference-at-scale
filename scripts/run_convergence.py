@@ -23,6 +23,9 @@ STATUS_RANK = {"GREEN": 0, "AMBER": 1, "RED": 2}
 SKIP_PATTERN = re.compile(r"(?:^|\s)(\d+) skipped(?:,|\s|$)", re.MULTILINE)
 IDENTITY_KEYS = (
     "CORPUS_DIGEST",
+    "CORPUS_MODE",
+    "CORPUS_EVENT_ID",
+    "CORPUS_VERSION",
     "EMBEDDING_MODEL",
     "LLM_PROVIDER",
     "LLM_MODEL",

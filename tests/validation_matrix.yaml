@@ -91,6 +91,9 @@ stages:
           - EDGE_RELEASE
           - EDGE_API_URL
           - CORPUS_DIGEST
+          - CORPUS_MODE
+          - CORPUS_EVENT_ID
+          - CORPUS_VERSION
           - EMBEDDING_MODEL
           - LLM_PROVIDER
           - LLM_MODEL

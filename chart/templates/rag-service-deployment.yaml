@@ -1,3 +1,9 @@
+{{- if and .Values.safety.groundingRequired (not (or .Values.rag.activation.enabled (and .Values.rag.corpus.enabled .Values.rag.corpus.requireSignature))) }}
+{{- fail "field grounding requires an activation-managed or signed packaged corpus" }}
+{{- end }}
+{{- if and .Values.rag.activation.enabled (not .Values.rag.corpus.publicKeySecretName) }}
+{{- fail "activation-managed corpus requires rag.corpus.publicKeySecretName" }}
+{{- end }}
 {{- if .Values.rag.activation.rollout.enabled }}
 {{- if eq (int .Values.rag.activation.rollout.port) (int .Values.rag.activation.operator.port) }}
 {{- fail "rag.activation.rollout.port must differ from rag.activation.operator.port" }}

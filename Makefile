@@ -82,6 +82,16 @@ test-openshift: ## Run convergence with live OpenShift EDD evidence
 lint: ## Lint Python and Helm
 	$(PYTHON) -m compileall -q backend corpus_factory scripts tests
 	$(HELM) lint chart/
+	@if $(HELM) template unsafe chart/ -f chart/profiles/values-field-safety.yaml >/dev/null 2>&1; then \
+		echo "Field safety rendered without a verified corpus"; exit 1; \
+	fi
+	@$(HELM) template signed-lab chart/ \
+		-f chart/profiles/values-lab-small.yaml \
+		-f chart/profiles/values-field-safety.yaml \
+		--set rag.corpus.enabled=true \
+		--set rag.corpus.image=registry.example/corpus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+		--set rag.corpus.requireSignature=true \
+		--set rag.corpus.publicKeySecretName=corpus-signing-key >/dev/null
 	@echo "Lint complete"
 
 # ── Build ─────────────────────────────────────────────────────────────

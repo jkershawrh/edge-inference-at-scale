@@ -117,11 +117,30 @@ def evaluate_snapshot(
         reasons.append("configured channel does not match the declared channel")
 
     rag_stats = snapshot.get("rag_stats") or {}
-    activation = rag_stats.get("activation") or {}
-    if not activation.get("ready"):
-        reasons.append("RAG activation is not ready")
-    if activation.get("active_digest") != expected["corpus_digest"]:
-        reasons.append("active corpus digest does not match CORPUS_DIGEST")
+    if config.get("CORPUS_MODE") != expected["corpus_mode"]:
+        reasons.append("deployed corpus mode does not match CORPUS_MODE")
+    if expected["corpus_mode"] == "activation":
+        activation = rag_stats.get("activation") or {}
+        if not activation.get("ready"):
+            reasons.append("RAG activation is not ready")
+        if activation.get("active_digest") != expected["corpus_digest"]:
+            reasons.append("active corpus digest does not match CORPUS_DIGEST")
+    elif expected["corpus_mode"] == "packaged":
+        corpus = rag_stats.get("corpus") or {}
+        if config.get("CORPUS_REQUIRE_SIGNATURE", "").lower() != "true":
+            reasons.append("packaged corpus signature enforcement is not enabled")
+        if (corpus.get("event") or {}).get("id") != expected["event_id"]:
+            reasons.append("live corpus event does not match CORPUS_EVENT_ID")
+        if (corpus.get("corpus") or {}).get("version") != expected["version"]:
+            reasons.append("live corpus version does not match CORPUS_VERSION")
+        resolved = snapshot.get("resolved_images") or []
+        corpus_image = next(
+            (item for item in resolved if item.get("name") == "install-corpus"), None
+        )
+        if not corpus_image or expected["corpus_digest"] not in corpus_image.get("image_id", ""):
+            reasons.append("resolved corpus image does not match CORPUS_DIGEST")
+    else:
+        reasons.append("CORPUS_MODE must be activation or packaged")
     observed_embedding = (rag_stats.get("embedding_service") or {}).get("model_name")
     if observed_embedding != expected["embedding_model"]:
         reasons.append("live embedding model does not match EMBEDDING_MODEL")
@@ -171,21 +190,30 @@ def collect(namespace: str, release: str, api_url: str) -> Dict[str, Any]:
                 ],
             }
         )
-    image_ids = sorted(
-        {
-            status.get("imageID")
-            for pod in pod_body.get("items", [])
-            for status in pod.get("status", {}).get("containerStatuses", [])
-            if status.get("imageID")
-        }
-    )
+    resolved_images = []
+    for pod in pod_body.get("items", []):
+        status = pod.get("status", {})
+        for container_type, statuses in (
+            ("container", status.get("containerStatuses", [])),
+            ("init", status.get("initContainerStatuses", [])),
+        ):
+            for container in statuses:
+                resolved_images.append(
+                    {
+                        "pod": pod["metadata"]["name"],
+                        "type": container_type,
+                        "name": container.get("name"),
+                        "image": container.get("image"),
+                        "image_id": container.get("imageID"),
+                    }
+                )
     return {
         "cluster": _oc_text("whoami", "--show-server"),
         "namespace": namespace,
         "release": release,
         "route_url": route_url,
         "deployments": deployments,
-        "resolved_image_ids": image_ids,
+        "resolved_images": resolved_images,
         "config": config_body.get("data") or {},
         "gateway_health": _get_json(api_url, "/health"),
         "service_health": _get_json(api_url, "/services/health"),
@@ -202,6 +230,9 @@ def main() -> int:
         "api_url": os.environ.get("EDGE_API_URL", ""),
         "profile": os.environ.get("EDGE_RESOURCE_PROFILE", ""),
         "corpus_digest": os.environ.get("CORPUS_DIGEST", ""),
+        "corpus_mode": os.environ.get("CORPUS_MODE", ""),
+        "event_id": os.environ.get("CORPUS_EVENT_ID", ""),
+        "version": os.environ.get("CORPUS_VERSION", ""),
         "embedding_model": os.environ.get("EMBEDDING_MODEL", ""),
         "llm_provider": os.environ.get("LLM_PROVIDER", ""),
         "llm_model": os.environ.get("LLM_MODEL", ""),

@@ -11,6 +11,9 @@ def _expected():
         "llm_provider": "bitnet",
         "llm_model": "bitnet-2b4t",
         "corpus_digest": "sha256:" + "a" * 64,
+        "corpus_mode": "activation",
+        "event_id": "summit-connect",
+        "version": "2026.1",
         "channel": "simulator",
     }
 
@@ -34,6 +37,10 @@ def _snapshot():
             "RAG_GROUNDING_REQUIRED": "true",
             "EMERGENCY_RAG_ENABLED": "true",
             "SMS_MODE": "sim",
+            "CORPUS_MODE": "activation",
+            "CORPUS_EVENT_ID": expected["event_id"],
+            "CORPUS_VERSION": expected["version"],
+            "CORPUS_REQUIRE_SIGNATURE": "true",
         },
         "rag_stats": {
             "activation": {
@@ -85,3 +92,23 @@ def test_field_safety_must_be_enabled():
     assert status == "RED"
     assert "RAG_GROUNDING_REQUIRED is not true" in reasons
     assert "EMERGENCY_RAG_ENABLED is not true" in reasons
+
+
+def test_signed_packaged_corpus_can_qualify_lab_edd():
+    expected = _expected()
+    expected["corpus_mode"] = "packaged"
+    snapshot = _snapshot()
+    snapshot["config"]["CORPUS_MODE"] = "packaged"
+    snapshot["rag_stats"]["activation"] = {"status": "not_configured"}
+    snapshot["rag_stats"]["corpus"] = {
+        "event": {"id": expected["event_id"]},
+        "corpus": {"version": expected["version"]},
+    }
+    snapshot["resolved_images"] = [
+        {
+            "name": "install-corpus",
+            "image_id": "quay.io/example/corpus@{0}".format(expected["corpus_digest"]),
+        }
+    ]
+
+    assert evaluate_snapshot(snapshot, expected) == ("GREEN", [])

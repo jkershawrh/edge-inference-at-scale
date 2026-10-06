@@ -82,6 +82,9 @@ export EDGE_RELEASE=lil-evy
 export EDGE_API_URL=https://lil-evy-api-gateway-lil-evy-lab.apps.example.test
 export EDGE_RESOURCE_PROFILE=lab-small
 export CORPUS_DIGEST=sha256:REPLACE_WITH_THE_ACTIVE_DIGEST
+export CORPUS_MODE=packaged # use activation for an activated Lil EVY release
+export CORPUS_EVENT_ID=summit-connect
+export CORPUS_VERSION=2026.1
 export EMBEDDING_MODEL=all-MiniLM-L6-v2
 export LLM_PROVIDER=bitnet
 export LLM_MODEL=bitnet-2b4t
@@ -96,3 +99,9 @@ or copied to the release record. A missing workload, identity mismatch,
 unhealthy service, unavailable model, inactive corpus, or disabled field-safety
 setting is RED. OpenShift results remain AMBER for physical GSM, radio, power,
 thermal, and human field qualification.
+
+`CORPUS_MODE=packaged` accepts only a signature-enforced package whose resolved
+init-container image digest, event, and version match the declaration.
+`CORPUS_MODE=activation` additionally requires the live anti-rollback activation
+pointer to report the exact digest as ready. An unpackaged corpus can never pass
+the field EDD preflight.

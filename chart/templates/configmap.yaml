@@ -9,6 +9,10 @@ data:
   EDGE_RESOURCE_PROFILE: {{ .Values.deploymentProfile | quote }}
   NODE_ID: {{ .Values.nodeId | quote }}
   SMS_MODE: {{ .Values.smsMode | quote }}
+  CORPUS_MODE: {{ ternary "activation" (ternary "packaged" "unpackaged" .Values.rag.corpus.enabled) .Values.rag.activation.enabled | quote }}
+  CORPUS_EVENT_ID: {{ .Values.rag.corpus.eventId | quote }}
+  CORPUS_VERSION: {{ .Values.rag.corpus.version | quote }}
+  CORPUS_REQUIRE_SIGNATURE: {{ .Values.rag.corpus.requireSignature | quote }}
   LLM_PROVIDER: {{ .Values.llm.provider | default "bitnet" | quote }}
   LLM_BASE_URL: {{ .Values.llm.baseUrl | default (printf "http://%s-bitnet:8080" .Release.Name) | quote }}
   LLM_MODEL: {{ .Values.llm.model | default .Values.bitnet.model | quote }}
