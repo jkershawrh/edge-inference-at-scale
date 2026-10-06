@@ -116,6 +116,101 @@ class FactoryResult:
     evidence_path: Path
 
 
+class EvidenceVault:
+    """Write-once, content-addressed evidence storage shared by all adapters."""
+
+    def __init__(self, root: Pathish):
+        self.root = Path(root).resolve()
+
+    def store(self, payload: bytes) -> Tuple[str, Path]:
+        if not payload:
+            raise ValueError("empty source evidence is not permitted")
+        digest = sha256_digest(payload)
+        hex_digest = digest.removeprefix("sha256:")
+        snapshot_dir = self.root / "sha256" / hex_digest
+        snapshot_path = snapshot_dir / "payload"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        if snapshot_path.exists():
+            if snapshot_path.read_bytes() != payload:
+                raise RuntimeError("immutable evidence snapshot digest collision")
+            return digest, snapshot_path
+
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=snapshot_dir, delete=False) as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+                temporary = Path(handle.name)
+            try:
+                os.link(temporary, snapshot_path)
+            except FileExistsError:
+                if snapshot_path.read_bytes() != payload:
+                    raise RuntimeError("immutable evidence snapshot digest collision")
+            snapshot_path.chmod(0o444)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        return digest, snapshot_path
+
+
+def build_source_record(
+    spec: SourceRecordSpec,
+    *,
+    reference: str,
+    locator_kind: str,
+    acquisition_method: str,
+    media_type: str,
+    byte_size: int,
+    digest: str,
+) -> Dict[str, Any]:
+    """Create one validated SourceRecord from adapter-neutral evidence metadata."""
+
+    record: Dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "source_record",
+        "source_id": spec.source_id,
+        "publisher": {"id": spec.publisher_id, "name": spec.publisher_name},
+        "steward": {"identity": spec.steward_identity, "role": spec.steward_role},
+        "authority_class": spec.authority_class,
+        "locator": {
+            "kind": locator_kind,
+            "reference": reference,
+            "acquisition_method": acquisition_method,
+            "connector_id": spec.connector_id,
+            "acquisition_policy_version": spec.acquisition_policy_version,
+        },
+        "acquired_at": spec.acquired_at,
+        "last_verified_at": spec.last_verified_at,
+        "evidence": {
+            "media_type": media_type,
+            "byte_size": byte_size,
+            "digest": digest,
+        },
+        "rights": {
+            "license": spec.license,
+            "redistribution": spec.redistribution,
+            "restrictions": _deduplicated(spec.restrictions),
+        },
+        "scope": {
+            "geographies": _deduplicated(spec.geographies),
+            "languages": _deduplicated(spec.languages),
+            "audiences": _deduplicated(spec.audiences),
+            "subjects": _deduplicated(spec.subjects),
+        },
+        "freshness": {
+            "effective_from": spec.effective_from,
+            "valid_until": spec.valid_until,
+            "expected_refresh_seconds": spec.expected_refresh_seconds,
+            "stale_action": spec.stale_action,
+        },
+        "sensitivity": spec.sensitivity,
+        "distribution": spec.distribution,
+    }
+    validate_instance(record, "source_record")
+    return record
+
+
 class FileSourceAcquirer:
     """Acquire files under allowlisted roots into an immutable evidence store."""
 
@@ -126,7 +221,7 @@ class FileSourceAcquirer:
         for root in self._roots:
             if not root.is_dir():
                 raise ValueError("allowlisted source root is not a directory: {0}".format(root))
-        self._evidence_store = Path(evidence_store).resolve()
+        self._vault = EvidenceVault(evidence_store)
 
     @staticmethod
     def _path_from_reference(reference: Pathish) -> Path:
@@ -148,84 +243,20 @@ class FileSourceAcquirer:
             raise PermissionError("source is outside the allowlisted roots: {0}".format(candidate))
         return candidate
 
-    def _snapshot(self, payload: bytes, digest: str) -> Path:
-        hex_digest = digest.removeprefix("sha256:")
-        snapshot_dir = self._evidence_store / "sha256" / hex_digest
-        snapshot_path = snapshot_dir / "payload"
-        snapshot_dir.mkdir(parents=True, exist_ok=True)
-        if snapshot_path.exists():
-            if snapshot_path.read_bytes() != payload:
-                raise RuntimeError("immutable evidence snapshot digest collision")
-            return snapshot_path
-
-        temporary: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(dir=snapshot_dir, delete=False) as handle:
-                handle.write(payload)
-                handle.flush()
-                os.fsync(handle.fileno())
-                temporary = Path(handle.name)
-            try:
-                os.link(temporary, snapshot_path)
-            except FileExistsError:
-                if snapshot_path.read_bytes() != payload:
-                    raise RuntimeError("immutable evidence snapshot digest collision")
-            snapshot_path.chmod(0o444)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-        return snapshot_path
-
     def acquire(self, reference: Pathish, spec: SourceRecordSpec) -> EvidenceSnapshot:
         source_path = self._resolve_allowed(reference)
         payload = source_path.read_bytes()
-        if not payload:
-            raise ValueError("empty source evidence is not permitted")
-        digest = sha256_digest(payload)
-        snapshot_path = self._snapshot(payload, digest)
+        digest, snapshot_path = self._vault.store(payload)
         locator_reference = source_path.as_uri()
-        record: Dict[str, Any] = {
-            "schema_version": SCHEMA_VERSION,
-            "record_type": "source_record",
-            "source_id": spec.source_id,
-            "publisher": {"id": spec.publisher_id, "name": spec.publisher_name},
-            "steward": {"identity": spec.steward_identity, "role": spec.steward_role},
-            "authority_class": spec.authority_class,
-            "locator": {
-                "kind": "file",
-                "reference": locator_reference,
-                "acquisition_method": "manual_upload",
-                "connector_id": spec.connector_id,
-                "acquisition_policy_version": spec.acquisition_policy_version,
-            },
-            "acquired_at": spec.acquired_at,
-            "last_verified_at": spec.last_verified_at,
-            "evidence": {
-                "media_type": spec.media_type,
-                "byte_size": len(payload),
-                "digest": digest,
-            },
-            "rights": {
-                "license": spec.license,
-                "redistribution": spec.redistribution,
-                "restrictions": _deduplicated(spec.restrictions),
-            },
-            "scope": {
-                "geographies": _deduplicated(spec.geographies),
-                "languages": _deduplicated(spec.languages),
-                "audiences": _deduplicated(spec.audiences),
-                "subjects": _deduplicated(spec.subjects),
-            },
-            "freshness": {
-                "effective_from": spec.effective_from,
-                "valid_until": spec.valid_until,
-                "expected_refresh_seconds": spec.expected_refresh_seconds,
-                "stale_action": spec.stale_action,
-            },
-            "sensitivity": spec.sensitivity,
-            "distribution": spec.distribution,
-        }
-        validate_instance(record, "source_record")
+        record = build_source_record(
+            spec,
+            reference=locator_reference,
+            locator_kind="file",
+            acquisition_method="manual_upload",
+            media_type=spec.media_type,
+            byte_size=len(payload),
+            digest=digest,
+        )
         return EvidenceSnapshot(digest=digest, path=snapshot_path, source_record=record)
 
 

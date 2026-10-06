@@ -27,6 +27,8 @@ VALID_FIXTURES = {
     "release_manifest": "release-manifest.json",
     "activation_receipt": "activation-receipt.json",
     "event_policy": "event-policy.json",
+    "source_registry": "source-registry.json",
+    "acquisition_report": "acquisition-report.json",
 }
 
 INVALID_FIXTURES = {
@@ -37,6 +39,8 @@ INVALID_FIXTURES = {
     "release_manifest": "release-manifest-no-sequence.json",
     "activation_receipt": "activation-receipt-contains-user-data.json",
     "event_policy": "event-policy-missing-critical-coverage.json",
+    "source_registry": "source-registry-host-not-allowlisted.json",
+    "acquisition_report": "acquisition-report-wrong-change.json",
 }
 
 

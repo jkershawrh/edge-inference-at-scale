@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/acquisition-report.schema.json",
+  "title": "AcquisitionReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report_id", "schema_version", "record_type", "source_id", "event_id", "registry_digest", "connector_id", "observed_at", "final_url", "redirect_chain", "previous_digest", "current_digest", "change", "byte_size", "media_type"],
+  "properties": {
+    "report_id": {"$ref": "#/$defs/digest"},
+    "schema_version": {"const": "2.0.0"},
+    "record_type": {"const": "acquisition_report"},
+    "source_id": {"$ref": "#/$defs/id"},
+    "event_id": {"$ref": "#/$defs/id"},
+    "registry_digest": {"$ref": "#/$defs/digest"},
+    "connector_id": {"$ref": "#/$defs/id"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "final_url": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 2048},
+    "redirect_chain": {"type": "array", "maxItems": 5, "items": {"type": "string", "format": "uri", "pattern": "^https://", "maxLength": 2048}},
+    "previous_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "current_digest": {"$ref": "#/$defs/digest"},
+    "change": {"enum": ["initial", "unchanged", "changed"]},
+    "byte_size": {"type": "integer", "minimum": 1},
+    "media_type": {"type": "string", "pattern": "^[a-z0-9.+-]+/[a-zA-Z0-9.+-]+$"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

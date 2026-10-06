@@ -153,6 +153,8 @@ OpenShift promotion workflow are documented in
 The complete connected Big EVY sourcing, governance, evaluation, distribution,
 and Lil EVY activation plan is saved in
 [docs/big-evy-corpus-factory-roadmap.md](docs/big-evy-corpus-factory-roadmap.md).
+The executable source-registry and bounded HTTPS acquisition contract is
+documented in [docs/corpus-acquisition.md](docs/corpus-acquisition.md).
 
 The first factory/runtime contract is now executable: allowlisted files become
 immutable evidence snapshots, provenance-linked canonical documents, and
@@ -170,7 +172,9 @@ field information. See
 
 ```bash
 make test-corpus-factory
+make test-connected-acquisition
 make test-corpus-suitability
+python scripts/acquire_corpus_source.py --help
 python scripts/evaluate_corpus_suitability.py --help
 python scripts/evaluate_corpus_release.py --help
 ```

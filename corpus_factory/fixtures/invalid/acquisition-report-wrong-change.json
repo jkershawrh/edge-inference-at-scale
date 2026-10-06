@@ -1,0 +1,17 @@
+{
+  "report_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "schema_version": "2.0.0",
+  "record_type": "acquisition_report",
+  "source_id": "source-shelter-primary",
+  "event_id": "field-event-2026",
+  "registry_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "connector_id": "connector-region4-shelters",
+  "observed_at": "2026-10-06T12:00:00Z",
+  "final_url": "https://alerts.example.gov/region4/shelters.json",
+  "redirect_chain": [],
+  "previous_digest": null,
+  "current_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "change": "changed",
+  "byte_size": 15,
+  "media_type": "application/json"
+}

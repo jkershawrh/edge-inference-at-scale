@@ -374,6 +374,8 @@ Already implemented:
   schemas with golden valid/invalid fixtures
 - Strict event/deployment policy packs and deterministic corpus-suitability
   reports that block operationally incomplete corpora even when packaging is valid
+- Versioned source registries and bounded HTTPS acquisition with exact host,
+  public-network, redirect, media-type, size, timeout, and immutable-output checks
 - Allowlisted local intake, immutable content-addressed evidence, registry-owned
   stable identities, canonical provenance, and deterministic exact-span chunks
 - Five-layer suitability, release, retrieval, grounded-answer, and edge-profile promotion gate
@@ -393,7 +395,8 @@ Already implemented:
 
 Still required before this is production-grade:
 
-- Declarative source authority registry and hardened network acquisition adapters
+- Authenticated API/SFTP adapters, acquisition scheduling, tamper-evident audit
+  storage, and OpenShift egress-policy deployment for the HTTPS acquisition worker
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
 - Protected signing service, key rotation, and revocation

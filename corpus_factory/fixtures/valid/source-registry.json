@@ -1,0 +1,33 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "source_registry",
+  "registry_id": "registry-field-event-2026",
+  "event_id": "field-event-2026",
+  "version": "1.0.0",
+  "acquisition_policy_version": "2026.1",
+  "sources": [
+    {
+      "source_id": "source-shelter-primary",
+      "enabled": true,
+      "publisher": {"id": "publisher-public-safety", "name": "Public Safety Authority"},
+      "steward": {"identity": "urn:example:steward:region4", "role": "Emergency information steward"},
+      "authority_class": "official",
+      "connector": {
+        "connector_id": "connector-region4-shelters",
+        "type": "https",
+        "url": "https://alerts.example.gov/region4/shelters.json",
+        "allowed_hosts": ["alerts.example.gov"],
+        "allowed_media_types": ["application/json"],
+        "maximum_bytes": 1048576,
+        "timeout_seconds": 20,
+        "maximum_redirects": 1,
+        "auth_secret_ref": null
+      },
+      "rights": {"license": "Public emergency information", "redistribution": "permitted", "restrictions": []},
+      "scope": {"geographies": ["region-north"], "languages": ["en"], "audiences": ["public"], "subjects": ["shelter-status"]},
+      "freshness": {"effective_from": "2026-10-06T00:00:00Z", "valid_until": "2026-10-07T00:00:00Z", "expected_refresh_seconds": 900, "stale_action": "block"},
+      "sensitivity": "public",
+      "distribution": "public"
+    }
+  ]
+}

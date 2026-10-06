@@ -8,7 +8,7 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-contracts test-corpus-factory test-corpus-suitability test-unit test-integration test-benchmarks \
+.PHONY: help test-all test-contracts test-corpus-factory test-connected-acquisition test-corpus-suitability test-unit test-integration test-benchmarks \
         test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
@@ -22,6 +22,9 @@ test-contracts: ## Stage 0 — Validate API and corpus contracts
 
 test-corpus-factory: ## Validate Big EVY contracts, factory core, and promotion gates
 	$(PYTEST) tests/corpus_factory/ -v --tb=short
+
+test-connected-acquisition: ## Validate source registry and bounded HTTPS acquisition
+	$(PYTEST) tests/corpus_factory/test_connected_acquisition.py -v --tb=short
 
 test-corpus-suitability: ## Prove the synthetic event is incomplete-then-corrected
 	$(PYTEST) tests/integration/test_synthetic_suitability_drill.py -v --tb=short

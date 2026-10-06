@@ -12,6 +12,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Mapping, Optional, Union
+from urllib.parse import urlparse
 
 try:
     from jsonschema import Draft202012Validator, FormatChecker
@@ -28,6 +29,8 @@ SCHEMA_BY_RECORD_TYPE = {
     "release_manifest": "release-manifest.schema.json",
     "activation_receipt": "activation-receipt.schema.json",
     "event_policy": "event-policy.schema.json",
+    "source_registry": "source-registry.schema.json",
+    "acquisition_report": "acquisition-report.schema.json",
 }
 
 
@@ -210,6 +213,42 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
             raise ContractValidationError(
                 "non-escalating no-answer policy cannot name an escalation route"
             )
+    elif record_type == "source_registry":
+        source_ids = [item["source_id"] for item in instance["sources"]]
+        if len(source_ids) != len(set(source_ids)):
+            raise ContractValidationError("source registry source IDs must be unique")
+        connector_ids = [item["connector"]["connector_id"] for item in instance["sources"]]
+        if len(connector_ids) != len(set(connector_ids)):
+            raise ContractValidationError("source registry connector IDs must be unique")
+        for item in instance["sources"]:
+            connector = item["connector"]
+            parsed = urlparse(connector["url"])
+            hostname = (parsed.hostname or "").lower()
+            allowed_hosts = {host.lower() for host in connector["allowed_hosts"]}
+            try:
+                port = parsed.port
+            except ValueError as exc:
+                raise ContractValidationError("source registry connector has an invalid port") from exc
+            if parsed.scheme != "https" or not hostname or port not in (None, 443):
+                raise ContractValidationError("source registry connectors require HTTPS on port 443")
+            if parsed.username is not None or parsed.password is not None or parsed.fragment:
+                raise ContractValidationError("source registry URL cannot contain credentials or fragments")
+            if any(not label for label in hostname.split(".")):
+                raise ContractValidationError("source registry URL hostname is malformed")
+            if hostname not in allowed_hosts:
+                raise ContractValidationError("source registry URL host is not allowlisted")
+    elif record_type == "acquisition_report":
+        body = {key: value for key, value in instance.items() if key != "report_id"}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if instance["report_id"] != expected:
+            raise ContractValidationError("acquisition report_id does not match report body")
+        previous = instance["previous_digest"]
+        current = instance["current_digest"]
+        expected_change = "initial" if previous is None else ("unchanged" if previous == current else "changed")
+        if instance["change"] != expected_change:
+            raise ContractValidationError("acquisition change classification does not match digests")
 
 
 def validate_instance(
