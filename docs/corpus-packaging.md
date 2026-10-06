@@ -83,6 +83,11 @@ corpus content hash and embedding identity. Old and new pods therefore cannot
 rewrite each other's vector index during a rolling update, and rollback reuses
 the prior index rather than rebuilding it.
 
+For Lil EVY activation, a previous digest can be served only through an explicit
+site-scoped recovery authorization. The monotonically increasing sequence floor
+is never lowered; merely redeploying an older version does not authorize a
+downgrade.
+
 The active packaged corpus is read-only at the API level: add, bulk-add, and
 delete operations return HTTP 403. Event changes must go through a new reviewed
 package version, which keeps every fleet node reproducible.
@@ -100,3 +105,29 @@ Before promoting a package to field nodes:
 Event-specific preparation can evolve independently as long as it emits the
 normalized input format. The runtime and Helm rollout do not depend on Summit
 Connect-specific filenames.
+
+## Big EVY v2 factory and disconnected transfer
+
+The v1 package above remains the runtime-compatible carrier while the v2 supply
+chain is integrated. The v2 factory adds source authority, immutable evidence,
+canonical document and chunk lineage, human review, portable embeddings, exact
+promotion evidence, sequence enforcement, and signed activation receipts.
+
+Disconnected media carries exactly five content-addressed artifacts:
+application, model, corpus, signature bundle, and activation request. Production
+verification requires a trusted Ed25519 public key; hash-only verification is a
+lab diagnostic and must be requested explicitly.
+
+```bash
+python3 scripts/verify_transfer_set.py /media/evy-transfer \
+  --event-id flood-response-region-4 \
+  --site-id region4-site-alpha \
+  --allow-classification restricted \
+  --sequence-floor 12 \
+  --public-key /etc/evy/trust/transfer-public-key.pem
+```
+
+Verification is read-only. Import then performs the same checks, rejects reused
+media and non-advancing sequences, and atomically places the set into the site's
+content-addressed inbox. SMS and LoRa are never used to transfer these release
+bytes.

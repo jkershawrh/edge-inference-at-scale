@@ -381,15 +381,22 @@ Already implemented:
   sequence floors, authorized recovery, and schema-valid signed receipts
 - Trust, signing/encryption, anti-rollback, trusted-time, and separation-of-duty
   architecture decisions
+- Scope- and time-aware structured-fact conflict detection with explicit
+  supersession and independent critical-review enforcement
+- Portable deterministic embedding JSONL with complete model/chunk lineage and
+  declared-normalization verification; no vector database files are distributed
+- Signed-by-default disconnected transfer sets with closed-world manifests,
+  content-addressed artifacts, site/event/classification checks, media replay
+  protection, sequence floors, and crash-recoverable atomic import
 
 Still required before this is production-grade:
 
 - Declarative source authority registry and hardened network acquisition adapters
-- Human review workflow, contradiction detection, translation approval, and
-  deployed conflict/freshness policy
+- Human review UI/identity workflow, translation approval, and deployment-owned
+  conflict/freshness policy configuration
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
-- Secure disconnected export/import, encrypted transfer sets, and media custody
+- Encrypted transfer envelopes, production key integration, and media custody
 - Activation operator/API integration, signed recovery authorization validation,
   and fleet compliance inventory
 - Complete synthetic disaster drill followed by hardware and solar-power tests
