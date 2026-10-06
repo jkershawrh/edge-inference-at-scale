@@ -67,6 +67,52 @@ For later refreshes, pass the previous validated SourceRecord with
 `--previous-source-record`. Output records are created immutably; the command
 will not overwrite an existing run.
 
+## Refresh planning
+
+Refresh timing is calculated before network access and saved as a versioned,
+digest-bound `refresh_plan`. The plan validates the registry against the event
+policy, validates every previous SourceRecord, and classifies each source as
+`due`, `not_due`, or `disabled`. A source becomes due when it has never been
+acquired, its declared refresh interval has elapsed, or its connector URL,
+connector identity, or acquisition-policy version changed.
+
+```bash
+python3 scripts/plan_corpus_refresh.py \
+  --registry prepared/source-registry.json \
+  --event-policy prepared/event-policy.json \
+  --previous-source-record active/source-shelter-primary.source-record.json \
+  --as-of 2026-10-06T18:00:00Z \
+  --output plans/refresh-2026-10-06T180000Z.json
+```
+
+The planner does not fetch, overwrite, or activate anything. An external
+scheduler may execute only the `due_source_ids` from an immutable plan.
+
+## Tamper-evident audit ledger
+
+The audit ledger is canonical JSONL with contiguous sequences and a SHA-256
+chain from each event to the previous entry. Appends take an exclusive file
+lock, verify the complete existing chain, append one event, flush it, and call
+`fsync`. Events contain identities and artifact/report digests, never downloaded
+content or secrets.
+
+```bash
+python3 scripts/corpus_audit.py append state/acquisition-audit.jsonl \
+  --event-type acquisition_planned \
+  --occurred-at 2026-10-06T18:00:00Z \
+  --actor urn:example:factory-scheduler \
+  --subject-id registry-field-event-2026 \
+  --payload-digest sha256:REPLACE_WITH_PLAN_DIGEST
+
+python3 scripts/corpus_audit.py verify state/acquisition-audit.jsonl
+```
+
+The chain detects modification, deletion within an anchored chain, reordering,
+noncanonical records, duplicate keys, gaps, and backwards timestamps. To detect
+truncation of the newest entries, periodically anchor the returned last-entry
+digest in protected external storage. A local hash chain without such an anchor
+cannot prove that an attacker did not rewrite the entire file.
+
 ## Production boundary
 
 Application checks are one layer, not the entire SSRF defense. Run acquisition
@@ -76,7 +122,8 @@ service-account access to cluster APIs, and no route to cloud metadata or
 internal services. The current preflight DNS check cannot alone eliminate a DNS
 rebinding race inside a general-purpose HTTP library.
 
-The pipeline currently emits acquisition reports but does not yet provide a
-tamper-evident append-only audit service, authenticated API connectors, a
-scheduler, or review-queue integration. Those are the next connected Big EVY
-increments.
+The pipeline now emits versioned acquisition reports, deterministic refresh
+plans, and a tamper-evident local audit chain. It does not yet provide an
+always-on scheduler/controller, protected external audit anchoring,
+authenticated API connectors, or review-queue integration. Those are the next
+connected Big EVY increments.

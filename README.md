@@ -173,8 +173,11 @@ field information. See
 ```bash
 make test-corpus-factory
 make test-connected-acquisition
+make test-corpus-audit
 make test-corpus-suitability
 python scripts/acquire_corpus_source.py --help
+python scripts/plan_corpus_refresh.py --help
+python scripts/corpus_audit.py --help
 python scripts/evaluate_corpus_suitability.py --help
 python scripts/evaluate_corpus_release.py --help
 ```

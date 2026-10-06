@@ -31,6 +31,7 @@ SCHEMA_BY_RECORD_TYPE = {
     "event_policy": "event-policy.schema.json",
     "source_registry": "source-registry.schema.json",
     "acquisition_report": "acquisition-report.schema.json",
+    "refresh_plan": "refresh-plan.schema.json",
 }
 
 
@@ -249,6 +250,19 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         expected_change = "initial" if previous is None else ("unchanged" if previous == current else "changed")
         if instance["change"] != expected_change:
             raise ContractValidationError("acquisition change classification does not match digests")
+    elif record_type == "refresh_plan":
+        body = {key: value for key, value in instance.items() if key != "plan_id"}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if instance["plan_id"] != expected:
+            raise ContractValidationError("refresh plan_id does not match plan body")
+        source_ids = [entry["source_id"] for entry in instance["entries"]]
+        if source_ids != sorted(source_ids) or len(source_ids) != len(set(source_ids)):
+            raise ContractValidationError("refresh plan sources must be unique and sorted")
+        expected_due = [entry["source_id"] for entry in instance["entries"] if entry["status"] == "due"]
+        if instance["due_source_ids"] != expected_due:
+            raise ContractValidationError("refresh due_source_ids do not match entries")
 
 
 def validate_instance(

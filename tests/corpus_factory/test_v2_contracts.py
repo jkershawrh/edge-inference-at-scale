@@ -29,6 +29,7 @@ VALID_FIXTURES = {
     "event_policy": "event-policy.json",
     "source_registry": "source-registry.json",
     "acquisition_report": "acquisition-report.json",
+    "refresh_plan": "refresh-plan.json",
 }
 
 INVALID_FIXTURES = {
@@ -41,6 +42,7 @@ INVALID_FIXTURES = {
     "event_policy": "event-policy-missing-critical-coverage.json",
     "source_registry": "source-registry-host-not-allowlisted.json",
     "acquisition_report": "acquisition-report-wrong-change.json",
+    "refresh_plan": "refresh-plan-mismatched-due-list.json",
 }
 
 

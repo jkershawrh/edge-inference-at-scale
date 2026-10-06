@@ -282,7 +282,7 @@ def acquire_registry_source(
     digest, evidence_path = EvidenceVault(evidence_store).store(response.body)
     record = build_source_record(
         _source_spec(registry, entry, observed_at),
-        reference=response.final_url,
+        reference=connector["url"],
         locator_kind="url",
         acquisition_method="https",
         media_type=media_type,

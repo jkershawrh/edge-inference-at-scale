@@ -376,6 +376,8 @@ Already implemented:
   reports that block operationally incomplete corpora even when packaging is valid
 - Versioned source registries and bounded HTTPS acquisition with exact host,
   public-network, redirect, media-type, size, timeout, and immutable-output checks
+- Deterministic refresh plans plus a canonical, locked, fsync'd hash-chain audit
+  ledger for acquisition decisions and report identities
 - Allowlisted local intake, immutable content-addressed evidence, registry-owned
   stable identities, canonical provenance, and deterministic exact-span chunks
 - Five-layer suitability, release, retrieval, grounded-answer, and edge-profile promotion gate
@@ -395,8 +397,8 @@ Already implemented:
 
 Still required before this is production-grade:
 
-- Authenticated API/SFTP adapters, acquisition scheduling, tamper-evident audit
-  storage, and OpenShift egress-policy deployment for the HTTPS acquisition worker
+- Authenticated API/SFTP adapters, always-on acquisition controller, protected
+  external audit anchoring, and OpenShift egress-policy deployment for the HTTPS worker
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
 - Protected signing service, key rotation, and revocation

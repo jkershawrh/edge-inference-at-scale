@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/refresh-plan.schema.json",
+  "title": "SourceRefreshPlan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan_id", "schema_version", "record_type", "event_id", "as_of", "bindings", "entries", "due_source_ids"],
+  "properties": {
+    "plan_id": {"$ref": "#/$defs/digest"},
+    "schema_version": {"const": "2.0.0"},
+    "record_type": {"const": "refresh_plan"},
+    "event_id": {"$ref": "#/$defs/id"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_registry_digest", "event_policy_subject_digest", "previous_records_digest"],
+      "properties": {
+        "source_registry_digest": {"$ref": "#/$defs/digest"},
+        "event_policy_subject_digest": {"$ref": "#/$defs/digest"},
+        "previous_records_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "connector_id", "status", "reason", "due_at", "previous_digest"],
+        "properties": {
+          "source_id": {"$ref": "#/$defs/id"},
+          "connector_id": {"$ref": "#/$defs/id"},
+          "status": {"enum": ["due", "not_due", "disabled"]},
+          "reason": {"enum": ["never_acquired", "source_configuration_changed", "refresh_interval_elapsed", "refresh_interval_current", "connector_disabled"]},
+          "due_at": {"oneOf": [{"type": "string", "format": "date-time"}, {"type": "null"}]},
+          "previous_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+        }
+      }
+    },
+    "due_source_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}
