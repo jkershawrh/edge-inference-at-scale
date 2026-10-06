@@ -21,6 +21,7 @@ import yaml
 
 
 RAG_URL = os.environ.get("RAG_EVAL_URL", "http://localhost:8004")
+RAG_SEARCH_PATH = os.environ.get("RAG_EVAL_PATH", "/search")
 TOP_K = int(os.environ.get("RAG_EVAL_TOP_K", "3"))
 RECALL_GATE = float(os.environ.get("RAG_EVAL_RECALL_GATE", "0.70"))
 QUERY_FILE = Path(__file__).parent / "eval_queries.yaml"
@@ -38,7 +39,7 @@ def _percentile(values: List[float], percentile: float) -> float:
 def search(query: str) -> Tuple[List[str], List[float], float]:
     payload = json.dumps({"query": query, "top_k": TOP_K}).encode("utf-8")
     request = urllib.request.Request(
-        "{0}/search".format(RAG_URL.rstrip("/")),
+        "{0}{1}".format(RAG_URL.rstrip("/"), RAG_SEARCH_PATH),
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",

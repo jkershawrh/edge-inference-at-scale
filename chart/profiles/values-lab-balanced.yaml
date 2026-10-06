@@ -1,4 +1,6 @@
 # Balanced software profile approximating a capable 8 GB field node envelope.
+deploymentProfile: lab-balanced
+
 bitnet:
   threads: 4
   slots: 1

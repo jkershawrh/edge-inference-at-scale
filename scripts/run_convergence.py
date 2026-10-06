@@ -22,7 +22,7 @@ MATRIX_PATH = ROOT / "tests" / "validation_matrix.yaml"
 STATUS_RANK = {"GREEN": 0, "AMBER": 1, "RED": 2}
 SKIP_PATTERN = re.compile(r"(?:^|\s)(\d+) skipped(?:,|\s|$)", re.MULTILINE)
 IDENTITY_KEYS = (
-    "CORPUS_RELEASE_ID",
+    "CORPUS_DIGEST",
     "EMBEDDING_MODEL",
     "LLM_PROVIDER",
     "LLM_MODEL",
@@ -52,6 +52,15 @@ def _run(
         "exit_code": completed.returncode,
         "skipped": skipped,
     }
+
+
+def _command_environment(command_spec: dict[str, Any]) -> dict[str, str]:
+    extra_env = dict(command_spec.get("env") or {})
+    for target, source in (command_spec.get("env_from") or {}).items():
+        value = os.environ.get(source)
+        if value:
+            extra_env[target] = value
+    return extra_env
 
 
 def _stage_status(
@@ -100,17 +109,22 @@ def run_matrix(profile: str) -> dict[str, Any]:
             reasons = [reason]
             results: list[dict[str, Any]] = []
         else:
-            results = [
-                _run(command_spec["argv"], command_spec.get("env"))
-                for command_spec in selected["commands"]
-            ]
-            status, reasons = _stage_status(results, selected.get("status_cap"))
             missing_env = [
                 key for key in selected.get("required_env", []) if not os.environ.get(key)
             ]
-            if missing_env and status != "RED":
-                status = "AMBER"
-                reasons.append("missing evidence identities: " + ", ".join(missing_env))
+            results = []
+            if missing_env:
+                status = "RED"
+                reasons = ["missing required environment: " + ", ".join(missing_env)]
+            else:
+                for command_spec in selected["commands"]:
+                    result = _run(
+                        command_spec["argv"], _command_environment(command_spec)
+                    )
+                    results.append(result)
+                    if result["exit_code"] != 0:
+                        break
+                status, reasons = _stage_status(results, selected.get("status_cap"))
             if selected.get("reason") and status != "GREEN":
                 reasons.append(selected["reason"])
         suffix = f" — {'; '.join(reasons)}" if reasons else ""

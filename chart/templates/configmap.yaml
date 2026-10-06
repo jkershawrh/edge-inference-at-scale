@@ -6,6 +6,7 @@ metadata:
     app.kubernetes.io/name: edge-inference-at-scale
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
+  EDGE_RESOURCE_PROFILE: {{ .Values.deploymentProfile | quote }}
   NODE_ID: {{ .Values.nodeId | quote }}
   SMS_MODE: {{ .Values.smsMode | quote }}
   LLM_PROVIDER: {{ .Values.llm.provider | default "bitnet" | quote }}

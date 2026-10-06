@@ -1,5 +1,7 @@
 # Resource-constrained laboratory profile.
 # Use to find the minimum viable footprint; it does not emulate ARM/NPU speed.
+deploymentProfile: lab-small
+
 bitnet:
   threads: 2
   slots: 1

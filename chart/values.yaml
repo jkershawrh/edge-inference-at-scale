@@ -2,6 +2,8 @@
 # Micronode profile: simulates an 8-core / 16 GB edge board
 # (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class)
 
+deploymentProfile: default
+
 bitnet:
   image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
   model: bitnet-2b4t

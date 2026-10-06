@@ -87,19 +87,31 @@ stages:
               CAPACITY_RESULTS_FILE: artifacts/capacity-local.json
       openshift:
         required_env:
-          - CORPUS_RELEASE_ID
+          - EDGE_NAMESPACE
+          - EDGE_RELEASE
+          - EDGE_API_URL
+          - CORPUS_DIGEST
           - EMBEDDING_MODEL
           - LLM_PROVIDER
           - LLM_MODEL
           - EDGE_RESOURCE_PROFILE
           - CHANNEL_DRIVER
         commands:
+          - argv: [python3, scripts/openshift_edd_preflight.py]
           - argv: [python3, tests/evaluation/run_retrieval_eval.py]
+            env:
+              RAG_EVAL_PATH: /rag/search
+            env_from:
+              RAG_EVAL_URL: EDGE_API_URL
           - argv: [python3, tests/evaluation/run_eval.py]
+            env_from:
+              EVAL_API_URL: EDGE_API_URL
           - argv: [python3, -m, pytest, "tests/benchmarks/test_capacity.py::TestLiveCapacity", -q, -rs]
             env:
               CAPACITY_LIVE: "1"
               CAPACITY_RESULTS_FILE: artifacts/capacity-openshift.json
+            env_from:
+              EVAL_API_URL: EDGE_API_URL
     green_requires:
       - "Retrieval recall, rank, and p50/p95 latency meet the rubric"
       - "Answer quality and safe no-answer behavior meet the event policy"

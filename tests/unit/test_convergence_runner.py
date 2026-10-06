@@ -1,4 +1,5 @@
-from scripts.run_convergence import MATRIX_PATH, _stage_status
+from scripts.run_convergence import MATRIX_PATH, _command_environment, _stage_status
+from tests.benchmarks.test_capacity import LIVE_ROUTE_PATH, _live_message_payload
 
 import yaml
 
@@ -27,6 +28,29 @@ def test_scope_cap_prevents_false_green():
     assert reasons
 
 
+def test_live_capacity_uses_the_channel_neutral_gateway_contract():
+    assert LIVE_ROUTE_PATH == "/router/route"
+    assert _live_message_payload("Where is water?", 7) == {
+        "sender": "simulator:capacity-7",
+        "receiver": "simulator:lil-evy",
+        "content": "Where is water?",
+        "channel": "simulator",
+    }
+
+
+def test_command_environment_maps_runtime_urls(monkeypatch):
+    monkeypatch.setenv("EDGE_API_URL", "https://edge.example.test")
+    assert _command_environment(
+        {
+            "env": {"CAPACITY_LIVE": "1"},
+            "env_from": {"EVAL_API_URL": "EDGE_API_URL"},
+        }
+    ) == {
+        "CAPACITY_LIVE": "1",
+        "EVAL_API_URL": "https://edge.example.test",
+    }
+
+
 def test_matrix_has_ordered_gates_and_executable_profiles():
     matrix = yaml.safe_load(MATRIX_PATH.read_text(encoding="utf-8"))
     stages = list(matrix["stages"].values())
@@ -45,7 +69,10 @@ def test_matrix_has_ordered_gates_and_executable_profiles():
 
     edd_openshift = stages[3]["execution"]["openshift"]
     assert set(edd_openshift["required_env"]) == {
-        "CORPUS_RELEASE_ID",
+        "EDGE_NAMESPACE",
+        "EDGE_RELEASE",
+        "EDGE_API_URL",
+        "CORPUS_DIGEST",
         "EMBEDDING_MODEL",
         "LLM_PROVIDER",
         "LLM_MODEL",

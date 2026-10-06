@@ -66,3 +66,33 @@ a fluent answer from concealing a corpus change or a larger resource allocation.
 Run at least three repetitions after warm-up before making a model decision.
 Retain every raw report with the model artifact digest, runtime image digest,
 OpenShift node identity, and eventual hardware/power measurements.
+
+## Run the OpenShift convergence gate
+
+The live gate is deliberately stricter than the standalone comparison runner.
+It first performs a read-only preflight against the selected Helm release. The
+preflight verifies all core Deployments are ready, the declared Route matches,
+field safety is enabled, the active signed corpus digest matches, and the live
+embedding and LLM identities match the experiment declaration. It also retains
+resolved container image IDs without reading Secrets or message content.
+
+```bash
+export EDGE_NAMESPACE=lil-evy-lab
+export EDGE_RELEASE=lil-evy
+export EDGE_API_URL=https://lil-evy-api-gateway-lil-evy-lab.apps.example.test
+export EDGE_RESOURCE_PROFILE=lab-small
+export CORPUS_DIGEST=sha256:REPLACE_WITH_THE_ACTIVE_DIGEST
+export EMBEDDING_MODEL=all-MiniLM-L6-v2
+export LLM_PROVIDER=bitnet
+export LLM_MODEL=bitnet-2b4t
+export CHANNEL_DRIVER=simulator
+
+make test-openshift
+```
+
+The gateway Route is used for retrieval, answer-quality, and capacity checks.
+Generated evidence is written beneath `artifacts/` and should be retained by CI
+or copied to the release record. A missing workload, identity mismatch,
+unhealthy service, unavailable model, inactive corpus, or disabled field-safety
+setting is RED. OpenShift results remain AMBER for physical GSM, radio, power,
+thermal, and human field qualification.
