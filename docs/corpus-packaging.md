@@ -96,11 +96,21 @@ package version, which keeps every fleet node reproducible.
 
 Before promoting a package to field nodes:
 
-1. Deploy it to the OpenShift lab namespace.
-2. Run `make test-retrieval-evaluation` and retain the JSON result with the release.
-3. Run `make test-evaluation` against the selected LLM.
-4. Promote the same corpus image digest—do not rebuild it.
-5. Roll out to a canary node/site before the rest of the fleet.
+1. Evaluate the candidate inventory against its signed event policy and retain
+   the suitability report with the release evidence.
+2. Deploy the exact candidate to the OpenShift lab namespace.
+3. Run `make test-retrieval-evaluation` and retain the JSON result with the release.
+4. Run `make test-evaluation` against the selected LLM.
+5. Evaluate the declared edge resource profiles and canary activation.
+6. Promote the same corpus image digest—do not rebuild it.
+7. Roll out to a canary node/site before the rest of the fleet.
+
+The promotion decision consumes all five reports: corpus suitability, release
+validity, retrieval, grounded-answer, and edge operation. Each report is bound
+to the same immutable policy, source, document, evaluation-case, release,
+model, embedding, and chunker identities. No layer can compensate for another.
+See [corpus-suitability.md](corpus-suitability.md) for the event-policy contract
+and the connected Big EVY workflow.
 
 Event-specific preparation can evolve independently as long as it emits the
 normalized input format. The runtime and Helm rollout do not depend on Summit

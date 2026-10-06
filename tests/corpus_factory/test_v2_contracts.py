@@ -26,6 +26,7 @@ VALID_FIXTURES = {
     "review_attestation": "review-attestation.json",
     "release_manifest": "release-manifest.json",
     "activation_receipt": "activation-receipt.json",
+    "event_policy": "event-policy.json",
 }
 
 INVALID_FIXTURES = {
@@ -35,6 +36,7 @@ INVALID_FIXTURES = {
     "review_attestation": "review-attestation-unknown-decision.json",
     "release_manifest": "release-manifest-no-sequence.json",
     "activation_receipt": "activation-receipt-contains-user-data.json",
+    "event_policy": "event-policy-missing-critical-coverage.json",
 }
 
 
@@ -120,6 +122,20 @@ def test_legacy_safety_class_is_rejected():
     record = _valid("canonical_document")
     record["safety_class"] = "important"
     with pytest.raises(ContractValidationError, match="safety_class"):
+        validate_instance(record)
+
+
+def test_event_policy_approval_digest_binds_policy_body():
+    record = _valid("event_policy")
+    record["mission"] = "Mutated after approval"
+    with pytest.raises(ContractValidationError, match="approval digest"):
+        validate_instance(record)
+
+
+def test_event_policy_requirement_cannot_exceed_deployment_scope():
+    record = _valid("event_policy")
+    record["coverage_requirements"][0]["scope"]["languages"].append("es")
+    with pytest.raises(ContractValidationError, match="exceeds deployment scope"):
         validate_instance(record)
 
 

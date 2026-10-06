@@ -1,6 +1,6 @@
 """Deterministic, fail-closed corpus release promotion gate.
 
-The gate consumes summaries produced by four independent evaluators.  It does
+The gate consumes summaries produced by five independent evaluators.  It does
 not average their results: every layer and every safety class must pass its own
 contract.  All evidence is also bound to one immutable release/runtime tuple.
 """
@@ -14,7 +14,7 @@ import re
 from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 SPEC_VERSION = "1.0"
 
 BINDING_FIELDS = (
@@ -24,6 +24,10 @@ BINDING_FIELDS = (
     "model_digest",
     "embedding_model_digest",
     "chunker_digest",
+    "policy_digest",
+    "source_aggregate_digest",
+    "document_aggregate_digest",
+    "case_aggregate_digest",
 )
 
 SAFETY_CLASSES = ("critical", "high", "standard", "advisory")
@@ -251,6 +255,103 @@ def _release_layer(source: Mapping[str, Any], failures: List[Dict[str, str]]) ->
     return {"checks": results, "hard_gate_counts": hard_counts}
 
 
+def _suitability_layer(
+    source: Mapping[str, Any],
+    binding: Mapping[str, Any],
+    failures: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    report_id = source.get("report_id")
+    if not isinstance(report_id, str) or not _DIGEST_RE.fullmatch(report_id):
+        failures.append(
+            _failure(
+                "corpus_suitability",
+                "INVALID_REPORT_ID",
+                "suitability.report_id",
+                "suitability report must have an immutable sha256 identity",
+            )
+        )
+    source_failures = source.get("failures")
+    if not isinstance(source_failures, list) or source_failures:
+        failures.append(
+            _failure(
+                "corpus_suitability",
+                "SUITABILITY_FAILURES",
+                "suitability.failures",
+                "suitability report contains failures or omits failure evidence",
+            )
+        )
+    requirements = source.get("requirements")
+    if (
+        not isinstance(requirements, list)
+        or not requirements
+        or any(not isinstance(item, Mapping) or item.get("passed") is not True for item in requirements)
+    ):
+        failures.append(
+            _failure(
+                "corpus_suitability",
+                "REQUIREMENT_BLOCKED",
+                "suitability.requirements",
+                "every declared corpus requirement must pass",
+            )
+        )
+    if source.get("decision") != "PASS":
+        failures.append(
+            _failure(
+                "corpus_suitability",
+                "SUITABILITY_BLOCKED",
+                "suitability.decision",
+                "corpus suitability decision did not pass",
+            )
+        )
+
+    suitability_bindings = source.get("bindings")
+    suitability_bindings = suitability_bindings if isinstance(suitability_bindings, Mapping) else {}
+    binding_map = {
+        "policy_digest": "event_policy_subject_digest",
+        "source_aggregate_digest": "source_aggregate_digest",
+        "document_aggregate_digest": "document_aggregate_digest",
+        "case_aggregate_digest": "case_aggregate_digest",
+    }
+    resolved = {}
+    for promotion_name, suitability_name in binding_map.items():
+        value = suitability_bindings.get(suitability_name)
+        resolved[suitability_name] = value
+        if not isinstance(value, str) or not _DIGEST_RE.fullmatch(value):
+            failures.append(
+                _failure(
+                    "corpus_suitability",
+                    "MISSING_OR_INVALID_BINDING",
+                    "suitability.bindings.{0}".format(suitability_name),
+                    "suitability binding is missing or invalid",
+                )
+            )
+        elif value != binding.get(promotion_name):
+            failures.append(
+                _failure(
+                    "corpus_suitability",
+                    "BINDING_MISMATCH",
+                    "suitability.bindings.{0}".format(suitability_name),
+                    "suitability evidence does not match the promoted artifact tuple",
+                )
+            )
+    record_digest = suitability_bindings.get("event_policy_record_digest")
+    resolved["event_policy_record_digest"] = record_digest
+    if not isinstance(record_digest, str) or not _DIGEST_RE.fullmatch(record_digest):
+        failures.append(
+            _failure(
+                "corpus_suitability",
+                "MISSING_OR_INVALID_BINDING",
+                "suitability.bindings.event_policy_record_digest",
+                "full event policy record digest is missing or invalid",
+            )
+        )
+    return {
+        "report_id": report_id,
+        "bindings": resolved,
+        "requirement_count": len(requirements) if isinstance(requirements, list) else 0,
+    }
+
+
 def _safety_layer(
     layer: str,
     source: Mapping[str, Any],
@@ -368,8 +469,9 @@ def evaluate_promotion(
     retrieval: Mapping[str, Any],
     grounded_answer: Mapping[str, Any],
     edge_profiles: Mapping[str, Any],
+    suitability: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    """Evaluate four evidence documents and return a deterministic report."""
+    """Evaluate five evidence documents and return a deterministic report."""
 
     evidence = {
         "release_validity": release_validity,
@@ -381,8 +483,14 @@ def evaluate_promotion(
     for name, value in evidence.items():
         if not isinstance(value, Mapping):
             raise TypeError(f"{name} evidence must be a mapping")
+    if not isinstance(suitability, Mapping):
+        raise TypeError("suitability evidence must be a mapping")
 
     binding = _validate_bindings(evidence, failures)
+    layer_failures_before = len(failures)
+    suitability_result = _suitability_layer(suitability, binding, failures)
+    suitability_result["passed"] = len(failures) == layer_failures_before
+
     layer_failures_before = len(failures)
     release_result = _release_layer(release_validity, failures)
     release_result["passed"] = not any(item["layer"] == "release_validity" for item in failures[layer_failures_before:])
@@ -401,6 +509,7 @@ def evaluate_promotion(
 
     failures.sort(key=lambda item: (item["layer"], item["path"], item["code"], item["message"]))
     layers = {
+        "corpus_suitability": suitability_result,
         "release_validity": release_result,
         "retrieval": retrieval_result,
         "grounded_answer": answer_result,

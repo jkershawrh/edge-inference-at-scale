@@ -18,15 +18,18 @@ Corpus Factory roadmap. A live event must not be promoted until that drill passe
 
 ## Evaluation layers
 
-The promotion suite has four independently reported layers:
+The promotion suite has five independently reported layers:
 
-1. **Release validity:** schema, lineage, scope, freshness, conflicts, licenses,
+1. **Corpus suitability:** the event-policy-required facts, documents, authority,
+   geography, language, audience, channel, freshness, independent sources, and
+   positive/boundary/no-answer cases are complete for every declared scope.
+2. **Release validity:** schema, lineage, scope, freshness, conflicts, licenses,
    approvals, hashes, signatures, and artifact completeness.
-2. **Retrieval:** whether the correct canonical evidence is returned, without
+3. **Retrieval:** whether the correct canonical evidence is returned, without
    requiring an LLM.
-3. **Grounded answer:** whether the configured LLM answers only from retrieved,
+4. **Grounded answer:** whether the configured LLM answers only from retrieved,
    permitted evidence and cites it correctly, or refuses safely.
-4. **Edge operation:** indexing, latency, memory, storage, restart, and local
+5. **Edge operation:** indexing, latency, memory, storage, restart, and local
    smoke tests on every declared Lil EVY resource profile.
 
 Failure in one layer cannot be offset by a higher score in another. Release

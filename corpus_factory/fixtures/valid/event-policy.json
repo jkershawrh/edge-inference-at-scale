@@ -1,0 +1,117 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "event_policy",
+  "policy_id": "policy-field-event-2026",
+  "event_id": "field-event-2026",
+  "version": "1.0.0",
+  "mission": "Provide verified, locally appropriate answers through constrained edge delivery channels.",
+  "deployment_scope": {
+    "deployment_ids": ["site-north"],
+    "geographies": ["region-north"],
+    "languages": ["en"],
+    "audiences": ["public"],
+    "delivery_channels": ["sms", "lora"]
+  },
+  "authority_registry": [
+    {
+      "authority_id": "authority-public-safety",
+      "name": "Public Safety Authority",
+      "authority_class": "official",
+      "publisher_ids": ["publisher-public-safety"],
+      "source_ids": ["source-shelter-primary", "source-shelter-secondary"],
+      "subjects": ["shelter-status", "route-status"],
+      "geographies": ["region-north"]
+    },
+    {
+      "authority_id": "authority-local-review",
+      "name": "Local Review Group",
+      "authority_class": "community",
+      "publisher_ids": ["publisher-local-review"],
+      "source_ids": ["source-local-context"],
+      "subjects": ["local-context"],
+      "geographies": ["region-north"]
+    }
+  ],
+  "coverage_requirements": [
+    {
+      "requirement_id": "coverage-critical-status",
+      "safety_class": "critical",
+      "selector": {
+        "required_fact_ids": ["shelter-status"],
+        "required_document_ids": []
+      },
+      "scope": {
+        "languages": ["en"],
+        "geographies": ["region-north"],
+        "audiences": ["public"],
+        "delivery_channels": ["sms", "lora"]
+      },
+      "minimum_approved_documents": 1,
+      "minimum_independent_sources": 2,
+      "allowed_authority_classes": ["official", "delegated"],
+      "freshness": {
+        "require_valid_at_activation": true,
+        "maximum_age_seconds": 3600,
+        "stale_action": "block"
+      },
+      "evaluation_cases": {
+        "minimum_positive": 3,
+        "minimum_boundary": 2,
+        "minimum_no_answer": 2
+      }
+    },
+    {
+      "requirement_id": "coverage-advisory-context",
+      "safety_class": "advisory",
+      "selector": {
+        "required_fact_ids": [],
+        "required_document_ids": ["doc-local-context"]
+      },
+      "scope": {
+        "languages": ["en"],
+        "geographies": ["region-north"],
+        "audiences": ["public"],
+        "delivery_channels": ["sms"]
+      },
+      "minimum_approved_documents": 1,
+      "minimum_independent_sources": 1,
+      "allowed_authority_classes": ["community", "expert"],
+      "freshness": {
+        "require_valid_at_activation": true,
+        "maximum_age_seconds": 86400,
+        "stale_action": "warn"
+      },
+      "evaluation_cases": {
+        "minimum_positive": 1,
+        "minimum_boundary": 1,
+        "minimum_no_answer": 1
+      }
+    }
+  ],
+  "no_answer_policy": {
+    "response_action": "escalate",
+    "escalation_required": true,
+    "escalation_route": "local-operations-desk",
+    "message_template": "Verified information is unavailable. Contact the local operations desk."
+  },
+  "human_approval_attestations": [
+    {
+      "attestation_id": "approval-domain-001",
+      "reviewer_identity": "domain.reviewer@example.test",
+      "reviewer_role": "domain_sme",
+      "independence_group": "regional-safety-office",
+      "decision": "approve",
+      "policy_digest": "sha256:eecaabf182ed4bb2fa22d2d12909f4862562840691e7f79cc3cc4ef82ed3a968",
+      "approved_at": "2026-10-06T12:00:00Z"
+    },
+    {
+      "attestation_id": "approval-local-001",
+      "reviewer_identity": "local.reviewer@example.test",
+      "reviewer_role": "local_sme",
+      "independence_group": "community-review-council",
+      "decision": "approve",
+      "policy_digest": "sha256:eecaabf182ed4bb2fa22d2d12909f4862562840691e7f79cc3cc4ef82ed3a968",
+      "approved_at": "2026-10-06T12:05:00Z"
+    }
+  ]
+}

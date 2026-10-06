@@ -27,6 +27,7 @@ SCHEMA_BY_RECORD_TYPE = {
     "review_attestation": "review-attestation.schema.json",
     "release_manifest": "release-manifest.schema.json",
     "activation_receipt": "activation-receipt.schema.json",
+    "event_policy": "event-policy.schema.json",
 }
 
 
@@ -84,6 +85,16 @@ def _ordered_time_window(
         raise ContractValidationError("{0}: {1} must be after {2}".format(label, end_name, start_name))
 
 
+def event_policy_subject_digest(instance: Mapping[str, Any]) -> str:
+    """Digest the approved policy body without its self-referencing approvals."""
+
+    body = {key: value for key, value in instance.items() if key != "human_approval_attestations"}
+    encoded = json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
 def _semantic_validate(instance: Mapping[str, Any]) -> None:
     record_type = instance["record_type"]
     if record_type == "source_record":
@@ -93,6 +104,23 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
             raise ContractValidationError("last_verified_at cannot precede acquired_at")
         _ordered_time_window(instance["freshness"], "effective_from", "valid_until", "freshness")
     elif record_type == "canonical_document":
+        expected_digest = "sha256:" + hashlib.sha256(
+            instance["canonical_text"].encode("utf-8")
+        ).hexdigest()
+        if instance["document_digest"] != expected_digest:
+            raise ContractValidationError(
+                "document_digest does not match canonical_text"
+            )
+        document_sources = {
+            (citation["source_id"], citation["evidence_digest"])
+            for citation in instance["source_citations"]
+        }
+        for fact in instance["structured_facts"]:
+            for citation in fact["citations"]:
+                if (citation["source_id"], citation["evidence_digest"]) not in document_sources:
+                    raise ContractValidationError(
+                        "structured fact citation is absent from document source lineage"
+                    )
         validity = instance["validity"]
         _ordered_time_window(validity, "valid_from", "valid_until", "validity")
         valid_from = _parse_time(validity["valid_from"])
@@ -135,6 +163,53 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
             raise ContractValidationError("successful activation requires passing smoke tests")
         if instance["transition"]["to"] != "ACTIVE":
             raise ContractValidationError("successful activation must transition to ACTIVE")
+    elif record_type == "event_policy":
+        deployment_scope = instance["deployment_scope"]
+        authority_ids = [entry["authority_id"] for entry in instance["authority_registry"]]
+        if len(authority_ids) != len(set(authority_ids)):
+            raise ContractValidationError("event policy authority IDs must be unique")
+        source_ids = [
+            source_id
+            for entry in instance["authority_registry"]
+            for source_id in entry["source_ids"]
+        ]
+        if len(source_ids) != len(set(source_ids)):
+            raise ContractValidationError("event policy source IDs cannot have ambiguous authorities")
+
+        requirement_ids = [
+            requirement["requirement_id"] for requirement in instance["coverage_requirements"]
+        ]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ContractValidationError("event policy requirement IDs must be unique")
+        scope_fields = ("geographies", "languages", "audiences", "delivery_channels")
+        for requirement in instance["coverage_requirements"]:
+            for field in scope_fields:
+                if not set(requirement["scope"][field]).issubset(deployment_scope[field]):
+                    raise ContractValidationError(
+                        "requirement {0} {1} exceeds deployment scope".format(
+                            requirement["requirement_id"], field
+                        )
+                    )
+
+        approvals = instance["human_approval_attestations"]
+        expected_digest = event_policy_subject_digest(instance)
+        if any(item["policy_digest"] != expected_digest for item in approvals):
+            raise ContractValidationError("policy approval digest does not match policy body")
+        for field in ("attestation_id", "reviewer_identity", "reviewer_role", "independence_group"):
+            values = [item[field] for item in approvals]
+            if len(values) != len(set(values)):
+                raise ContractValidationError("policy approvals require unique {0}".format(field))
+        if any(item["safety_class"] == "critical" for item in instance["coverage_requirements"]):
+            roles = {item["reviewer_role"] for item in approvals}
+            if not {"domain_sme", "local_sme"}.issubset(roles):
+                raise ContractValidationError(
+                    "critical event policy requires domain_sme and local_sme approvals"
+                )
+        no_answer = instance["no_answer_policy"]
+        if not no_answer["escalation_required"] and no_answer["escalation_route"] is not None:
+            raise ContractValidationError(
+                "non-escalating no-answer policy cannot name an escalation route"
+            )
 
 
 def validate_instance(

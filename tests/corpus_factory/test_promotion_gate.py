@@ -19,7 +19,11 @@ def _digest(character: str) -> str:
 
 
 def _binding():
-    return {field: _digest(str(index + 1)) for index, field in enumerate(BINDING_FIELDS)}
+    characters = "123456789abcdef"
+    return {
+        field: _digest(characters[index])
+        for index, field in enumerate(BINDING_FIELDS)
+    }
 
 
 def _retrieval_class():
@@ -101,10 +105,25 @@ def _passing_evidence():
             }
         },
     }
-    return release, retrieval, answer, edge
+    suitability = {
+        "report_id": _digest("b"),
+        "decision": "PASS",
+        "failures": [],
+        "requirements": [
+            {"requirement_id": "critical-shelter", "passed": True}
+        ],
+        "bindings": {
+            "event_policy_subject_digest": binding["policy_digest"],
+            "event_policy_record_digest": _digest("c"),
+            "source_aggregate_digest": binding["source_aggregate_digest"],
+            "document_aggregate_digest": binding["document_aggregate_digest"],
+            "case_aggregate_digest": binding["case_aggregate_digest"],
+        },
+    }
+    return release, retrieval, answer, edge, suitability
 
 
-def test_all_four_layers_pass_independently_and_report_is_deterministic():
+def test_all_five_layers_pass_independently_and_report_is_deterministic():
     evidence = _passing_evidence()
     first = evaluate_promotion(*evidence)
     second = evaluate_promotion(*copy.deepcopy(evidence))
@@ -116,20 +135,20 @@ def test_all_four_layers_pass_independently_and_report_is_deterministic():
 
 
 def test_mismatched_artifact_binding_blocks_promotion():
-    release, retrieval, answer, edge = _passing_evidence()
+    release, retrieval, answer, edge, suitability = _passing_evidence()
     answer["binding"]["model_digest"] = _digest("a")
-    report = evaluate_promotion(release, retrieval, answer, edge)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
     assert report["decision"] == "FAIL"
     assert report["binding"]["model_digest"] is None
     assert any(item["code"] == "BINDING_MISMATCH" for item in report["failures"])
 
 
 def test_missing_evidence_fails_closed():
-    release, retrieval, answer, edge = _passing_evidence()
+    release, retrieval, answer, edge, suitability = _passing_evidence()
     del release["checks"]["signatures"]
     del retrieval["safety_classes"]["advisory"]["mrr"]
     del edge["profiles"]["values-lab-small"]["disconnected_smoke_passed"]
-    report = evaluate_promotion(release, retrieval, answer, edge)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
     assert report["decision"] == "FAIL"
     assert report["layers"]["release_validity"]["passed"] is False
     assert report["layers"]["retrieval"]["passed"] is False
@@ -137,19 +156,19 @@ def test_missing_evidence_fails_closed():
 
 
 def test_aggregate_score_cannot_hide_a_critical_case_failure():
-    release, retrieval, answer, edge = _passing_evidence()
+    release, retrieval, answer, edge, suitability = _passing_evidence()
     retrieval["overall_score"] = 1.0
     retrieval["safety_classes"]["critical"]["failed_case_ids"] = ["critical-evacuation-007"]
-    report = evaluate_promotion(release, retrieval, answer, edge)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
     assert report["decision"] == "FAIL"
     assert any(item["code"] == "CRITICAL_CASE_FAILED" for item in report["failures"])
 
 
 def test_each_safety_class_uses_its_own_threshold():
-    release, retrieval, answer, edge = _passing_evidence()
+    release, retrieval, answer, edge, suitability = _passing_evidence()
     retrieval["safety_classes"]["high"]["recall_at_3"] = 0.989
     retrieval["safety_classes"]["standard"]["recall_at_3"] = 0.97
-    report = evaluate_promotion(release, retrieval, answer, edge)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
     assert report["decision"] == "FAIL"
     paths = [item["path"] for item in report["failures"]]
     assert "retrieval.safety_classes.high.recall_at_3" in paths
@@ -157,10 +176,10 @@ def test_each_safety_class_uses_its_own_threshold():
 
 
 def test_cli_writes_report_and_returns_nonzero_when_blocked(tmp_path):
-    release, retrieval, answer, edge = _passing_evidence()
+    release, retrieval, answer, edge, suitability = _passing_evidence()
     answer["safety_classes"]["critical"]["unsupported_claim_rate"] = 0.01
     paths = []
-    for index, value in enumerate((release, retrieval, answer, edge)):
+    for index, value in enumerate((release, retrieval, answer, edge, suitability)):
         path = tmp_path / f"evidence-{index}.json"
         path.write_text(json.dumps(value), encoding="utf-8")
         paths.append(path)
@@ -173,6 +192,7 @@ def test_cli_writes_report_and_returns_nonzero_when_blocked(tmp_path):
             "--retrieval", str(paths[1]),
             "--grounded-answer", str(paths[2]),
             "--edge-profiles", str(paths[3]),
+            "--suitability", str(paths[4]),
             "--output", str(output),
         ],
         cwd=ROOT,
@@ -182,3 +202,28 @@ def test_cli_writes_report_and_returns_nonzero_when_blocked(tmp_path):
     )
     assert result.returncode == 1
     assert json.loads(output.read_text(encoding="utf-8"))["decision"] == "FAIL"
+
+
+def test_suitability_failure_blocks_otherwise_passing_release():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    suitability["decision"] = "FAIL"
+    suitability["failures"] = [{"code": "MISSING_REQUIRED_FACT"}]
+    suitability["requirements"][0]["passed"] = False
+
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+
+    assert report["decision"] == "FAIL"
+    assert report["layers"]["corpus_suitability"]["passed"] is False
+
+
+def test_suitability_policy_binding_must_match_promoted_tuple():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    suitability["bindings"]["event_policy_subject_digest"] = _digest("f")
+
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+
+    assert report["decision"] == "FAIL"
+    assert any(
+        item["layer"] == "corpus_suitability" and item["code"] == "BINDING_MISMATCH"
+        for item in report["failures"]
+    )

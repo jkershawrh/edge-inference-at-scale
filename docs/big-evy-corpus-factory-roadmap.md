@@ -372,9 +372,11 @@ Already implemented:
 - Retrieval and end-to-end answer evaluation entry points
 - Strict v2 source, canonical-document, chunk, review, release, and receipt
   schemas with golden valid/invalid fixtures
+- Strict event/deployment policy packs and deterministic corpus-suitability
+  reports that block operationally incomplete corpora even when packaging is valid
 - Allowlisted local intake, immutable content-addressed evidence, registry-owned
   stable identities, canonical provenance, and deterministic exact-span chunks
-- Four-layer release, retrieval, grounded-answer, and edge-profile promotion gate
+- Five-layer suitability, release, retrieval, grounded-answer, and edge-profile promotion gate
   bound to exact artifact and runtime digests
 - Fail-closed Lil EVY staging, explicit verification results, local indexing,
   smoke testing, atomic activation, monotonic receipt counters, anti-rollback

@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0.0", "record_type": "review_attestation", "attestation_id": "review-shelter-alpha-domain",
-  "subject": {"type": "document", "id": "region4-shelter-alpha", "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+  "subject": {"type": "document", "id": "region4-shelter-alpha", "digest": "sha256:c1ea0d8ecdbff2dfcd2ffccd38e18e8c05f80ef10e2cefd3d356f8e304d202f9"},
   "reviewer": {"identity": "urn:example:person:domain-sme-9", "role": "domain_sme", "organization": "Region 4 Emergency Management Office"},
   "decision": "auto_approved", "checklist": {"id": "critical-shelter-review", "version": "3.1", "responses_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
   "reviewed_at": "2026-10-05T18:20:00Z", "comments": "", "independence_group": "region4-operations-review", "critical_approvals_required": 2,

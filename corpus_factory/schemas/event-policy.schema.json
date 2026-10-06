@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/event-policy.schema.json",
+  "title": "EventDeploymentPolicy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_type",
+    "policy_id",
+    "event_id",
+    "version",
+    "mission",
+    "deployment_scope",
+    "authority_registry",
+    "coverage_requirements",
+    "no_answer_policy",
+    "human_approval_attestations"
+  ],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "record_type": {"const": "event_policy"},
+    "policy_id": {"$ref": "#/$defs/id"},
+    "event_id": {"$ref": "#/$defs/id"},
+    "version": {"$ref": "#/$defs/semver"},
+    "mission": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "deployment_scope": {"$ref": "#/$defs/deploymentScope"},
+    "authority_registry": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/authorityEntry"}
+    },
+    "coverage_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/coverageRequirement"},
+      "contains": {
+        "type": "object",
+        "required": ["safety_class"],
+        "properties": {"safety_class": {"const": "critical"}}
+      },
+      "minContains": 1
+    },
+    "no_answer_policy": {"$ref": "#/$defs/noAnswerPolicy"},
+    "human_approval_attestations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/approvalAttestation"}
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
+    "language": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+    },
+    "deliveryChannel": {
+      "enum": ["sms", "lora", "discord", "web", "voice"]
+    },
+    "authorityClass": {
+      "enum": ["official", "delegated", "expert", "community", "advisory", "unverified"]
+    },
+    "safetyClass": {
+      "enum": ["advisory", "standard", "high", "critical"]
+    },
+    "deploymentScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deployment_ids",
+        "geographies",
+        "languages",
+        "audiences",
+        "delivery_channels"
+      ],
+      "properties": {
+        "deployment_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "geographies": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/language"}
+        },
+        "audiences": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "delivery_channels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/deliveryChannel"}
+        }
+      }
+    },
+    "authorityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority_id", "name", "authority_class", "publisher_ids", "source_ids", "subjects", "geographies"],
+      "properties": {
+        "authority_id": {"$ref": "#/$defs/id"},
+        "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "authority_class": {"$ref": "#/$defs/authorityClass"},
+        "publisher_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "source_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "subjects": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "geographies": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_fact_ids", "required_document_ids"],
+      "properties": {
+        "required_fact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        },
+        "required_document_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/id"}
+        }
+      },
+      "anyOf": [
+        {"properties": {"required_fact_ids": {"minItems": 1}}},
+        {"properties": {"required_document_ids": {"minItems": 1}}}
+      ]
+    },
+    "requirementScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["languages", "geographies", "audiences", "delivery_channels"],
+      "properties": {
+        "languages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/language"}
+        },
+        "geographies": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "audiences": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "delivery_channels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/deliveryChannel"}
+        }
+      }
+    },
+    "freshnessPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["require_valid_at_activation", "maximum_age_seconds", "stale_action"],
+      "properties": {
+        "require_valid_at_activation": {"type": "boolean"},
+        "maximum_age_seconds": {"type": "integer", "minimum": 60},
+        "stale_action": {"enum": ["block", "warn", "allow"]}
+      }
+    },
+    "evaluationCases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_positive", "minimum_boundary", "minimum_no_answer"],
+      "properties": {
+        "minimum_positive": {"type": "integer", "minimum": 1},
+        "minimum_boundary": {"type": "integer", "minimum": 1},
+        "minimum_no_answer": {"type": "integer", "minimum": 1}
+      }
+    },
+    "coverageRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirement_id",
+        "safety_class",
+        "selector",
+        "scope",
+        "minimum_approved_documents",
+        "minimum_independent_sources",
+        "allowed_authority_classes",
+        "freshness",
+        "evaluation_cases"
+      ],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/id"},
+        "safety_class": {"$ref": "#/$defs/safetyClass"},
+        "selector": {"$ref": "#/$defs/selector"},
+        "scope": {"$ref": "#/$defs/requirementScope"},
+        "minimum_approved_documents": {"type": "integer", "minimum": 1},
+        "minimum_independent_sources": {"type": "integer", "minimum": 1},
+        "allowed_authority_classes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/authorityClass"}
+        },
+        "freshness": {"$ref": "#/$defs/freshnessPolicy"},
+        "evaluation_cases": {"$ref": "#/$defs/evaluationCases"}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"safety_class": {"const": "critical"}},
+            "required": ["safety_class"]
+          },
+          "then": {
+            "properties": {
+              "freshness": {
+                "properties": {"stale_action": {"const": "block"}}
+              }
+            }
+          }
+        }
+      ]
+    },
+    "noAnswerPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["response_action", "escalation_required", "escalation_route", "message_template"],
+      "properties": {
+        "response_action": {"enum": ["decline", "escalate", "safe_fallback"]},
+        "escalation_required": {"type": "boolean"},
+        "escalation_route": {"oneOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "message_template": {"type": "string", "minLength": 1, "maxLength": 512}
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {"escalation_required": {"const": true}},
+            "required": ["escalation_required"]
+          },
+          "then": {"properties": {"escalation_route": {"$ref": "#/$defs/id"}}}
+        }
+      ]
+    },
+    "approvalAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attestation_id",
+        "reviewer_identity",
+        "reviewer_role",
+        "independence_group",
+        "decision",
+        "policy_digest",
+        "approved_at"
+      ],
+      "properties": {
+        "attestation_id": {"$ref": "#/$defs/id"},
+        "reviewer_identity": {"type": "string", "minLength": 3, "maxLength": 256},
+        "reviewer_role": {
+          "enum": ["domain_sme", "local_sme", "data_protection", "release_approver"]
+        },
+        "independence_group": {"type": "string", "minLength": 1, "maxLength": 128},
+        "decision": {"const": "approve"},
+        "policy_digest": {"$ref": "#/$defs/digest"},
+        "approved_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

@@ -1,6 +1,6 @@
 {
   "schema_version": "2.0.0", "record_type": "canonical_document",
-  "document_id": "region4-shelter-alpha", "revision": 2, "document_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "document_id": "region4-shelter-alpha", "revision": 2, "document_digest": "sha256:c1ea0d8ecdbff2dfcd2ffccd38e18e8c05f80ef10e2cefd3d356f8e304d202f9",
   "event_id": "region4-flood-2026", "deployment_ids": ["region4-public-response"],
   "scope": {"geographies": ["US-EX-R4"], "languages": ["en-US"], "audiences": ["public"]}, "canonical_text": "Shelter Alpha opens at 08:00.", "structured_facts": [],
   "source_citations": [{"source_id": "region4-emergency-office-shelters", "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "location": "$.shelters[0]"}],

@@ -30,7 +30,7 @@ def _document(document_id, value, *, geography="north", safety="critical", rank=
         "record_type": "canonical_document",
         "document_id": document_id,
         "revision": 1,
-        "document_digest": _digest(text),
+        "document_digest": "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(),
         "event_id": "storm-2026",
         "deployment_ids": ["deployment-a"],
         "scope": {

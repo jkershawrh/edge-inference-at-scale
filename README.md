@@ -156,12 +156,22 @@ and Lil EVY activation plan is saved in
 
 The first factory/runtime contract is now executable: allowlisted files become
 immutable evidence snapshots, provenance-linked canonical documents, and
-deterministic chunks; four independent promotion layers bind to the exact
+deterministic chunks; five independent promotion layers bind to the exact
 release/model/retrieval identities; and Lil EVY stages, verifies, tests, and
 atomically activates a signed corpus without lowering its anti-rollback floor.
 
+The factory is domain-agnostic, but promotion is not. Each deployment supplies
+an event policy that names the accepted authorities, required operational facts,
+scope intersections, freshness limits, independent-source minimums, human
+approvals, and safe no-answer behavior. The resulting suitability report is an
+input to release promotion, so packaging success cannot hide missing or stale
+field information. See
+[docs/corpus-suitability.md](docs/corpus-suitability.md).
+
 ```bash
 make test-corpus-factory
+make test-corpus-suitability
+python scripts/evaluate_corpus_suitability.py --help
 python scripts/evaluate_corpus_release.py --help
 ```
 
