@@ -61,8 +61,22 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
-          {{- if .Values.rag.corpus.enabled }}
+          {{- if or .Values.rag.corpus.enabled .Values.rag.activation.enabled }}
           env:
+            {{- if .Values.rag.activation.enabled }}
+            - name: CORPUS_ACTIVATION_ROOT
+              value: {{ .Values.rag.activation.root | quote }}
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: CORPUS_READ_ONLY
+              value: "true"
+            - name: CORPUS_REQUIRE_SIGNATURE
+              value: "true"
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /var/run/corpus-key/public-key.pem
+            {{- else }}
             - name: SUMMIT_DATA_DIR
               value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}"
             - name: CORPUS_MANIFEST_PATH
@@ -78,6 +92,7 @@ spec:
             {{- if .Values.rag.corpus.publicKeySecretName }}
             - name: CORPUS_PUBLIC_KEY_PATH
               value: /var/run/corpus-key/public-key.pem
+            {{- end }}
             {{- end }}
           {{- end }}
           readinessProbe:
@@ -99,7 +114,7 @@ spec:
           volumeMounts:
             - name: rag-data
               mountPath: /data
-            {{- if and .Values.rag.corpus.enabled .Values.rag.corpus.publicKeySecretName }}
+            {{- if and (or .Values.rag.corpus.enabled .Values.rag.activation.enabled) .Values.rag.corpus.publicKeySecretName }}
             - name: corpus-public-key
               mountPath: /var/run/corpus-key
               readOnly: true
@@ -119,7 +134,7 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
-        {{- if and .Values.rag.corpus.enabled .Values.rag.corpus.publicKeySecretName }}
+        {{- if and (or .Values.rag.corpus.enabled .Values.rag.activation.enabled) .Values.rag.corpus.publicKeySecretName }}
         - name: corpus-public-key
           secret:
             secretName: {{ .Values.rag.corpus.publicKeySecretName }}

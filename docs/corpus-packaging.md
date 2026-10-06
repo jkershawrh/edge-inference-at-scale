@@ -92,6 +92,36 @@ The active packaged corpus is read-only at the API level: add, bulk-add, and
 delete operations return HTTP 403. Event changes must go through a new reviewed
 package version, which keeps every fleet node reproducible.
 
+## Serve the locally activated release
+
+After a disconnected transfer is verified and the Lil EVY activation manager
+has atomically advanced `/data/activation/current.json`, deploy the RAG service
+in activation-managed mode:
+
+```yaml
+rag:
+  corpus:
+    eventId: flood-response-region-4
+    version: "2026.3"
+    publicKeySecretName: corpus-signing-key
+  activation:
+    enabled: true
+    root: /data/activation
+```
+
+On every process start, the RAG service resolves the active pointer, enforces
+the anti-rollback sequence floor and activation state, rejects path escapes and
+symbolic links, checks that the pointer digest is the manifest digest, and then
+revalidates the package hashes and Ed25519 signature. Any disagreement prevents
+the service from starting; it never silently falls back to an unpackaged corpus.
+
+`GET /activation/status` exposes the bounded active digest, sequence, floor,
+mode, and readiness state without exposing filesystem paths or package content.
+This first runtime slice changes releases at a deliberate service restart after
+activation. Live hot-swap and the authenticated activation POST endpoint remain
+separate control-plane work; callers cannot activate arbitrary local paths
+through the RAG API.
+
 ## Promotion gates
 
 Before promoting a package to field nodes:

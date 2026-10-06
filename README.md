@@ -166,6 +166,9 @@ immutable evidence snapshots, provenance-linked canonical documents, and
 deterministic chunks; five independent promotion layers bind to the exact
 release/model/retrieval identities; and Lil EVY stages, verifies, tests, and
 atomically activates a signed corpus without lowering its anti-rollback floor.
+The RAG runtime can now boot directly from that durable active pointer, reverify
+the selected signed package, expose a bounded activation status, and fail closed
+instead of falling back to unrelated local data.
 
 The factory is domain-agnostic, but promotion is not. Each deployment supplies
 an event policy that names the accepted authorities, required operational facts,

@@ -48,8 +48,40 @@
               "then": {"properties": {"publicKeySecretName": {"minLength": 1}}}
             }
           ]
+        },
+        "activation": {
+          "type": "object",
+          "required": ["enabled", "root"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "root": {"type": "string", "pattern": "^/.*$", "minLength": 2}
+          },
+          "additionalProperties": false
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["activation"],
+            "properties": {
+              "activation": {
+                "properties": {"enabled": {"const": true}},
+                "required": ["enabled"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "corpus": {
+                "properties": {
+                  "enabled": {"const": false},
+                  "publicKeySecretName": {"minLength": 1}
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

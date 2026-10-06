@@ -113,6 +113,9 @@ class TestRAGServiceContract:
     def test_has_stats_endpoint(self):
         assert "GET /stats" in self.routes
 
+    def test_has_activation_status_endpoint(self):
+        assert "GET /activation/status" in self.routes
+
     def test_has_bulk_add_endpoint(self):
         assert "POST /documents/bulk-add" in self.routes
 

@@ -64,6 +64,11 @@ rag:
     requireSignature: false
     # Secret must contain public-key.pem when signature verification is required.
     publicKeySecretName: ""
+  # Use after a disconnected transfer has been verified and activated on-node.
+  # The RAG service then resolves current.json and serves only that signed release.
+  activation:
+    enabled: false
+    root: /data/activation
   resources:
     requests:
       cpu: 250m

@@ -317,8 +317,17 @@ class CorpusActivationManager:
                 "RECOVERY" if mode == "recovery" else "ACTIVE", before.get("active_digest"),
                 verification, smoke)
             next_current["device_counter"] = success_receipt.device_counter
+            final_state = (
+                ActivationState.RECOVERY
+                if mode == "recovery"
+                else ActivationState.ACTIVE
+            )
+            # The pointer is the commit record. Persist the release's final
+            # state first so a sudden loss of power can leave only an
+            # unreferenced candidate, never a pointer to an unfinished state.
+            self._record_state(candidate, final_state)
+            last_state = final_state
             self.fs.atomic_write_json(self.current_path, next_current)
-            self._record_state(candidate, ActivationState.RECOVERY if mode == "recovery" else ActivationState.ACTIVE)
             return success_receipt
         except ActivationError:
             raise

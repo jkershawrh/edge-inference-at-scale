@@ -22,6 +22,8 @@ from backend.shared.config import settings
 from backend.shared.models import RAGAddDocumentRequest, RAGQuery, RAGResult, ServiceHealth
 from backend.services.rag_service.document_manager import DocumentManager
 from backend.services.rag_service.corpus_package import validate_corpus_package
+from backend.services.rag_service.active_release import ActiveReleaseResolver
+from backend.services.rag_service.activation_contracts import ActivationStatusResponse
 from backend.services.rag_service.embedding_service import LocalEmbeddingService, SimpleEmbeddingService
 from backend.services.rag_service.retrieval import (
     cosine_distance_to_confidence,
@@ -44,12 +46,33 @@ class RAGService:
         self.embedding_service = LocalEmbeddingService(model_name=settings.embedding_model)
         self.simple_embedding_service = SimpleEmbeddingService()
         self.corpus_manifest = None
+        self.active_release = None
+        self.corpus_read_only = settings.corpus_read_only
+        data_dir = settings.summit_data_dir
         manifest_path = settings.corpus_manifest_path
-        if not manifest_path:
-            candidate = os.path.join(settings.summit_data_dir, "manifest.json")
+        if settings.corpus_activation_root:
+            if not (
+                settings.corpus_event_id
+                and settings.corpus_version
+                and settings.corpus_public_key_path
+            ):
+                raise RuntimeError(
+                    "activation-managed corpus requires event, version, and public key"
+                )
+            self.active_release = ActiveReleaseResolver(
+                settings.corpus_activation_root,
+                expected_event_id=settings.corpus_event_id,
+                expected_version=settings.corpus_version,
+                trusted_public_key_path=settings.corpus_public_key_path,
+            ).resolve()
+            data_dir = str(self.active_release.package_dir)
+            manifest_path = str(self.active_release.manifest_path)
+            self.corpus_read_only = True
+        elif not manifest_path:
+            candidate = os.path.join(data_dir, "manifest.json")
             if os.path.isfile(candidate):
                 manifest_path = candidate
-        if (settings.corpus_require_signature or settings.corpus_read_only) and not manifest_path:
+        if (settings.corpus_require_signature or self.corpus_read_only) and not manifest_path:
             raise RuntimeError("immutable or signed corpus policy requires a package manifest")
         if manifest_path:
             self.corpus_manifest = validate_corpus_package(
@@ -57,9 +80,12 @@ class RAGService:
                 expected_event_id=settings.corpus_event_id,
                 expected_version=settings.corpus_version,
                 public_key_path=settings.corpus_public_key_path,
-                require_signature=settings.corpus_require_signature,
+                require_signature=(
+                    settings.corpus_require_signature
+                    or self.active_release is not None
+                ),
             )
-        self.document_manager = DocumentManager(data_dir=settings.summit_data_dir)
+        self.document_manager = DocumentManager(data_dir=data_dir)
 
         self.stats = {
             "total_searches": 0,
@@ -500,6 +526,20 @@ class RAGService:
                     }
                 except Exception as e:
                     chromadb_stats = {"status": "error", "error": str(e)}
+            activation = None
+            if self.active_release is not None:
+                status = self.active_release.status
+                activation = {
+                    "active_digest": status.digest,
+                    "active_sequence": status.sequence,
+                    "sequence_floor": status.sequence_floor,
+                    "mode": status.mode,
+                    "state": status.activation_state,
+                    "ready": True,
+                    "reason_code": (
+                        "RECOVERY_ACTIVE" if status.mode == "recovery" else "READY"
+                    ),
+                }
             return {
                 **self.stats,
                 "retrieval_timings_ms": self.timing_snapshot(),
@@ -509,6 +549,7 @@ class RAGService:
                 "embedding_fingerprint": self.embedding_fingerprint,
                 "retrieval_index_fingerprint": self.retrieval_index_fingerprint,
                 "corpus": self.corpus_manifest or {"status": "unpackaged"},
+                "activation": activation or {"status": "not_configured"},
             }
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
@@ -563,7 +604,7 @@ async def search_knowledge(query: RAGQuery):
 
 @app.post("/add")
 async def add_document(request: RAGAddDocumentRequest):
-    if settings.corpus_read_only:
+    if rag_service.corpus_read_only:
         raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     doc_id = request.doc_id or hashlib.sha256(request.text.encode("utf-8")).hexdigest()[:12]
     success = await rag_service.add_document(doc_id, request.text, request.metadata)
@@ -577,6 +618,24 @@ async def get_statistics():
     return rag_service.get_stats()
 
 
+@app.get("/activation/status", response_model=ActivationStatusResponse)
+async def get_activation_status():
+    if rag_service.active_release is None:
+        raise HTTPException(
+            status_code=409, detail="Activation-managed corpus is not configured"
+        )
+    status = rag_service.active_release.status
+    return ActivationStatusResponse(
+        active_digest=status.digest,
+        active_sequence=status.sequence,
+        sequence_floor=status.sequence_floor,
+        mode=status.mode,
+        state=status.activation_state,
+        ready=True,
+        reason_code="RECOVERY_ACTIVE" if status.mode == "recovery" else "READY",
+    )
+
+
 @app.get("/categories")
 async def get_categories():
     categories = await rag_service.document_manager.get_all_categories()
@@ -585,7 +644,7 @@ async def get_categories():
 
 @app.post("/documents/bulk-add")
 async def bulk_add_documents(documents: List[Dict[str, Any]]):
-    if settings.corpus_read_only:
+    if rag_service.corpus_read_only:
         raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     try:
         doc_ids = await rag_service.document_manager.bulk_add_documents(documents)
@@ -608,7 +667,7 @@ async def bulk_add_documents(documents: List[Dict[str, Any]]):
 
 @app.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):
-    if settings.corpus_read_only:
+    if rag_service.corpus_read_only:
         raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     success = await rag_service.document_manager.delete_document(doc_id)
     if success and rag_service.collection:

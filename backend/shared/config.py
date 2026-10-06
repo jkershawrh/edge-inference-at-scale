@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     corpus_public_key_path: Optional[str] = None
     corpus_require_signature: bool = False
     corpus_read_only: bool = False
+    corpus_activation_root: Optional[str] = None
 
     # Kafka (AMQ Streams)
     kafka_bootstrap_servers: str = "kafka:9092"
