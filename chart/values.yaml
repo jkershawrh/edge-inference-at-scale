@@ -69,6 +69,32 @@ rag:
   activation:
     enabled: false
     root: /data/activation
+    # Internal control-plane sidecar. It is never exposed by an OpenShift Route.
+    operator:
+      enabled: false
+      port: 8014
+      intakeRoot: /data/activation-intake
+      clusterId: ""
+      siteId: ""
+      bearerSecretName: ""
+      bearerSecretKey: bearer-token
+      receiptSecretName: ""
+      receiptPrivateKeyKey: private-key.pem
+      receiptKeyId: ""
+      policyDigest: ""
+      runtimeVersion: ""
+      chunkerDigest: ""
+      modelDigest: ""
+      embeddingModelDigest: ""
+      timeConfidence: trusted
+      maxRequestBytes: 8192
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
   resources:
     requests:
       cpu: 250m

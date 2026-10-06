@@ -126,6 +126,85 @@ spec:
             limits:
               cpu: {{ .Values.rag.resources.limits.cpu | quote }}
               memory: {{ .Values.rag.resources.limits.memory }}
+        {{- if .Values.rag.activation.operator.enabled }}
+        - name: activation-operator
+          image: {{ .Values.rag.image }}
+          command:
+            - python3.11
+            - -m
+            - uvicorn
+            - backend.services.rag_service.activation_operator_runtime:create_activation_operator_from_environment
+            - --factory
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.rag.activation.operator.port | quote }}
+          ports:
+            - name: activation
+              containerPort: {{ .Values.rag.activation.operator.port }}
+              protocol: TCP
+          env:
+            - name: ACTIVATION_ROOT
+              value: {{ .Values.rag.activation.root | quote }}
+            - name: ACTIVATION_INTAKE_ROOT
+              value: {{ .Values.rag.activation.operator.intakeRoot | quote }}
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /run/corpus-key/public-key.pem
+            - name: ACTIVATION_RECEIPT_PRIVATE_KEY_PATH
+              value: /run/activation-receipt/private-key.pem
+            - name: ACTIVATION_RECEIPT_KEY_ID
+              value: {{ .Values.rag.activation.operator.receiptKeyId | quote }}
+            - name: ACTIVATION_BEARER_TOKEN_PATH
+              value: /run/activation-operator/bearer-token
+            - name: NODE_ID
+              value: {{ .Values.nodeId | quote }}
+            - name: CLUSTER_ID
+              value: {{ .Values.rag.activation.operator.clusterId | quote }}
+            - name: SITE_ID
+              value: {{ .Values.rag.activation.operator.siteId | quote }}
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: ACTIVATION_POLICY_DIGEST
+              value: {{ .Values.rag.activation.operator.policyDigest | quote }}
+            - name: ACTIVATION_RUNTIME_VERSION
+              value: {{ .Values.rag.activation.operator.runtimeVersion | quote }}
+            - name: ACTIVATION_CHUNKER_DIGEST
+              value: {{ .Values.rag.activation.operator.chunkerDigest | quote }}
+            - name: ACTIVATION_MODEL_DIGEST
+              value: {{ .Values.rag.activation.operator.modelDigest | quote }}
+            - name: ACTIVATION_EMBEDDING_MODEL_DIGEST
+              value: {{ .Values.rag.activation.operator.embeddingModelDigest | quote }}
+            - name: ACTIVATION_TIME_CONFIDENCE
+              value: {{ .Values.rag.activation.operator.timeConfidence | quote }}
+            - name: ACTIVATION_MAX_REQUEST_BYTES
+              value: {{ .Values.rag.activation.operator.maxRequestBytes | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: activation
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: activation
+            periodSeconds: 30
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+            - name: corpus-public-key
+              mountPath: /run/corpus-key
+              readOnly: true
+            - name: activation-operator-credential
+              mountPath: /run/activation-operator
+              readOnly: true
+            - name: activation-receipt-key
+              mountPath: /run/activation-receipt
+              readOnly: true
+          resources:
+            {{- toYaml .Values.rag.activation.operator.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: rag-data
           {{- if .Values.rag.persistence.enabled }}
@@ -138,4 +217,20 @@ spec:
         - name: corpus-public-key
           secret:
             secretName: {{ .Values.rag.corpus.publicKeySecretName }}
+        {{- end }}
+        {{- if .Values.rag.activation.operator.enabled }}
+        - name: activation-operator-credential
+          secret:
+            secretName: {{ .Values.rag.activation.operator.bearerSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.operator.bearerSecretKey }}
+                path: bearer-token
+        - name: activation-receipt-key
+          secret:
+            secretName: {{ .Values.rag.activation.operator.receiptSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.operator.receiptPrivateKeyKey }}
+                path: private-key.pem
         {{- end }}

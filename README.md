@@ -174,6 +174,10 @@ corpus and selected evidence, while signed exceptional recovery remains bound to
 the live node state and suppresses restricted or unclassified recovery evidence.
 Fleet inventory now distinguishes active, recovery, unready, unknown, and drifted
 nodes without claiming compliance until a desired release is configured.
+For OpenShift lab testing, the chart can also enable an internal-only activation
+sidecar. Its credentials are projected from Secrets, a 202 response still
+requires a RAG pod restart, and exact digest/sequence reconciliation prevents an
+accepted package from being mistaken for the release currently serving answers.
 
 The factory is domain-agnostic, but promotion is not. Each deployment supplies
 an event policy that names the accepted authorities, required operational facts,

@@ -117,10 +117,8 @@ the service from starting; it never silently falls back to an unpackaged corpus.
 
 `GET /activation/status` exposes the bounded active digest, sequence, floor,
 mode, and readiness state without exposing filesystem paths or package content.
-This first runtime slice changes releases at a deliberate service restart after
-activation. Live hot-swap and the authenticated activation POST endpoint remain
-separate control-plane work; callers cannot activate arbitrary local paths
-through the RAG API.
+This runtime changes releases at a deliberate service restart after activation.
+Callers cannot activate arbitrary local paths through the RAG API.
 
 The standalone activation-operator application wraps the control core with a
 bounded JSON HTTP interface. It uses constant-time bearer authentication,
@@ -128,9 +126,53 @@ confines every candidate beneath a configured local intake root, rejects
 symlink traversal, and returns only a bounded receipt projection. A successful
 request returns HTTP 202 and explicitly reports that restart or reconciliation
 is required; it never claims to have live-reloaded the RAG process. Device
-receipts can be signed by a node-held Ed25519 key. The operator is intentionally
-not mounted as a RAG route or enabled by the default chart yet: activation and
-serving must not diverge before deployment-level restart coordination is wired.
+receipts can be signed by a node-held Ed25519 key.
+
+The chart can run that operator as an opt-in sidecar beside the RAG process. It
+shares the activation volume but has a separate internal-only ClusterIP Service;
+the public OpenShift Route never exposes it. The bearer credential and node
+receipt private key are mounted from separate Secrets, not placed in a ConfigMap
+or environment value. OpenShift projected-Secret links and group-readable
+`0440` key files are accepted, while escaping links and writable group/other
+permissions fail closed.
+
+```yaml
+rag:
+  corpus:
+    eventId: flood-response-region-4
+    version: "2026.3"
+    publicKeySecretName: corpus-signing-key
+  activation:
+    enabled: true
+    root: /data/activation
+    operator:
+      enabled: true
+      intakeRoot: /data/activation-intake
+      clusterId: relief-cluster-01
+      siteId: region-4-site-01
+      bearerSecretName: activation-operator-token
+      receiptSecretName: activation-receipt-key
+      receiptKeyId: region-4-node-001
+      policyDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
+      runtimeVersion: "1.0.0"
+      chunkerDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
+      modelDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
+      embeddingModelDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
+```
+
+The token Secret must expose `bearer-token` and the receipt Secret must expose
+`private-key.pem` unless their key names are overridden in values. The token is
+32–512 printable ASCII characters. The receipt key is an Ed25519 private key.
+
+HTTP 202 means the signed package was durably activated; it does **not** mean
+the running RAG process serves it. The deployment controller must
+restart the RAG pod and compare `GET /activation/status` with the receipt's exact
+digest and sequence. Reconciliation succeeds only after a post-restart
+production status reports `ACTIVE`, `ready=true`, and `READY`. Attempts and time
+are bounded, and a wrong or recovery-mode target fails rather than being called
+successful. This repository supplies that transport-neutral reconciliation
+state machine; the OpenShift/GitOps controller remains the caller responsible
+for executing the rollout restart.
 
 Exceptional downgrade uses a separately signed recovery authorization bound to
 the event, site, current digest, sequence floor, target digest, trust generation,

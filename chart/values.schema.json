@@ -54,7 +54,58 @@
           "required": ["enabled", "root"],
           "properties": {
             "enabled": {"type": "boolean"},
-            "root": {"type": "string", "pattern": "^/.*$", "minLength": 2}
+            "root": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+            "operator": {
+              "type": "object",
+              "required": [
+                "enabled", "port", "intakeRoot", "clusterId", "siteId",
+                "bearerSecretName", "bearerSecretKey", "receiptSecretName",
+                "receiptPrivateKeyKey", "receiptKeyId", "policyDigest",
+                "runtimeVersion", "chunkerDigest", "modelDigest",
+                "embeddingModelDigest", "timeConfidence", "maxRequestBytes",
+                "resources"
+              ],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                "intakeRoot": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+                "clusterId": {"type": "string"},
+                "siteId": {"type": "string"},
+                "bearerSecretName": {"type": "string"},
+                "bearerSecretKey": {"type": "string", "minLength": 1},
+                "receiptSecretName": {"type": "string"},
+                "receiptPrivateKeyKey": {"type": "string", "minLength": 1},
+                "receiptKeyId": {"type": "string"},
+                "policyDigest": {"type": "string"},
+                "runtimeVersion": {"type": "string"},
+                "chunkerDigest": {"type": "string"},
+                "modelDigest": {"type": "string"},
+                "embeddingModelDigest": {"type": "string"},
+                "timeConfidence": {"enum": ["trusted", "degraded", "unknown"]},
+                "maxRequestBytes": {"type": "integer", "minimum": 256, "maximum": 65536},
+                "resources": {"type": "object"}
+              },
+              "allOf": [
+                {
+                  "if": {"properties": {"enabled": {"const": true}}},
+                  "then": {
+                    "properties": {
+                      "clusterId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "siteId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "bearerSecretName": {"minLength": 1},
+                      "receiptSecretName": {"minLength": 1},
+                      "receiptKeyId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "policyDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "runtimeVersion": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"},
+                      "chunkerDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "modelDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "embeddingModelDigest": {"pattern": "^sha256:[a-f0-9]{64}$"}
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            }
           },
           "additionalProperties": false
         }
@@ -78,6 +129,28 @@
                   "publicKeySecretName": {"minLength": 1}
                 }
               }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "operator": {
+                    "properties": {"enabled": {"const": true}},
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["operator"]
+              }
+            },
+            "required": ["activation"]
+          },
+          "then": {
+            "properties": {
+              "activation": {"properties": {"enabled": {"const": true}}},
+              "persistence": {"properties": {"enabled": {"const": true}}}
             }
           }
         }
