@@ -151,6 +151,7 @@ kafka:
 chromadb:
   image: chromadb/chroma:latest
   storageSize: 5Gi
+  storageClassName: ""
   resources:
     requests:
       cpu: 500m
