@@ -115,6 +115,11 @@ helm upgrade --install edge-inference chart/ \
   -f chart/profiles/values-lab-ventuno-class.yaml
 ```
 
+For disaster, rural, or conflict-zone behavior, also apply
+`chart/profiles/values-field-safety.yaml`. It prevents ungrounded LLM fallback
+and routes emergency questions through approved local RAG evidence. See
+[docs/field-safety-mode.md](docs/field-safety-mode.md).
+
 Use the controlled experiment runner in
 [docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare BitNet
 and candidate runtimes without accidentally changing the corpus, embeddings,

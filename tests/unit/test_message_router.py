@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.shared.config import settings
 from backend.shared.models import (
     MessagePriority,
     MessageType,
@@ -78,6 +79,13 @@ class TestClassifyEmergency:
     def test_emergency_does_not_require_llm(self):
         msg = _make_sms("emergency help fire")
         result = self.router.classify_message(msg)
+        assert result.requires_llm is False
+
+    def test_field_emergency_requires_rag_but_never_llm(self):
+        msg = _make_sms("emergency evacuation now")
+        with patch.object(settings, "emergency_rag_enabled", True):
+            result = self.router.classify_message(msg)
+        assert result.requires_rag is True
         assert result.requires_llm is False
 
     def test_emergency_response_text(self):

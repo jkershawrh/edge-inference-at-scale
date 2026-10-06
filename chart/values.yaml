@@ -29,6 +29,12 @@ discord:
   commandName: ask
   ephemeral: true
 
+# Conference/demo compatibility defaults to preferred grounding. Field
+# deployments should apply chart/profiles/values-field-safety.yaml.
+safety:
+  groundingRequired: false
+  emergencyRagEnabled: false
+
 backend:
   image: quay.io/rh-ai-quickstart/edge-inference-at-scale:latest
   resources:

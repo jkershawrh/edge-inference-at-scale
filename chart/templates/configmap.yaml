@@ -32,4 +32,6 @@ data:
   SMS_ROUTER_TIMEOUT_SECONDS: "60"
   LLM_MAX_INFLIGHT_REQUESTS: "2"
   RAG_DIRECT_THRESHOLD: "0.8"
+  RAG_GROUNDING_REQUIRED: {{ .Values.safety.groundingRequired | quote }}
+  EMERGENCY_RAG_ENABLED: {{ .Values.safety.emergencyRagEnabled | quote }}
   HOME: "/tmp"

@@ -89,6 +89,16 @@ class Settings(BaseSettings):
     llm_request_timeout_seconds: float = 60.0
     llm_max_inflight_requests: int = 2
     rag_direct_threshold: float = 0.7
+    rag_grounding_required: bool = False
+    emergency_rag_enabled: bool = False
+    grounding_failure_message: str = (
+        "I can't verify that from the active local information. "
+        "Please use a trusted local source or responder."
+    )
+    emergency_grounding_failure_message: str = (
+        "I can't verify current emergency guidance. "
+        "Use a trusted local responder or posted emergency instructions."
+    )
     rag_chunk_size_chars: int = 600
     rag_chunk_overlap_chars: int = 120
 

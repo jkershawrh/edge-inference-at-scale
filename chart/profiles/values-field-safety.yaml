@@ -1,0 +1,5 @@
+# Field behavior overlay. Apply with a hardware resource profile and a signed,
+# event-specific corpus configuration.
+safety:
+  groundingRequired: true
+  emergencyRagEnabled: true

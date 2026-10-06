@@ -183,11 +183,12 @@ class MessageRouter:
 
         if emergency_match:
             self.stats["emergency_messages"] += 1
+            use_event_rag = settings.emergency_rag_enabled
             return ProcessedMessage(
                 original_message=message,
                 message_type=MessageType.EMERGENCY,
                 intent="emergency",
-                requires_rag=False,
+                requires_rag=use_event_rag,
                 requires_llm=False,
                 priority=MessagePriority.EMERGENCY,
             )
@@ -598,7 +599,10 @@ class MessageRouter:
         )
 
         # 2. Handle non-routed message types directly
-        if processed.message_type == MessageType.EMERGENCY:
+        if (
+            processed.message_type == MessageType.EMERGENCY
+            and not processed.requires_rag
+        ):
             response_text = self._handle_emergency(processed)
         elif processed.message_type == MessageType.COMMAND:
             response_text = await self._handle_command(processed)
@@ -621,13 +625,28 @@ class MessageRouter:
 
             # 3b. RAG-direct: if top result is high confidence and fits SMS, skip LLM
             rag_threshold = float(os.getenv("RAG_DIRECT_THRESHOLD", settings.rag_direct_threshold))
-            if top_doc and top_score >= rag_threshold and len(top_doc) <= 160:
+            if (
+                top_doc
+                and top_score >= rag_threshold
+                and (
+                    len(top_doc) <= 160
+                    or processed.message_type == MessageType.EMERGENCY
+                )
+            ):
                 response_text = top_doc
                 self.stats.setdefault("rag_direct_responses", 0)
                 self.stats["rag_direct_responses"] += 1
                 logger.info("RAG-direct response (score=%.2f): %.60s...", top_score, top_doc)
 
             # 4. LLM inference (if needed and RAG-direct didn't fire)
+            elif processed.message_type == MessageType.EMERGENCY:
+                response_text = settings.emergency_grounding_failure_message
+                self.stats.setdefault("emergency_grounding_refusals", 0)
+                self.stats["emergency_grounding_refusals"] += 1
+            elif settings.rag_grounding_required and not context:
+                response_text = settings.grounding_failure_message
+                self.stats.setdefault("grounding_refusals", 0)
+                self.stats["grounding_refusals"] += 1
             elif processed.requires_llm:
                 llm_result = await self.route_to_llm(
                     message.content, context, chat_history=history
@@ -646,12 +665,13 @@ class MessageRouter:
                 )
 
             # Store this turn in chat history (only for QUERY messages)
-            try:
-                await self.chat_store.add_turn(
-                    message.sender, message.content, response_text
-                )
-            except Exception as exc:
-                logger.warning("Failed to store chat turn: %s", exc)
+            if processed.message_type == MessageType.QUERY:
+                try:
+                    await self.chat_store.add_turn(
+                        message.sender, message.content, response_text
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to store chat turn: %s", exc)
 
         # 5. Send response back via SMS gateway
         if message.channel == MessageChannel.DISCORD:

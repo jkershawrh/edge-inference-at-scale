@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from backend.shared.models import SMSMessage, MessagePriority, LLMRequest
 from backend.services.message_router.main import MessageRouter
+from backend.shared.config import settings
 from datetime import datetime, timezone
 import uuid
 
@@ -69,6 +70,79 @@ class TestRAGFailure:
         result = await self.router.process_message(_make_sms("When is the keynote?"))
         assert isinstance(result, str)
         assert len(result) > 0
+
+    @pytest.mark.asyncio
+    async def test_field_grounding_mode_refuses_instead_of_calling_llm(self):
+        calls = []
+
+        async def mock_post(url, json=None, timeout=None):
+            calls.append(url)
+            if "/search" in url:
+                raise httpx.TimeoutException("RAG timed out")
+            response = MagicMock()
+            response.status_code = 200
+            response.raise_for_status = MagicMock()
+            return response
+
+        import httpx
+
+        self.router.http_client.post = AsyncMock(side_effect=mock_post)
+        with patch.object(settings, "rag_grounding_required", True):
+            result = await self.router.process_message(
+                _make_sms("Where is the nearest shelter?")
+            )
+
+        assert result == settings.grounding_failure_message
+        assert not any("/inference" in url for url in calls)
+        assert self.router.stats["grounding_refusals"] == 1
+
+    @pytest.mark.asyncio
+    async def test_field_emergency_mode_uses_approved_rag_without_llm(self):
+        guidance = "Evacuate west on Clinic Road and report to North School."
+        calls = []
+
+        async def mock_post(url, json=None, timeout=None):
+            calls.append(url)
+            response = MagicMock()
+            response.status_code = 200
+            response.raise_for_status = MagicMock()
+            if "/search" in url:
+                response.json = MagicMock(
+                    return_value={"documents": [guidance], "scores": [0.95]}
+                )
+            return response
+
+        self.router.http_client.post = AsyncMock(side_effect=mock_post)
+        with patch.object(settings, "emergency_rag_enabled", True):
+            result = await self.router.process_message(
+                _make_sms("Emergency evacuation route?")
+            )
+
+        assert result == guidance
+        assert any("/search" in url for url in calls)
+        assert not any("/inference" in url for url in calls)
+
+    @pytest.mark.asyncio
+    async def test_field_emergency_mode_fails_closed_without_current_guidance(self):
+        calls = []
+
+        async def mock_post(url, json=None, timeout=None):
+            calls.append(url)
+            response = MagicMock()
+            response.status_code = 200
+            response.raise_for_status = MagicMock()
+            if "/search" in url:
+                response.json = MagicMock(return_value={"documents": [], "scores": []})
+            return response
+
+        self.router.http_client.post = AsyncMock(side_effect=mock_post)
+        with patch.object(settings, "emergency_rag_enabled", True):
+            result = await self.router.process_message(_make_sms("Emergency fire"))
+
+        assert result == settings.emergency_grounding_failure_message
+        assert not any("/inference" in url for url in calls)
+        assert "911" not in result
+        assert self.router.stats["emergency_grounding_refusals"] == 1
 
 
 class TestLLMFailure:
