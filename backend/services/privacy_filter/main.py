@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from enum import Enum
 
-from backend.shared.models import SMSMessage, ServiceHealth
+from backend.shared.models import ChannelMessage, ServiceHealth
 from backend.shared.config import settings
 import logging
 
@@ -391,7 +391,7 @@ class PrivacyFilter:
         """Check if a user is blocked."""
         return phone_number in self.blocked_users
     
-    def validate_message(self, message: SMSMessage) -> Dict[str, Any]:
+    def validate_message(self, message: ChannelMessage) -> Dict[str, Any]:
         """Comprehensive message validation."""
         self.stats["total_validations"] += 1
         
@@ -563,7 +563,7 @@ async def health_check():
 
 
 @app.post("/validate")
-async def validate_message(message: SMSMessage):
+async def validate_message(message: ChannelMessage):
     """Validate and sanitize a message."""
     try:
         result = privacy_filter.validate_message(message)
@@ -730,5 +730,3 @@ if __name__ == "__main__":
         port=settings.privacy_filter_port,
         log_level="info"
     )
-
-

@@ -16,6 +16,19 @@ bitnet:
       cpu: "4"
       memory: 4Gi
 
+# The application talks to any OpenAI-compatible local inference server.
+# Keep BitNet as the control while model candidates are evaluated.
+llm:
+  provider: bitnet
+  baseUrl: ""
+  model: bitnet-2b4t
+  modelMemoryMB: 410
+
+discord:
+  publicKey: ""
+  commandName: ask
+  ephemeral: true
+
 backend:
   image: quay.io/rh-ai-quickstart/edge-inference-at-scale:latest
   resources:
@@ -30,6 +43,21 @@ rag:
   image: quay.io/rh-ai-quickstart/edge-inference-rag:latest
   embeddingModel: all-MiniLM-L6-v2
   storageSize: 5Gi
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+  corpus:
+    enabled: false
+    # Use an immutable image digest in production, not a mutable tag.
+    image: ""
+    imagePullPolicy: IfNotPresent
+    eventId: summit-connect
+    version: "2026.1"
+    requireSignature: false
+    # Secret must contain public-key.pem when signature verification is required.
+    publicKeySecretName: ""
   resources:
     requests:
       cpu: 250m

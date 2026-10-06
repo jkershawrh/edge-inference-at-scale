@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://evy.example/schemas/v2/review-attestation.schema.json", "title": "ReviewAttestation",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "record_type", "attestation_id", "subject", "reviewer", "decision", "checklist", "reviewed_at", "comments", "independence_group", "critical_approvals_required", "local_validation"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"}, "record_type": {"const": "review_attestation"}, "attestation_id": {"$ref": "#/$defs/id"},
+    "subject": {"type": "object", "additionalProperties": false, "required": ["type", "id", "digest"], "properties": {"type": {"enum": ["source", "document", "release", "evaluation"]}, "id": {"$ref": "#/$defs/id"}, "digest": {"$ref": "#/$defs/digest"}}},
+    "reviewer": {"type": "object", "additionalProperties": false, "required": ["identity", "role", "organization"], "properties": {"identity": {"type": "string", "minLength": 3}, "role": {"enum": ["source_owner", "domain_sme", "local_sme", "language_reviewer", "data_protection", "release_approver"]}, "organization": {"type": "string", "minLength": 1}}},
+    "decision": {"enum": ["approve", "reject", "changes_required"]},
+    "checklist": {"type": "object", "additionalProperties": false, "required": ["id", "version", "responses_digest"], "properties": {"id": {"$ref": "#/$defs/id"}, "version": {"type": "string", "minLength": 1}, "responses_digest": {"$ref": "#/$defs/digest"}}},
+    "reviewed_at": {"type": "string", "format": "date-time"}, "comments": {"type": "string"}, "independence_group": {"type": "string", "minLength": 1},
+    "critical_approvals_required": {"type": "integer", "minimum": 1},
+    "local_validation": {"type": "object", "additionalProperties": false, "required": ["required", "completed", "language", "community"], "properties": {"required": {"type": "boolean"}, "completed": {"type": "boolean"}, "language": {"type": ["string", "null"], "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"}, "community": {"type": ["string", "null"]}}}
+  },
+  "$defs": {"id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"}, "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}}
+}

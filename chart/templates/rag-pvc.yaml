@@ -1,3 +1,4 @@
+{{- if .Values.rag.persistence.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -7,9 +8,11 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: backend
 spec:
-  storageClassName: nfs-storage
-  accessModes:
-    - ReadWriteOnce
+  {{- if .Values.rag.persistence.storageClassName }}
+  storageClassName: {{ .Values.rag.persistence.storageClassName | quote }}
+  {{- end }}
+  accessModes: {{ toYaml .Values.rag.persistence.accessModes | nindent 4 }}
   resources:
     requests:
       storage: {{ .Values.rag.storageSize }}
+{{- end }}

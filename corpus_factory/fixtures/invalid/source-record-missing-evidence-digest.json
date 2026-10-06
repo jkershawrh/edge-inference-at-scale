@@ -1,0 +1,17 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "source_record",
+  "source_id": "region4-emergency-office-shelters",
+  "publisher": {"id": "region4-emergency-office", "name": "Region 4 Emergency Management Office"},
+  "steward": {"identity": "urn:example:person:source-steward-17", "role": "Emergency information steward"},
+  "authority_class": "official",
+  "locator": {"kind": "url", "reference": "https://example.gov/emergency/shelters.json", "acquisition_method": "https", "connector_id": "allowlisted-gov-http-v1", "acquisition_policy_version": "2026.1"},
+  "acquired_at": "2026-10-05T18:00:00Z",
+  "last_verified_at": "2026-10-05T18:05:00Z",
+  "evidence": {"media_type": "application/json", "byte_size": 8421},
+  "rights": {"license": "US Government Work", "redistribution": "permitted", "restrictions": []},
+  "scope": {"geographies": ["US-EX-R4"], "languages": ["en-US"], "audiences": ["public"], "subjects": ["emergency-shelters"]},
+  "freshness": {"effective_from": "2026-10-05T18:00:00Z", "valid_until": "2026-10-06T18:00:00Z", "expected_refresh_seconds": 3600, "stale_action": "block"},
+  "sensitivity": "public",
+  "distribution": "public"
+}

@@ -1,12 +1,12 @@
 # Edge Inference at Scale
 
-**SMS → LLM → SMS** | AI at the edge, powered by **Red Hat** + **Intel**
+**Message → RAG/LLM → Message** | Offline AI at the edge
 
-> In a warzone, disaster zone, or underserved community — anywhere 2G cellular works — people can text in and get knowledge back. No internet. No app. No GPU. Just SMS and a 1-bit language model running on CPU.
+> In a warzone, disaster zone, or underserved community — anywhere a local radio or 2G link works — people can request knowledge and get a response without internet access.
 
 ## What This Is
 
-A reference architecture and live demo showing how to deploy LLM inference at the edge with minimal resources. Users send SMS messages and receive AI-generated responses powered by a **BitNet 1.58-bit ternary model** (~400MB, CPU-only) with **Retrieval-Augmented Generation** for domain-specific knowledge.
+A reference architecture and live demo showing how to deploy resource-constrained inference and **Retrieval-Augmented Generation** at the edge. BitNet remains the small CPU control model, while the inference boundary can target any local OpenAI-compatible runtime for model and hardware evaluation.
 
 The demo scenario is a conference assistant for **Summit Connect**, but the architecture works for any edge deployment: disaster relief coordination, community information hubs, agricultural advisories, health triage — anywhere information access matters and infrastructure is limited.
 
@@ -22,8 +22,8 @@ The demo scenario is a conference assistant for **Summit Connect**, but the arch
   │   (GSM/Twilio)  (Redis         │         │                    │
   │                  Streams)       ▼         ▼                   │
   │   SMS Out ◄──────────── RAG Service   LLM Inference           │
-  │                        (OpenVINO +    (BitNet b1.58           │
-  │                         MiniLM)       via llama.cpp)          │
+  │                        (OpenVINO +    (OpenAI-compatible      │
+  │                         MiniLM)       local provider)         │
   │                                                               │
   │   Privacy Filter     Redis Streams     ChromaDB               │
   ├───────────────────────────────────────────────────────────────┤
@@ -57,7 +57,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **LLM** | BitNet b1.58-2B-4T via llama.cpp | 1-bit ternary weights → integer-only math → no GPU needed |
+| **LLM** | OpenAI-compatible local provider | Compare BitNet, GGUF models, and accelerator runtimes without changing the pipeline |
 | **RAG** | ChromaDB + MiniLM-L6-v2 (OpenVINO) | Lightweight vector search for domain knowledge |
 | **Services** | FastAPI (Python) on UBI9 | Microservice architecture |
 | **SMS** | Simulated (Twilio-ready) | GSM modem or Twilio webhook in production |
@@ -85,8 +85,74 @@ No frontend on the node — it's pure backend, like a real edge deployment. Metr
 ```bash
 curl http://localhost:8000/services/health     # All services
 curl http://localhost:8000/llm/stats           # Inference latency
-curl http://localhost:8000/router/statistics   # Message throughput
+curl http://localhost:8000/router/statistics   # Throughput + RAG/LLM/delivery stage timing
 ```
+
+### Provider and resource experiments
+
+BitNet remains the default control. Point the same application image at another
+OpenAI-compatible local server with environment variables:
+
+```bash
+LLM_PROVIDER=llama-cpp \
+LLM_BASE_URL=http://model-server:8080 \
+LLM_MODEL=ministral-3b-q4 \
+docker compose up
+```
+
+The Helm chart includes three OpenShift laboratory envelopes. They validate
+memory floors, concurrency, queueing, RAG quality, and latency; CPU quotas do
+not predict ARM/NPU speed or physical power draw.
+
+```bash
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-small.yaml
+
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-balanced.yaml
+
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-ventuno-class.yaml
+```
+
+Use the controlled experiment runner in
+[docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare BitNet
+and candidate runtimes without accidentally changing the corpus, embeddings,
+evaluation set, retrieval depth, or resource envelope.
+
+For two-way conversational testing before GSM hardware is available, use the
+signed Discord `/ask` adapter described in
+[docs/discord-testing.md](docs/discord-testing.md). Discord is only a development
+transport; the core router now uses a channel-neutral envelope so the field SMS
+and LoRa paths remain independent.
+
+### Validate retrieval before comparing LLMs
+
+The RAG service explicitly uses the configured embedding model for both corpus
+indexing and query vectors. Its Chroma collection and local embedding cache are
+versioned by model identity, so switching models builds a compatible index while
+leaving the prior index intact.
+
+Load the complete Summit Connect corpus, then measure retrieval independently of
+the LLM and message transport:
+
+```bash
+make corpus-load
+make test-retrieval-evaluation
+```
+
+The retrieval gate reports evidence recall at 3, mean reciprocal rank, and p50/
+p95 latency. Run `make test-evaluation` separately for end-to-end answer quality;
+this distinction makes it clear whether a miss came from retrieval or generation.
+
+For field rollout, package each event corpus as an immutable, optionally signed
+OCI image. Event/version identity, integrity checks, rollback behavior, and the
+OpenShift promotion workflow are documented in
+[docs/corpus-packaging.md](docs/corpus-packaging.md).
+
+The complete connected Big EVY sourcing, governance, evaluation, distribution,
+and Lil EVY activation plan is saved in
+[docs/big-evy-corpus-factory-roadmap.md](docs/big-evy-corpus-factory-roadmap.md).
 
 ## Micronode Footprint
 
@@ -134,7 +200,7 @@ In the field: truck nodes to the affected area, power them up, they start servin
 │   └── services/
 │       ├── sms_gateway/           # SMS simulation + Twilio stub
 │       ├── message_router/        # Classify → RAG → LLM → respond
-│       ├── llm_inference/         # BitNet server wrapper
+│       ├── llm_inference/         # Hardware-neutral model-provider adapter
 │       ├── rag_service/           # ChromaDB + OpenVINO embeddings
 │       └── privacy_filter/        # PII detection, rate limiting
 ├── data/summit_connect/           # RAG knowledge corpus

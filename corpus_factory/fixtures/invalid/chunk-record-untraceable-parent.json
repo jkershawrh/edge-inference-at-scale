@@ -1,0 +1,8 @@
+{
+  "schema_version": "2.0.0", "record_type": "chunk_record", "chunk_id": "region4-shelter-alpha-r2-c0001",
+  "parent": {"document_id": "region4-shelter-alpha", "revision": 2},
+  "content": "Shelter Alpha opens at 08:00.", "content_digest": "sha256:c1ea0d8ecdbff2dfcd2ffccd38e18e8c05f80ef10e2cefd3d356f8e304d202f9",
+  "source_span": {"unit": "unicode_code_point", "start": 0, "end": 29}, "section_path": ["Shelters"],
+  "chunker": {"name": "evy-section-chunker", "version": "2.0.0", "configuration": {}, "code_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+  "language": "en-US", "token_count": 7, "scope": {"event_id": "region4-flood-2026", "geographies": ["US-EX-R4"], "audiences": ["public"]}
+}

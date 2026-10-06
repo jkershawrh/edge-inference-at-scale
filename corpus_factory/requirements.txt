@@ -1,0 +1,3 @@
+# Big EVY Corpus Factory dependencies. These are intentionally separate from
+# the Lil EVY runtime image.
+jsonschema>=4.21,<5

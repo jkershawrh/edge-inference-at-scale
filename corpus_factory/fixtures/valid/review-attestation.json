@@ -1,0 +1,8 @@
+{
+  "schema_version": "2.0.0", "record_type": "review_attestation", "attestation_id": "review-shelter-alpha-domain",
+  "subject": {"type": "document", "id": "region4-shelter-alpha", "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+  "reviewer": {"identity": "urn:example:person:domain-sme-9", "role": "domain_sme", "organization": "Region 4 Emergency Management Office"},
+  "decision": "approve", "checklist": {"id": "critical-shelter-review", "version": "3.1", "responses_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+  "reviewed_at": "2026-10-05T18:20:00Z", "comments": "Verified against the signed operational roster.", "independence_group": "region4-operations-review", "critical_approvals_required": 2,
+  "local_validation": {"required": true, "completed": true, "language": "en-US", "community": "Region 4 county coordinators"}
+}

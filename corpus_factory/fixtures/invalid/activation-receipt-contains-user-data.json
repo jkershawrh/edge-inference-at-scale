@@ -1,0 +1,10 @@
+{
+  "schema_version": "2.0.0", "record_type": "activation_receipt", "receipt_id": "123e4567-e89b-42d3-a456-426614174001",
+  "identity": {"node_id": "lilevy-node-07", "cluster_id": "region4-edge-cluster", "site_id": "region4-site-alpha"},
+  "desired": {"digest": "sha256:abababababababababababababababababababababababababababababababab", "sequence": 7}, "activated": null, "previous_digest": null,
+  "verification": {"policy_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "signature_verified": false, "hashes_verified": false, "scope_verified": false, "anti_rollback_verified": false},
+  "runtime": {"version": "2.0.0", "chunker_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "model_digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd", "embedding_model_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"},
+  "transition": {"from": "STAGED", "to": "REJECTED"}, "result": "rejected", "reason_code": "BAD_SIGNATURE", "smoke_tests": {"passed": false, "report_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "retrieval_p95_ms": 0},
+  "device_counter": 39, "time_confidence": "trusted", "created_at": "2026-10-05T20:04:00Z", "user_message": "Where is my missing child?",
+  "signature": {"key_id": "lilevy-node-07-attestation", "algorithm": "Ed25519", "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="}
+}

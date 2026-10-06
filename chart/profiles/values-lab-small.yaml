@@ -1,0 +1,30 @@
+# Resource-constrained laboratory profile.
+# Use to find the minimum viable footprint; it does not emulate ARM/NPU speed.
+bitnet:
+  threads: 2
+  slots: 1
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+backend:
+  resources:
+    requests:
+      cpu: 125m
+      memory: 192Mi
+    limits:
+      cpu: 250m
+      memory: 384Mi
+
+rag:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: 500m
+      memory: 1536Mi

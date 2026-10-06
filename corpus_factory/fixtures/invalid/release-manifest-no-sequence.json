@@ -1,0 +1,12 @@
+{
+  "schema_version": "2.0.0", "record_type": "release_manifest", "release_uuid": "123e4567-e89b-42d3-a456-426614174000", "event_id": "region4-flood-2026", "version": "2.1.0",
+  "previous_release_digest": null, "recovery_digest": null,
+  "lifecycle": {"created_at": "2026-10-05T19:00:00Z", "effective_at": "2026-10-05T20:00:00Z", "expires_at": null, "revoked_at": null, "revocation_reason": null},
+  "scope": {"site_ids": ["region4-site-alpha"], "geographies": ["US-EX-R4"], "languages": ["en-US"], "audiences": ["public"]},
+  "sensitivity_policy": {"maximum": "public", "policy_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+  "compatibility": {"minimum_runtime": "2.0.0", "schema_versions": ["2.0.0"], "policy_version": "2026.1", "toolchain_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"},
+  "counts": {"sources": 1, "documents": 1, "chunks": 1, "embeddings": 0}, "derivation": {"chunker_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "embedding": null},
+  "layers": [{"name": "documents", "media_type": "application/json", "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "byte_size": 12}],
+  "evaluation_report_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "approval_attestation_digests": ["sha256:9999999999999999999999999999999999999999999999999999999999999999"],
+  "signing": {"key_id": "corpus-release-signing-2026q4", "algorithm": "Ed25519"}, "verification_bundle": {"layer_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", "media_type": "application/json"}
+}

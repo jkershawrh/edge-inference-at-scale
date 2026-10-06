@@ -1,8 +1,4 @@
-"""LLM Inference service for Edge Inference at Scale.
-
-Wraps a BitNet llama-server's OpenAI-compatible API to provide
-inference for the Summit Connect SMS assistant.
-"""
+"""Hardware-neutral LLM inference service for Edge Inference at Scale."""
 
 from __future__ import annotations
 
@@ -20,14 +16,24 @@ from fastapi.responses import JSONResponse
 
 from backend.shared.config import settings
 from backend.shared.models import LLMRequest, LLMResponse, ServiceHealth
+from backend.services.llm_inference.provider import (
+    OpenAICompatibleProvider,
+    resolve_provider_config,
+)
 
 logger = logging.getLogger("llm-inference")
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-BITNET_SERVER_URL = os.environ.get("BITNET_SERVER_URL", settings.bitnet_server_url)
-MODEL_NAME = os.environ.get("MODEL_NAME", settings.model_name)
+PROVIDER_CONFIG = resolve_provider_config(os.environ, settings)
+LLM_PROVIDER = PROVIDER_CONFIG.name
+LLM_BASE_URL = PROVIDER_CONFIG.base_url
+MODEL_NAME = PROVIDER_CONFIG.model
+PROVIDER = OpenAICompatibleProvider(PROVIDER_CONFIG)
+
+# Backward-compatible public name for existing tests and deployments.
+BITNET_SERVER_URL = LLM_BASE_URL
 
 SYSTEM_PROMPT = (
     "You are a helpful SMS assistant for Summit Connect conference. "
@@ -36,8 +42,7 @@ SYSTEM_PROMPT = (
     "Maximum 150 characters. If you don't know, say 'Sorry, I don't have that info.'"
 )
 
-# Estimated memory footprint for BitNet 2B4T (1.58-bit weights)
-MODEL_MEMORY_MB = 410.0
+MODEL_MEMORY_MB = PROVIDER_CONFIG.model_memory_mb
 
 # ---------------------------------------------------------------------------
 # Stats tracking
@@ -49,6 +54,7 @@ _stats: Dict[str, Any] = {
     "total_latency_ms": 0.0,
     "model_memory_mb": MODEL_MEMORY_MB,
     "model_name": MODEL_NAME,
+    "provider": LLM_PROVIDER,
 }
 
 # ---------------------------------------------------------------------------
@@ -61,16 +67,18 @@ _http_client: Optional[httpx.AsyncClient] = None
 async def lifespan(app: FastAPI):
     """Manage the httpx client lifecycle."""
     global _http_client
-    _http_client = httpx.AsyncClient(
-        base_url=BITNET_SERVER_URL,
-        timeout=httpx.Timeout(settings.llm_request_timeout_seconds, connect=10.0),
-        limits=httpx.Limits(
-            max_connections=4,
-            max_keepalive_connections=2,
-            keepalive_expiry=3,
-        ),
-    )
-    # Warm up connection to BitNet
+    owns_client = _http_client is None
+    if owns_client:
+        _http_client = httpx.AsyncClient(
+            base_url=LLM_BASE_URL,
+            timeout=httpx.Timeout(settings.llm_request_timeout_seconds, connect=10.0),
+            limits=httpx.Limits(
+                max_connections=4,
+                max_keepalive_connections=2,
+                keepalive_expiry=3,
+            ),
+        )
+    # Warm the configured provider connection.
     for attempt in range(10):
         try:
             resp = await _http_client.get("/health")
@@ -81,13 +89,15 @@ async def lifespan(app: FastAPI):
             pass
         await asyncio.sleep(1)
     logger.info(
-        "LLM Inference service started — BitNet server: %s, model: %s",
-        BITNET_SERVER_URL,
+        "LLM Inference service started — provider: %s, server: %s, model: %s",
+        LLM_PROVIDER,
+        LLM_BASE_URL,
         MODEL_NAME,
     )
     yield
-    await _http_client.aclose()
-    _http_client = None
+    if owns_client and _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
     logger.info("LLM Inference service stopped")
 
 
@@ -112,13 +122,15 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-async def _bitnet_available() -> bool:
-    """Return True if the BitNet server responds to a health-ish probe."""
-    try:
-        resp = await _http_client.get("/v1/models")
-        return resp.status_code == 200
-    except Exception:
+async def _provider_available() -> bool:
+    """Return True when the configured inference provider is reachable."""
+    if _http_client is None:
         return False
+    return await PROVIDER.available(_http_client)
+
+
+# Compatibility for imports used by older integrations.
+_bitnet_available = _provider_available
 
 
 # ---------------------------------------------------------------------------
@@ -126,12 +138,16 @@ async def _bitnet_available() -> bool:
 # ---------------------------------------------------------------------------
 @app.get("/health", response_model=ServiceHealth)
 async def health():
-    """Check BitNet server connectivity and return service health."""
-    bitnet_ok = await _bitnet_available()
-    status = "healthy" if bitnet_ok else "degraded"
+    """Check inference provider connectivity and return service health."""
+    provider_ok = await _provider_available()
+    status = "healthy" if provider_ok else "degraded"
     details: Dict[str, Any] = {
-        "bitnet_server_url": BITNET_SERVER_URL,
-        "bitnet_server_reachable": bitnet_ok,
+        "provider": LLM_PROVIDER,
+        "llm_base_url": LLM_BASE_URL,
+        "provider_reachable": provider_ok,
+        # Kept during the migration window for existing dashboards.
+        "bitnet_server_url": LLM_BASE_URL,
+        "bitnet_server_reachable": provider_ok,
         "model_name": MODEL_NAME,
         "model_memory_mb": MODEL_MEMORY_MB,
         "requests_total": _stats["requests_total"],
@@ -149,10 +165,10 @@ async def health():
 # ---------------------------------------------------------------------------
 @app.post("/inference", response_model=LLMResponse)
 async def inference(request: LLMRequest):
-    """Run inference via the BitNet llama-server.
+    """Run inference through the configured OpenAI-compatible provider.
 
     Builds an OpenAI-compatible chat completion request, sends it to the
-    BitNet server, and returns an LLMResponse.
+    configured local server, and returns an LLMResponse.
     """
     _stats["requests_total"] += 1
     start = time.perf_counter()
@@ -184,28 +200,28 @@ async def inference(request: LLMRequest):
         "max_tokens": request.max_length,
     }
 
-    # Call the BitNet server (retry once on transient errors) -----------------
+    # Call the provider with bounded retries on transient errors. -------------
     last_exc: Exception | None = None
     for _attempt in range(3):
         try:
-            resp = await _http_client.post("/v1/chat/completions", json=payload)
+            resp = await PROVIDER.complete(_http_client, payload)
             resp.raise_for_status()
             break
         except httpx.TimeoutException:
             _stats["requests_failed"] += 1
             raise HTTPException(
                 status_code=502,
-                detail="BitNet server request timed out",
+                detail=f"{LLM_PROVIDER} inference request timed out",
             )
         except httpx.HTTPStatusError as exc:
             body = exc.response.text[:200] if exc.response else "no body"
-            logger.warning("BitNet call failed (attempt %d/3, %s %s): %s", _attempt + 1, exc.response.status_code, type(exc).__name__, body)
+            logger.warning("Provider call failed (attempt %d/3, %s %s): %s", _attempt + 1, exc.response.status_code, type(exc).__name__, body)
             last_exc = exc
             if _attempt < 2:
                 await asyncio.sleep(0.5)
                 continue
         except (httpx.TransportError, Exception) as exc:
-            logger.warning("BitNet call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
+            logger.warning("Provider call failed (attempt %d/3, %s): %s", _attempt + 1, type(exc).__name__, exc)
             last_exc = exc
             if _attempt < 2:
                 await asyncio.sleep(0.5)
@@ -214,7 +230,7 @@ async def inference(request: LLMRequest):
         _stats["requests_failed"] += 1
         raise HTTPException(
             status_code=502,
-            detail=f"BitNet server error after 3 attempts: {type(last_exc).__name__}: {last_exc}",
+            detail=f"{LLM_PROVIDER} provider error after 3 attempts: {type(last_exc).__name__}: {last_exc}",
         )
 
     # Parse response -----------------------------------------------------------
@@ -260,7 +276,7 @@ async def inference(request: LLMRequest):
 # ---------------------------------------------------------------------------
 @app.post("/v1/chat/completions")
 async def chat_completions_passthrough(request: dict):
-    """Pass-through proxy to the BitNet server's chat completions endpoint."""
+    """Pass through to the configured provider's chat completions endpoint."""
     try:
         resp = await _http_client.post("/v1/chat/completions", json=request)
         resp.raise_for_status()
@@ -268,12 +284,12 @@ async def chat_completions_passthrough(request: dict):
     except httpx.ConnectError:
         raise HTTPException(
             status_code=502,
-            detail=f"Cannot connect to BitNet server at {BITNET_SERVER_URL}",
+            detail=f"Cannot connect to {LLM_PROVIDER} provider at {LLM_BASE_URL}",
         )
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=502,
-            detail="BitNet server request timed out",
+            detail=f"{LLM_PROVIDER} provider request timed out",
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
@@ -287,7 +303,7 @@ async def chat_completions_passthrough(request: dict):
 # ---------------------------------------------------------------------------
 @app.get("/v1/models")
 async def models_passthrough():
-    """Pass-through proxy to the BitNet server's models endpoint."""
+    """Pass through to the configured provider's models endpoint."""
     try:
         resp = await _http_client.get("/v1/models")
         resp.raise_for_status()
@@ -295,12 +311,12 @@ async def models_passthrough():
     except httpx.ConnectError:
         raise HTTPException(
             status_code=502,
-            detail=f"Cannot connect to BitNet server at {BITNET_SERVER_URL}",
+            detail=f"Cannot connect to {LLM_PROVIDER} provider at {LLM_BASE_URL}",
         )
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=502,
-            detail="BitNet server request timed out",
+            detail=f"{LLM_PROVIDER} provider request timed out",
         )
     except httpx.HTTPStatusError as exc:
         raise HTTPException(
@@ -328,7 +344,9 @@ async def stats():
         "total_latency_ms": round(_stats["total_latency_ms"], 2),
         "model_name": _stats["model_name"],
         "model_memory_mb": _stats["model_memory_mb"],
-        "bitnet_server_url": BITNET_SERVER_URL,
+        "provider": _stats["provider"],
+        "llm_base_url": LLM_BASE_URL,
+        "bitnet_server_url": LLM_BASE_URL,
     }
 
 

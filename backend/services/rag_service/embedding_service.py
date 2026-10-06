@@ -52,7 +52,12 @@ class LocalEmbeddingService:
         
         # Embedding cache
         self.embedding_cache = {}
-        self.cache_file = self.model_cache_dir / "embedding_cache.json"
+        # Embeddings from different models and dimensions are incompatible. Keep
+        # caches model-scoped so a configuration change cannot poison a new index.
+        model_fingerprint = hashlib.sha256(model_name.encode("utf-8")).hexdigest()[:10]
+        self.cache_file = self.model_cache_dir / (
+            "embedding_cache_{0}.json".format(model_fingerprint)
+        )
         self._load_cache()
         
         # Model configuration

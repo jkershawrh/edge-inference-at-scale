@@ -1,0 +1,10 @@
+{
+  "schema_version": "2.0.0", "record_type": "activation_receipt", "receipt_id": "123e4567-e89b-42d3-a456-426614174001",
+  "identity": {"node_id": "lilevy-node-07", "cluster_id": "region4-edge-cluster", "site_id": "region4-site-alpha"},
+  "desired": {"digest": "sha256:abababababababababababababababababababababababababababababababab", "sequence": 7}, "activated": {"digest": "sha256:abababababababababababababababababababababababababababababababab", "sequence": 7}, "previous_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "verification": {"policy_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "signature_verified": true, "hashes_verified": true, "scope_verified": true, "anti_rollback_verified": true},
+  "runtime": {"version": "2.0.0", "chunker_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "model_digest": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd", "embedding_model_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"},
+  "transition": {"from": "READY", "to": "ACTIVE"}, "result": "success", "reason_code": "ACTIVATED", "smoke_tests": {"passed": true, "report_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "retrieval_p95_ms": 84.2},
+  "device_counter": 38, "time_confidence": "trusted", "created_at": "2026-10-05T20:04:00Z",
+  "signature": {"key_id": "lilevy-node-07-attestation", "algorithm": "Ed25519", "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="}
+}

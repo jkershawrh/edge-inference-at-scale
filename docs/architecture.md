@@ -235,6 +235,11 @@ The management plane (RHACM) provides:
 - **Updates**: push new models, updated RAG corpus, configuration changes
 - **Provisioning**: new nodes boot from the RHEL image and auto-register
 
+The connected-to-disconnected corpus supply chain is a separate trust boundary.
+See [Big EVY Corpus Factory → Lil EVY Roadmap](big-evy-corpus-factory-roadmap.md)
+for source governance, evidence lineage, agentic workstreams, secure distribution,
+anti-rollback activation, and release promotion gates.
+
 ## Deployment Artifacts
 
 | Artifact | Format | Target |

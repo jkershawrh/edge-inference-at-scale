@@ -6,10 +6,10 @@ try:
 except ImportError:
     pass
 
-import asyncio
 import hashlib
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -21,21 +21,45 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.shared.config import settings
 from backend.shared.models import RAGAddDocumentRequest, RAGQuery, RAGResult, ServiceHealth
 from backend.services.rag_service.document_manager import DocumentManager
+from backend.services.rag_service.corpus_package import validate_corpus_package
 from backend.services.rag_service.embedding_service import LocalEmbeddingService, SimpleEmbeddingService
+from backend.services.rag_service.retrieval import (
+    cosine_distance_to_confidence,
+    fuse_ranked_results,
+)
 
 logger = logging.getLogger("rag-service")
 
 
 class RAGService:
     def __init__(self):
-        self.collection_name = "summit_connect"
+        self.collection_name_base = "summit_connect"
+        self.collection_name = self.collection_name_base
+        self.embedding_fingerprint = None
+        self.retrieval_index_fingerprint = None
         self.client = None
         self.collection = None
         self.min_similarity = settings.rag_min_similarity
 
-        self.embedding_service = LocalEmbeddingService()
+        self.embedding_service = LocalEmbeddingService(model_name=settings.embedding_model)
         self.simple_embedding_service = SimpleEmbeddingService()
-        self.document_manager = DocumentManager()
+        self.corpus_manifest = None
+        manifest_path = settings.corpus_manifest_path
+        if not manifest_path:
+            candidate = os.path.join(settings.summit_data_dir, "manifest.json")
+            if os.path.isfile(candidate):
+                manifest_path = candidate
+        if (settings.corpus_require_signature or settings.corpus_read_only) and not manifest_path:
+            raise RuntimeError("immutable or signed corpus policy requires a package manifest")
+        if manifest_path:
+            self.corpus_manifest = validate_corpus_package(
+                manifest_path=manifest_path,
+                expected_event_id=settings.corpus_event_id,
+                expected_version=settings.corpus_version,
+                public_key_path=settings.corpus_public_key_path,
+                require_signature=settings.corpus_require_signature,
+            )
+        self.document_manager = DocumentManager(data_dir=settings.summit_data_dir)
 
         self.stats = {
             "total_searches": 0,
@@ -45,9 +69,27 @@ class RAGService:
             "last_search": None,
             "embedding_service_available": False,
             "chromadb_available": False,
+            "index_sync_status": "not_started",
+            "index_sync_errors": 0,
         }
+        self.timing_totals_ms: Dict[str, float] = {}
+        self.timing_counts: Dict[str, int] = {}
 
-        self._initialize_database()
+    def _record_stage_timing(self, stage: str, started_at: float) -> None:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        self.timing_totals_ms[stage] = self.timing_totals_ms.get(stage, 0.0) + elapsed_ms
+        self.timing_counts[stage] = self.timing_counts.get(stage, 0) + 1
+
+    def timing_snapshot(self) -> Dict[str, Dict[str, object]]:
+        snapshot: Dict[str, Dict[str, object]] = {}
+        for stage, total_ms in self.timing_totals_ms.items():
+            samples = self.timing_counts.get(stage, 0)
+            snapshot[stage] = {
+                "samples": samples,
+                "average_ms": round(total_ms / samples, 2) if samples else 0.0,
+                "total_ms": round(total_ms, 2),
+            }
+        return snapshot
 
     async def initialize(self) -> bool:
         try:
@@ -61,14 +103,53 @@ class RAGService:
                     self.embedding_service = self.simple_embedding_service
 
             self.stats["embedding_service_available"] = embedding_initialized
+            if not embedding_initialized:
+                raise RuntimeError("No embedding service is available")
+
+            self._select_embedding_collection()
             self._initialize_database()
             await self._sync_local_documents()
+            if not await self.document_manager.get_all_documents():
+                await self._add_sample_data()
 
             logger.info("RAG Service initialized successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to initialize RAG Service: {e}")
             return False
+
+    def _select_embedding_collection(self) -> None:
+        """Choose a non-destructive collection version for this embedding space."""
+        model_info = self.embedding_service.get_model_info()
+        embedding_identity = "{model}:{dimension}:cosine".format(
+            model=model_info.get("model_name", "unknown"),
+            dimension=model_info.get("embedding_dim", "unknown"),
+        )
+        self.embedding_fingerprint = hashlib.sha256(
+            embedding_identity.encode("utf-8")
+        ).hexdigest()[:10]
+        if self.corpus_manifest:
+            corpus = self.corpus_manifest["corpus"]
+            event = self.corpus_manifest["event"]
+            documents_hash = self.corpus_manifest["files"]["documents.json"]["sha256"]
+            corpus_identity = "{event}:{version}:{documents_hash}".format(
+                event=event["id"],
+                version=corpus["version"],
+                documents_hash=documents_hash,
+            )
+        else:
+            corpus_identity = "mutable"
+        index_identity = "rag-v3:{embedding}:{corpus}".format(
+            embedding=embedding_identity,
+            corpus=corpus_identity,
+        )
+        self.retrieval_index_fingerprint = hashlib.sha256(
+            index_identity.encode("utf-8")
+        ).hexdigest()[:12]
+        self.collection_name = "{base}_v3_{fingerprint}".format(
+            base=self.collection_name_base,
+            fingerprint=self.retrieval_index_fingerprint,
+        )
 
     def _initialize_database(self):
         try:
@@ -86,14 +167,22 @@ class RAGService:
 
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
-                metadata={"description": "Summit Connect knowledge base"},
+                metadata={
+                    "description": "Summit Connect knowledge base",
+                    "embedding_fingerprint": self.embedding_fingerprint or "unknown",
+                    "retrieval_index_fingerprint": self.retrieval_index_fingerprint
+                    or "unknown",
+                    "embedding_model": self.embedding_service.get_model_info().get(
+                        "model_name", "unknown"
+                    ),
+                    # Chroma 1.x still supports this legacy key, which also keeps
+                    # the service compatible with the declared Chroma 0.4 floor.
+                    "hnsw:space": "cosine",
+                },
             )
 
             logger.info(f"ChromaDB initialized with {self.collection.count()} documents")
             self.stats["chromadb_available"] = True
-
-            if self.collection.count() == 0:
-                self._add_sample_data()
 
         except Exception as e:
             logger.error(f"Failed to initialize ChromaDB: {e}")
@@ -104,7 +193,8 @@ class RAGService:
     async def _sync_local_documents(self):
         try:
             if not self.collection:
-                return
+                self.stats["index_sync_status"] = "unavailable"
+                return False
 
             local_docs = await self.document_manager.get_all_documents()
             local_index = self.document_manager.get_document_index()
@@ -141,10 +231,15 @@ class RAGService:
                 await self._upsert_document_chunks(doc_id, doc["text"], metadata, doc_hash)
 
             logger.info(f"Local documents synced (local={len(local_ids)} chroma={self.collection.count()})")
+            self.stats["index_sync_status"] = "ready"
+            return True
         except Exception as e:
             logger.error(f"Failed to sync local documents: {e}")
+            self.stats["index_sync_status"] = "failed"
+            self.stats["index_sync_errors"] += 1
+            return False
 
-    def _add_sample_data(self):
+    async def _add_sample_data(self):
         sample_documents = [
             {
                 "id": "sc_about",
@@ -189,27 +284,29 @@ class RAGService:
         ]
 
         try:
+            added = 0
             for doc in sample_documents:
-                asyncio.create_task(
-                    self.document_manager.add_document(
-                        text=doc["text"],
-                        title=doc["metadata"].get("title", ""),
-                        category=doc["metadata"]["category"],
-                        metadata=doc["metadata"],
-                        doc_id=doc["id"],
-                    )
-                )
-                if self.collection:
-                    self.collection.add(
-                        documents=[doc["text"]],
-                        ids=[doc["id"]],
-                        metadatas=[doc["metadata"]],
-                    )
-            logger.info(f"Added {len(sample_documents)} Summit Connect sample documents")
+                if await self.add_document(
+                    doc_id=doc["id"],
+                    text=doc["text"],
+                    metadata=doc["metadata"],
+                ):
+                    added += 1
+            logger.info(f"Added {added}/{len(sample_documents)} Summit Connect sample documents")
+            if not self.collection:
+                self.stats["index_sync_status"] = "unavailable"
+            elif added == len(sample_documents):
+                self.stats["index_sync_status"] = "ready"
+            else:
+                self.stats["index_sync_status"] = "partial"
+                self.stats["index_sync_errors"] += len(sample_documents) - added
         except Exception as e:
             logger.error(f"Failed to add sample data: {e}")
+            self.stats["index_sync_status"] = "failed"
+            self.stats["index_sync_errors"] += 1
 
     async def search(self, query: RAGQuery) -> RAGResult:
+        started_at = time.perf_counter()
         self.stats["total_searches"] += 1
         self.stats["last_search"] = datetime.utcnow().isoformat()
         try:
@@ -220,19 +317,41 @@ class RAGService:
             logger.error(f"Search error: {e}")
             self.stats["failed_searches"] += 1
             return RAGResult(documents=[], scores=[], metadata=[])
+        finally:
+            self._record_stage_timing("search_total", started_at)
 
     async def _hybrid_search(self, query: RAGQuery) -> RAGResult:
         vector_results = []
         text_results = []
         if self.collection and self.stats["chromadb_available"]:
-            vector_results = await self._vector_search(query)
-        text_results = await self._text_search(query)
-        return await self._combine_search_results(vector_results, text_results, query.top_k)
+            started_at = time.perf_counter()
+            try:
+                vector_results = await self._vector_search(query)
+            finally:
+                self._record_stage_timing("vector_search", started_at)
+
+        started_at = time.perf_counter()
+        try:
+            text_results = await self._text_search(query)
+        finally:
+            self._record_stage_timing("text_search", started_at)
+
+        started_at = time.perf_counter()
+        try:
+            return await self._combine_search_results(
+                vector_results, text_results, query.top_k
+            )
+        finally:
+            self._record_stage_timing("fusion", started_at)
 
     async def _vector_search(self, query: RAGQuery) -> List[Dict[str, Any]]:
         try:
+            query_embedding = await self.embedding_service.encode_text(query.query)
+            if query_embedding is None:
+                logger.warning("Embedding service returned no vector for query")
+                return []
             results = self.collection.query(
-                query_texts=[query.query],
+                query_embeddings=[query_embedding],
                 n_results=min(query.top_k, 10),
                 where=query.filter_metadata if query.filter_metadata else None,
             )
@@ -247,7 +366,9 @@ class RAGService:
                     {
                         "document": doc,
                         "metadata": metadata,
-                        "score": 1 / (1 + distances[i]) if i < len(distances) else 0.5,
+                        "score": cosine_distance_to_confidence(distances[i])
+                        if i < len(distances)
+                        else 0.5,
                         "source": "vector",
                     }
                 )
@@ -269,6 +390,7 @@ class RAGService:
                     {
                         "document": result["document"]["text"],
                         "metadata": {
+                            "parent_doc_id": result["document"].get("id", ""),
                             "category": result["document"].get("category", "general"),
                             "title": result["document"].get("title", ""),
                             "keywords": ",".join(result["document"].get("keywords", [])),
@@ -289,20 +411,12 @@ class RAGService:
         text_results: List[Dict[str, Any]],
         top_k: int,
     ) -> RAGResult:
-        combined: Dict[str, Dict[str, Any]] = {}
-        for result in vector_results + text_results:
-            doc_id = hashlib.sha256(result["document"].encode()).hexdigest()
-            if doc_id not in combined:
-                combined[doc_id] = {
-                    "document": result["document"],
-                    "metadata": result["metadata"],
-                    "score": result["score"],
-                }
-            else:
-                combined[doc_id]["score"] = max(combined[doc_id]["score"], result["score"])
-
-        sorted_results = sorted(combined.values(), key=lambda x: x["score"], reverse=True)
-        sorted_results = [r for r in sorted_results if r["score"] >= self.min_similarity][:top_k]
+        sorted_results = fuse_ranked_results(
+            vector_results=vector_results,
+            text_results=text_results,
+            top_k=top_k,
+            min_confidence=self.min_similarity,
+        )
 
         return RAGResult(
             documents=[r["document"] for r in sorted_results],
@@ -351,17 +465,26 @@ class RAGService:
     async def _upsert_document_chunks(self, doc_id: str, text: str, metadata: Dict[str, Any], content_hash: str):
         if not self.collection:
             return
+        chunks = self._chunk_text(text)
+        embeddings = await self.embedding_service.encode_texts(chunks)
+        if len(embeddings) != len(chunks) or any(item is None for item in embeddings):
+            raise RuntimeError("Embedding generation failed; existing index entry was preserved")
+
         existing = self.collection.get(where={"parent_doc_id": doc_id})
         existing_ids = existing.get("ids", [])
         if existing_ids:
             self.collection.delete(ids=existing_ids)
-        chunks = self._chunk_text(text)
         chunk_ids = [f"{doc_id}::chunk::{idx}" for idx in range(len(chunks))]
         chunk_metadatas = [
             {**metadata, "parent_doc_id": doc_id, "chunk_index": idx, "chunk_count": len(chunks), "content_hash": content_hash}
             for idx in range(len(chunks))
         ]
-        self.collection.upsert(documents=chunks, ids=chunk_ids, metadatas=chunk_metadatas)
+        self.collection.upsert(
+            documents=chunks,
+            embeddings=embeddings,
+            ids=chunk_ids,
+            metadatas=chunk_metadatas,
+        )
 
     def get_stats(self) -> Dict[str, Any]:
         try:
@@ -379,9 +502,13 @@ class RAGService:
                     chromadb_stats = {"status": "error", "error": str(e)}
             return {
                 **self.stats,
+                "retrieval_timings_ms": self.timing_snapshot(),
                 "document_manager": doc_stats,
                 "chromadb": chromadb_stats,
                 "embedding_service": embedding_info,
+                "embedding_fingerprint": self.embedding_fingerprint,
+                "retrieval_index_fingerprint": self.retrieval_index_fingerprint,
+                "corpus": self.corpus_manifest or {"status": "unpackaged"},
             }
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
@@ -436,6 +563,8 @@ async def search_knowledge(query: RAGQuery):
 
 @app.post("/add")
 async def add_document(request: RAGAddDocumentRequest):
+    if settings.corpus_read_only:
+        raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     doc_id = request.doc_id or hashlib.sha256(request.text.encode("utf-8")).hexdigest()[:12]
     success = await rag_service.add_document(doc_id, request.text, request.metadata)
     if success:
@@ -456,6 +585,8 @@ async def get_categories():
 
 @app.post("/documents/bulk-add")
 async def bulk_add_documents(documents: List[Dict[str, Any]]):
+    if settings.corpus_read_only:
+        raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     try:
         doc_ids = await rag_service.document_manager.bulk_add_documents(documents)
         if rag_service.collection:
@@ -477,6 +608,8 @@ async def bulk_add_documents(documents: List[Dict[str, Any]]):
 
 @app.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):
+    if settings.corpus_read_only:
+        raise HTTPException(status_code=403, detail="Active corpus package is immutable")
     success = await rag_service.document_manager.delete_document(doc_id)
     if success and rag_service.collection:
         try:

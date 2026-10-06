@@ -1,0 +1,14 @@
+{
+  "schema_version": "2.0.0", "record_type": "release_manifest", "release_uuid": "123e4567-e89b-42d3-a456-426614174000", "event_id": "region4-flood-2026", "version": "2.1.0", "sequence": 7,
+  "previous_release_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "recovery_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "lifecycle": {"created_at": "2026-10-05T19:00:00Z", "effective_at": "2026-10-05T20:00:00Z", "expires_at": "2026-10-06T20:00:00Z", "revoked_at": null, "revocation_reason": null},
+  "scope": {"site_ids": ["region4-site-alpha"], "geographies": ["US-EX-R4"], "languages": ["en-US"], "audiences": ["public"]},
+  "sensitivity_policy": {"maximum": "public", "policy_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"},
+  "compatibility": {"minimum_runtime": "2.0.0", "schema_versions": ["2.0.0"], "policy_version": "2026.1", "toolchain_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"},
+  "counts": {"sources": 3, "documents": 12, "chunks": 31, "embeddings": 31},
+  "derivation": {"chunker_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "embedding": {"model_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "dimensions": 384, "normalization": "l2"}},
+  "layers": [{"name": "canonical-documents", "media_type": "application/vnd.evy.corpus.documents.v2+json", "digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "byte_size": 48122}, {"name": "chunks", "media_type": "application/vnd.evy.corpus.chunks.v2+json", "digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "byte_size": 90321}],
+  "evaluation_report_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "approval_attestation_digests": ["sha256:9999999999999999999999999999999999999999999999999999999999999999"],
+  "signing": {"key_id": "corpus-release-signing-2026q4", "algorithm": "Ed25519"},
+  "verification_bundle": {"layer_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab", "media_type": "application/vnd.evy.verification-bundle.v1+json"}
+}

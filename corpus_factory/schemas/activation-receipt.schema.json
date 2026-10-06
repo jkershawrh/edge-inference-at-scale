@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://evy.example/schemas/v2/activation-receipt.schema.json", "title": "ActivationReceipt",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "record_type", "receipt_id", "identity", "desired", "activated", "previous_digest", "verification", "runtime", "transition", "result", "reason_code", "smoke_tests", "device_counter", "time_confidence", "created_at", "signature"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"}, "record_type": {"const": "activation_receipt"}, "receipt_id": {"type": "string", "format": "uuid"},
+    "identity": {"type": "object", "additionalProperties": false, "required": ["node_id", "cluster_id", "site_id"], "properties": {"node_id": {"$ref": "#/$defs/id"}, "cluster_id": {"$ref": "#/$defs/id"}, "site_id": {"$ref": "#/$defs/id"}}},
+    "desired": {"$ref": "#/$defs/releaseIdentity"}, "activated": {"oneOf": [{"$ref": "#/$defs/releaseIdentity"}, {"type": "null"}]}, "previous_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+    "verification": {"type": "object", "additionalProperties": false, "required": ["policy_digest", "signature_verified", "hashes_verified", "scope_verified", "anti_rollback_verified"], "properties": {"policy_digest": {"$ref": "#/$defs/digest"}, "signature_verified": {"type": "boolean"}, "hashes_verified": {"type": "boolean"}, "scope_verified": {"type": "boolean"}, "anti_rollback_verified": {"type": "boolean"}}},
+    "runtime": {"type": "object", "additionalProperties": false, "required": ["version", "chunker_digest", "model_digest", "embedding_model_digest"], "properties": {"version": {"type": "string", "minLength": 1}, "chunker_digest": {"$ref": "#/$defs/digest"}, "model_digest": {"$ref": "#/$defs/digest"}, "embedding_model_digest": {"$ref": "#/$defs/digest"}}},
+    "transition": {"type": "object", "additionalProperties": false, "required": ["from", "to"], "properties": {"from": {"$ref": "#/$defs/state"}, "to": {"$ref": "#/$defs/state"}}},
+    "result": {"enum": ["success", "rejected", "recovered", "failed"]}, "reason_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]{2,63}$"},
+    "smoke_tests": {"type": "object", "additionalProperties": false, "required": ["passed", "report_digest", "retrieval_p95_ms"], "properties": {"passed": {"type": "boolean"}, "report_digest": {"$ref": "#/$defs/digest"}, "retrieval_p95_ms": {"type": "number", "minimum": 0}}},
+    "device_counter": {"type": "integer", "minimum": 1}, "time_confidence": {"enum": ["trusted", "degraded", "unknown"]}, "created_at": {"type": "string", "format": "date-time"},
+    "signature": {"type": "object", "additionalProperties": false, "required": ["key_id", "algorithm", "value"], "properties": {"key_id": {"$ref": "#/$defs/id"}, "algorithm": {"const": "Ed25519"}, "value": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"}, "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "releaseIdentity": {"type": "object", "additionalProperties": false, "required": ["digest", "sequence"], "properties": {"digest": {"$ref": "#/$defs/digest"}, "sequence": {"type": "integer", "minimum": 1}}},
+    "state": {"enum": ["DISCOVERED", "DOWNLOADING", "STAGED", "VERIFIED", "INDEXED", "CANARY_TESTED", "READY", "ACTIVE", "REJECTED", "RECOVERY"]}
+  }
+}

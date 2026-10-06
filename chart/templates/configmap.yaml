@@ -8,6 +8,14 @@ metadata:
 data:
   NODE_ID: {{ .Values.nodeId | quote }}
   SMS_MODE: {{ .Values.smsMode | quote }}
+  LLM_PROVIDER: {{ .Values.llm.provider | default "bitnet" | quote }}
+  LLM_BASE_URL: {{ .Values.llm.baseUrl | default (printf "http://%s-bitnet:8080" .Release.Name) | quote }}
+  LLM_MODEL: {{ .Values.llm.model | default .Values.bitnet.model | quote }}
+  MODEL_MEMORY_MB: {{ .Values.llm.modelMemoryMB | default 0 | quote }}
+  DISCORD_PUBLIC_KEY: {{ .Values.discord.publicKey | default "" | quote }}
+  DISCORD_COMMAND_NAME: {{ .Values.discord.commandName | default "ask" | quote }}
+  DISCORD_EPHEMERAL: {{ .Values.discord.ephemeral | quote }}
+  # Legacy aliases retained for compatibility with older images.
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
   KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"

@@ -23,8 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.shared.config import settings
 from backend.shared.models import (
+    ChannelMessage,
     LLMRequest,
     LLMResponse,
+    MessageChannel,
     MessagePriority,
     MessageType,
     ProcessedMessage,
@@ -131,11 +133,34 @@ class MessageRouter:
         }
         self.start_time = time.time()
 
+        # Aggregate stage timings stay useful under concurrent requests and do
+        # not expose sender content or other message-level data.
+        self.timing_totals_ms: Dict[str, float] = {}
+        self.timing_counts: Dict[str, int] = {}
+
+    def _record_stage_timing(self, stage: str, started_at: float) -> None:
+        """Record one monotonic duration sample for a pipeline stage."""
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        self.timing_totals_ms[stage] = self.timing_totals_ms.get(stage, 0.0) + elapsed_ms
+        self.timing_counts[stage] = self.timing_counts.get(stage, 0) + 1
+
+    def timing_snapshot(self) -> Dict[str, Dict[str, object]]:
+        """Return average stage durations without resetting the counters."""
+        snapshot: Dict[str, Dict[str, object]] = {}
+        for stage, total_ms in self.timing_totals_ms.items():
+            samples = self.timing_counts.get(stage, 0)
+            snapshot[stage] = {
+                "samples": samples,
+                "average_ms": round(total_ms / samples, 2) if samples else 0.0,
+                "total_ms": round(total_ms, 2),
+            }
+        return snapshot
+
     # ------------------------------------------------------------------
     # Classification
     # ------------------------------------------------------------------
 
-    def classify_message(self, message: SMSMessage) -> ProcessedMessage:
+    def classify_message(self, message: ChannelMessage) -> ProcessedMessage:
         """Determine MessageType, priority, and routing needs."""
         content = message.content.strip()
         content_lower = content.lower()
@@ -208,12 +233,13 @@ class MessageRouter:
 
         Returns a 3-tuple: (joined context string or None, top score, top document text).
         """
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return None, 0.0, None
-
-        rag_query = RAGQuery(query=query, top_k=3)
+        started_at = time.perf_counter()
         try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return None, 0.0, None
+
+            rag_query = RAGQuery(query=query, top_k=3)
             response = await self.http_client.post(
                 f"{self.rag_service_url}/search",
                 json=rag_query.model_dump(),
@@ -234,62 +260,72 @@ class MessageRouter:
         except Exception as exc:
             logger.warning("RAG service call failed: %s", exc)
             return None, 0.0, None
+        finally:
+            self._record_stage_timing("rag", started_at)
 
     async def route_to_llm(
         self, prompt: str, context: Optional[str] = None, chat_history=None
     ) -> Optional[str]:
         """Call the LLM inference service with concurrency control and retry."""
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return None
+        started_at = time.perf_counter()
+        try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return None
 
-        llm_request = LLMRequest(
-            prompt=prompt,
-            context=context,
-            max_length=SMS_MAX_LENGTH,
-            temperature=0.7,
-            chat_history=chat_history,
-        )
+            llm_request = LLMRequest(
+                prompt=prompt,
+                context=context,
+                max_length=SMS_MAX_LENGTH,
+                temperature=0.7,
+                chat_history=chat_history,
+            )
 
-        async with self.llm_semaphore:
-            for attempt in range(2):
-                try:
-                    response = await self.http_client.post(
-                        f"{self.llm_service_url}/inference",
-                        json=llm_request.model_dump(),
-                        timeout=settings.llm_request_timeout_seconds,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    self.stats["messages_routed_llm"] += 1
-                    llm_response = LLMResponse(**data)
-                    return llm_response.response
-                except Exception as exc:
-                    logger.warning("LLM service call failed (attempt %d): %s", attempt + 1, exc)
-                    if attempt == 0:
-                        await asyncio.sleep(1)
-            return None
+            async with self.llm_semaphore:
+                for attempt in range(2):
+                    try:
+                        response = await self.http_client.post(
+                            f"{self.llm_service_url}/inference",
+                            json=llm_request.model_dump(),
+                            timeout=settings.llm_request_timeout_seconds,
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        self.stats["messages_routed_llm"] += 1
+                        llm_response = LLMResponse(**data)
+                        return llm_response.response
+                    except Exception as exc:
+                        logger.warning("LLM service call failed (attempt %d): %s", attempt + 1, exc)
+                        if attempt == 0:
+                            await asyncio.sleep(1)
+                return None
+        finally:
+            self._record_stage_timing("llm", started_at)
 
     async def send_response(self, recipient: str, sender: str, text: str) -> bool:
         """Send the response back via SMS gateway, chunking if necessary."""
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return False
+        started_at = time.perf_counter()
+        try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return False
 
-        chunks = _chunk_sms_response(text)
-        success = True
-        for i, chunk in enumerate(chunks):
-            try:
-                response = await self.http_client.post(
-                    f"{self.sms_gateway_url}/sms/send",
-                    json={"phone_number": recipient, "content": chunk},
-                    timeout=settings.sms_router_timeout_seconds,
-                )
-                response.raise_for_status()
-            except Exception as exc:
-                logger.warning("SMS send failed (part %d/%d): %s", i + 1, len(chunks), exc)
-                success = False
-        return success
+            chunks = _chunk_sms_response(text)
+            success = True
+            for i, chunk in enumerate(chunks):
+                try:
+                    response = await self.http_client.post(
+                        f"{self.sms_gateway_url}/sms/send",
+                        json={"phone_number": recipient, "content": chunk},
+                        timeout=settings.sms_router_timeout_seconds,
+                    )
+                    response.raise_for_status()
+                except Exception as exc:
+                    logger.warning("SMS send failed (part %d/%d): %s", i + 1, len(chunks), exc)
+                    success = False
+            return success
+        finally:
+            self._record_stage_timing("delivery", started_at)
 
     # ------------------------------------------------------------------
     # Template / command responses
@@ -499,7 +535,15 @@ class MessageRouter:
         # Not a hunt message
         return None
 
-    async def process_message(self, message: SMSMessage) -> str:
+    async def process_message(self, message: ChannelMessage) -> str:
+        """Measure and execute one complete channel-to-channel pipeline."""
+        started_at = time.perf_counter()
+        try:
+            return await self._process_message(message)
+        finally:
+            self._record_stage_timing("pipeline", started_at)
+
+    async def _process_message(self, message: ChannelMessage) -> str:
         """Full processing pipeline: classify -> route -> respond."""
         self.stats["messages_received"] += 1
         logger.info(
@@ -515,7 +559,8 @@ class MessageRouter:
             logger.warning("Treasure hunt check failed, skipping: %s", exc)
             hunt_response = None
         if hunt_response is not None:
-            await self.send_response(message.sender, message.receiver, hunt_response)
+            if message.channel != MessageChannel.DISCORD:
+                await self.send_response(message.sender, message.receiver, hunt_response)
             return hunt_response
 
         # Privacy filter check
@@ -605,11 +650,17 @@ class MessageRouter:
                 logger.warning("Failed to store chat turn: %s", exc)
 
         # 5. Send response back via SMS gateway
-        sent = await self.send_response(
-            recipient=message.sender,
-            sender=message.receiver,
-            text=response_text,
-        )
+        if message.channel == MessageChannel.DISCORD:
+            # The Discord interaction adapter owns the deferred callback.
+            sent = True
+            self.stats.setdefault("discord_responses", 0)
+            self.stats["discord_responses"] += 1
+        else:
+            sent = await self.send_response(
+                recipient=message.sender,
+                sender=message.receiver,
+                text=response_text,
+            )
         if sent:
             self.stats["messages_responded"] += 1
         else:
@@ -764,7 +815,7 @@ async def stream_health():
 
 
 @app.post("/route")
-async def route_message(message: SMSMessage) -> Dict:
+async def route_message(message: ChannelMessage) -> Dict:
     """Full pipeline: classify, retrieve, infer, respond."""
     try:
         response_text = await router_instance.process_message(message)
@@ -780,7 +831,7 @@ async def route_message(message: SMSMessage) -> Dict:
 
 
 @app.post("/classify")
-async def classify_message(message: SMSMessage) -> ProcessedMessage:
+async def classify_message(message: ChannelMessage) -> ProcessedMessage:
     """Classify a message without routing it."""
     try:
         processed = router_instance.classify_message(message)
@@ -796,6 +847,7 @@ async def get_statistics() -> Dict:
     uptime = time.time() - router_instance.start_time
     return {
         "stats": router_instance.stats,
+        "pipeline_timings_ms": router_instance.timing_snapshot(),
         "uptime_seconds": uptime,
         "service": "message-router",
     }

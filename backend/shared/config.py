@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     twilio_auth_token: Optional[str] = None
     twilio_phone_number: Optional[str] = None
 
+    # Discord interaction testing (optional)
+    discord_public_key: Optional[str] = None
+    discord_command_name: str = "ask"
+    discord_api_base: str = "https://discord.com/api/v10"
+    discord_ephemeral: bool = True
+
     # BitNet inference server
     bitnet_server_url: str = "http://bitnet-server:8080"
     model_name: str = "bitnet-2b4t"
@@ -37,6 +43,12 @@ class Settings(BaseSettings):
 
     # Data
     summit_data_dir: str = "/data/summit_connect"
+    corpus_manifest_path: Optional[str] = None
+    corpus_event_id: Optional[str] = None
+    corpus_version: Optional[str] = None
+    corpus_public_key_path: Optional[str] = None
+    corpus_require_signature: bool = False
+    corpus_read_only: bool = False
 
     # Kafka (AMQ Streams)
     kafka_bootstrap_servers: str = "kafka:9092"

@@ -152,6 +152,9 @@ class TestAPIGatewayContract:
     def test_has_services_health(self):
         assert "GET /services/health" in self.routes
 
+    def test_has_discord_interactions(self):
+        assert "POST /discord/interactions" in self.routes
+
     def test_has_sms_receive_proxy(self):
         assert "POST /sms/receive" in self.routes
 

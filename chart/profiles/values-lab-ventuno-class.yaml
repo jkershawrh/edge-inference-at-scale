@@ -1,0 +1,31 @@
+# 16 GB accelerated-ARM-class software envelope.
+# This validates memory, concurrency, and queueing only; OpenShift CPU quotas
+# cannot predict Qualcomm IQ8 NPU performance or physical power draw.
+bitnet:
+  threads: 8
+  slots: 2
+  resources:
+    requests:
+      cpu: "4"
+      memory: 6Gi
+    limits:
+      cpu: "8"
+      memory: 10Gi
+
+backend:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+rag:
+  resources:
+    requests:
+      cpu: "1"
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi

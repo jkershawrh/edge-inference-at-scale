@@ -20,18 +20,37 @@ class MessageType(str, Enum):
     RAG = "rag"
 
 
-class SMSMessage(BaseModel):
+class MessageChannel(str, Enum):
+    """Transport used to bring a message into the shared reasoning pipeline."""
+
+    SMS = "sms"
+    SIMULATOR = "simulator"
+    DISCORD = "discord"
+    LORA = "lora"
+
+
+class ChannelMessage(BaseModel):
+    """Channel-neutral message envelope used by the router and filters."""
+
     id: Optional[str] = None
-    sender: str = Field(..., description="Phone number of sender")
-    receiver: str = Field(..., description="Phone number of receiver")
-    content: str = Field(..., max_length=160, description="Message content (SMS limit)")
+    sender: str = Field(..., description="Channel-scoped sender identifier")
+    receiver: str = Field(..., description="Channel-scoped destination identifier")
+    content: str = Field(..., max_length=4000, description="Inbound message content")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     priority: MessagePriority = MessagePriority.NORMAL
+    channel: MessageChannel = MessageChannel.SMS
     metadata: Optional[Dict[str, Any]] = None
 
 
+class SMSMessage(ChannelMessage):
+    """SMS-compatible envelope with the transport's 160-character limit."""
+
+    content: str = Field(..., max_length=160, description="Message content (SMS limit)")
+    channel: MessageChannel = MessageChannel.SMS
+
+
 class ProcessedMessage(BaseModel):
-    original_message: SMSMessage
+    original_message: ChannelMessage
     message_type: MessageType
     intent: Optional[str] = None
     entities: Optional[Dict[str, Any]] = None

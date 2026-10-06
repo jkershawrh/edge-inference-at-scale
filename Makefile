@@ -9,7 +9,7 @@ HELM ?= helm
 PODMAN ?= podman
 
 .PHONY: help test-all test-contracts test-unit test-integration test-benchmarks \
-        test-evaluation test-bdd test-capacity test-capacity-live test-publication \
+        test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
 help: ## Show this help
@@ -18,7 +18,7 @@ help: ## Show this help
 
 # ── Stage 0: Contracts (CDD) ──────────────────────────────────────────
 test-contracts: ## Stage 0 — Validate API contracts
-	$(PYTEST) tests/contracts/ -v --tb=short
+	$(PYTEST) tests/contracts/ tests/corpus_factory/ -v --tb=short
 
 # ── Stage 1: Unit (TDD) ──────────────────────────────────────────────
 test-unit: ## Stage 1 — Unit tests (143 tests, no external deps)
@@ -31,6 +31,9 @@ test-integration: ## Stage 2 — Pipeline integration tests
 # ── Stage 3: Evaluation (EDD) ────────────────────────────────────────
 test-evaluation: ## Stage 3 — Response quality evaluation (requires live API)
 	$(PYTHON) tests/evaluation/run_eval.py
+
+test-retrieval-evaluation: ## Stage 3 — RAG recall, rank, and latency (requires live RAG)
+	$(PYTHON) tests/evaluation/run_retrieval_eval.py
 
 # ── Stage 3b: Capacity & Burst Benchmarks ────────────────────────────
 test-capacity: ## Stage 3b — Capacity tests (mocked, runs in CI)

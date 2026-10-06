@@ -19,6 +19,39 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: backend
     spec:
+      {{- if .Values.rag.corpus.enabled }}
+      initContainers:
+        - name: install-corpus
+          image: {{ required "rag.corpus.image is required when corpus packaging is enabled" .Values.rag.corpus.image | quote }}
+          imagePullPolicy: {{ .Values.rag.corpus.imagePullPolicy }}
+          env:
+            - name: CORPUS_TARGET_DIR
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}"
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              if [ -f "${CORPUS_TARGET_DIR}/manifest.json" ]; then
+                cmp -s /corpus/manifest.json "${CORPUS_TARGET_DIR}/manifest.json" || {
+                  echo "Refusing to replace an existing immutable corpus version" >&2
+                  exit 1
+                }
+                exit 0
+              fi
+              if [ -e "${CORPUS_TARGET_DIR}" ]; then
+                echo "Incomplete corpus target already exists" >&2
+                exit 1
+              fi
+              staging="${CORPUS_TARGET_DIR}.staging.$$"
+              trap 'rm -rf "${staging}"' EXIT
+              mkdir -p "$(dirname "${CORPUS_TARGET_DIR}")" "${staging}"
+              cp -a /corpus/. "${staging}/"
+              mv "${staging}" "${CORPUS_TARGET_DIR}"
+              trap - EXIT
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+      {{- end }}
       containers:
         - name: rag-service
           image: {{ .Values.rag.image }}
@@ -28,6 +61,25 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          {{- if .Values.rag.corpus.enabled }}
+          env:
+            - name: SUMMIT_DATA_DIR
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}"
+            - name: CORPUS_MANIFEST_PATH
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}/manifest.json"
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: CORPUS_READ_ONLY
+              value: "true"
+            - name: CORPUS_REQUIRE_SIGNATURE
+              value: {{ .Values.rag.corpus.requireSignature | quote }}
+            {{- if .Values.rag.corpus.publicKeySecretName }}
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /var/run/corpus-key/public-key.pem
+            {{- end }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health
@@ -47,6 +99,11 @@ spec:
           volumeMounts:
             - name: rag-data
               mountPath: /data
+            {{- if and .Values.rag.corpus.enabled .Values.rag.corpus.publicKeySecretName }}
+            - name: corpus-public-key
+              mountPath: /var/run/corpus-key
+              readOnly: true
+            {{- end }}
           resources:
             requests:
               cpu: {{ .Values.rag.resources.requests.cpu | quote }}
@@ -56,4 +113,14 @@ spec:
               memory: {{ .Values.rag.resources.limits.memory }}
       volumes:
         - name: rag-data
+          {{- if .Values.rag.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-rag
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+        {{- if and .Values.rag.corpus.enabled .Values.rag.corpus.publicKeySecretName }}
+        - name: corpus-public-key
+          secret:
+            secretName: {{ .Values.rag.corpus.publicKeySecretName }}
+        {{- end }}
