@@ -114,7 +114,7 @@ stages:
     execution:
       local:
         status_cap: AMBER
-        reason: "current journeys are Summit Connect rehearsal scenarios, not approved field workflows"
+        reason: "field journeys use synthetic guidance; approved event corpus and representative users remain required"
         commands:
           - argv: [python3, -m, pytest, tests/bdd/, -q, -rs]
       openshift:
