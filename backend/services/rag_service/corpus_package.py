@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 SCHEMA_VERSION = "1.0"
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
+SAFETY_CLASSES = {"advisory", "standard", "high", "critical"}
 
 
 class CorpusValidationError(ValueError):
@@ -142,6 +143,13 @@ def validate_corpus_package(
             for key, value in metadata.items()
         ):
             raise CorpusValidationError("document metadata is invalid: {0}".format(document_id))
+        if (
+            "safety_class" in metadata
+            and metadata["safety_class"] not in SAFETY_CLASSES
+        ):
+            raise CorpusValidationError(
+                "document safety class is invalid: {0}".format(document_id)
+            )
 
     try:
         categories_value = json.loads(

@@ -264,7 +264,7 @@ class CorpusActivationManager:
                                  "ACTIVE", "ACTIVE",
                                  verification=self._verification_dict(VerificationResult(True, True, True), True),
                                  smoke={"passed": True, "report_digest": _ZERO_DIGEST, "retrieval_p95_ms": 0.0})
-        return self._prepare_and_commit(candidate, before, "production", None,
+        return self._prepare_and_commit(candidate, before, "production", None, None,
                                         verifier, indexer, smoke_tester)
 
     def recover(self, candidate: ReleaseCandidate, authorization: RecoveryAuthorization,
@@ -286,7 +286,7 @@ class CorpusActivationManager:
             receipt = self._receipt(candidate, before, before["active_digest"], "rejected",
                                     "RECOVERY_NOT_AUTHORIZED", "ACTIVE", "REJECTED")
             raise RecoveryRejected("recovery authorization does not match node state", receipt)
-        return self._prepare_and_commit(candidate, before, "recovery", [authorization.authorization_id],
+        return self._prepare_and_commit(candidate, before, "recovery", [authorization.authorization_id], None,
                                         verifier, indexer, smoke_tester)
 
     def recover_exceptionally(
@@ -302,20 +302,6 @@ class CorpusActivationManager:
         if not isinstance(authorization, VerifiedRecoveryAuthorization):
             raise TypeError("exceptional recovery requires a verified signed authorization")
         before = self.current()
-        if authorization.blocked_safety_classes:
-            receipt = self._receipt(
-                candidate,
-                before,
-                before["active_digest"],
-                "rejected",
-                "RECOVERY_RESTRICTIONS_UNENFORCEABLE",
-                "ACTIVE",
-                "REJECTED",
-            )
-            raise RecoveryRejected(
-                "runtime cannot yet enforce signed recovery safety restrictions",
-                receipt,
-            )
         markers = authorization.replay_markers
         used = set(before.get("used_recovery_authorizations", []))
         valid = (
@@ -345,6 +331,13 @@ class CorpusActivationManager:
             before,
             "recovery",
             markers,
+            {
+                "authorization_id": authorization.authorization_id,
+                "authorization_nonce": authorization.nonce,
+                "blocked_safety_classes": list(
+                    authorization.blocked_safety_classes
+                ),
+            },
             verifier,
             indexer,
             smoke_tester,
@@ -352,6 +345,7 @@ class CorpusActivationManager:
 
     def _prepare_and_commit(self, candidate: ReleaseCandidate, before: Mapping[str, Any],
                             mode: str, authorization_markers: Optional[Sequence[str]],
+                            recovery_serving_policy: Optional[Mapping[str, Any]],
                             verifier: Optional[Verifier], indexer: Optional[Indexer],
                             smoke_tester: Optional[SmokeTester]) -> ActivationReceipt:
         package_dir, index_dir = self._release_dir(candidate.digest) / "package", self._release_dir(candidate.digest) / "index"
@@ -384,6 +378,8 @@ class CorpusActivationManager:
                             "sequence_floor": max(int(before["sequence_floor"]), candidate.sequence),
                             "mode": mode, "device_counter": int(before.get("device_counter", 0)),
                             "used_recovery_authorizations": list(used)}
+            if recovery_serving_policy is not None:
+                next_current["recovery_serving_policy"] = dict(recovery_serving_policy)
             success_receipt = self._receipt(candidate, next_current, candidate.digest,
                 "recovered" if mode == "recovery" else "success",
                 "RECOVERY_ACTIVATED" if mode == "recovery" else "ACTIVATED", "READY",

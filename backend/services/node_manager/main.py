@@ -7,9 +7,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend.shared.models import SMSMessage, ServiceHealth
+from backend.services.rag_service.activation_contracts import ActivationStatusResponse
 
 logger = logging.getLogger("node-manager")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -22,12 +23,15 @@ HEARTBEAT_TIMEOUT_SECONDS = 60
 class NodeRegistration(BaseModel):
     node_id: str
     api_url: str
-    capabilities: Dict[str, Any] = {}
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
 
 
 class NodeHeartbeat(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     node_id: str
-    metrics: Dict[str, Any] = {}
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    activation: Optional[ActivationStatusResponse] = None
 
 
 class RouteRequest(BaseModel):
@@ -41,12 +45,32 @@ class RouteResponse(BaseModel):
     response: Optional[Dict[str, Any]] = None
 
 
+class CorpusDriftGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active_digest: str = Field(pattern=r"^sha256:[a-f0-9]{64}$")
+    active_sequence: int = Field(ge=1)
+    nodes: List[str]
+
+
+class CorpusComplianceInventory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active_nodes: List[str]
+    recovery_nodes: List[str]
+    unready_nodes: List[str]
+    unknown_nodes: List[str]
+    drift_detected: bool
+    drift_groups: List[CorpusDriftGroup]
+
+
 class FleetSummary(BaseModel):
     total_nodes: int
     online_nodes: int
     total_messages_processed: int
     avg_latency_ms: float
     total_rag_direct: int
+    corpus_inventory: CorpusComplianceInventory
 
 
 # --- Node Manager ---
@@ -76,16 +100,31 @@ class NodeManager:
             "registered_at": now,
             "last_seen": now,
             "metrics": {},
+            "activation": None,
             "status": "online",
         }
         logger.info("Registered node %s at %s", node_id, api_url)
         return self.nodes[node_id]
 
-    def heartbeat(self, node_id: str, metrics: Dict[str, Any]) -> Dict[str, Any]:
+    def heartbeat(
+        self,
+        node_id: str,
+        metrics: Dict[str, Any],
+        activation: Optional[ActivationStatusResponse] = None,
+    ) -> Dict[str, Any]:
         if node_id not in self.nodes:
             raise KeyError(f"Node {node_id} is not registered")
+        if activation is not None and not isinstance(
+            activation, ActivationStatusResponse
+        ):
+            activation = ActivationStatusResponse.model_validate(activation)
         self.nodes[node_id]["last_seen"] = time.time()
         self.nodes[node_id]["metrics"] = metrics
+        # Persist only the bounded control-plane projection.  The strict
+        # contract has no fields for paths, retrieved content, or user data.
+        self.nodes[node_id]["activation"] = (
+            activation.model_dump(mode="json") if activation is not None else None
+        )
         self.nodes[node_id]["status"] = "online"
         logger.debug("Heartbeat from %s: %s", node_id, metrics)
         return self.nodes[node_id]
@@ -105,8 +144,71 @@ class NodeManager:
                 "status": status,
                 "last_seen": node["last_seen"],
                 "metrics": node["metrics"],
+                "corpus": self._corpus_status(node, status),
             })
         return fleet
+
+    @staticmethod
+    def _corpus_status(node: Dict[str, Any], node_status: str) -> Dict[str, Any]:
+        activation = node.get("activation")
+        if node_status != "online" or activation is None:
+            return {
+                "classification": "unknown",
+                "active_digest": None,
+                "active_sequence": None,
+            }
+        if activation["ready"] is not True:
+            return {
+                "classification": "unready",
+                "active_digest": activation["active_digest"],
+                "active_sequence": (
+                    activation["active_sequence"]
+                    if activation["active_sequence"] > 0
+                    else None
+                ),
+            }
+        classification = (
+            "recovery" if activation["mode"] == "recovery" else "active"
+        )
+        return {
+            "classification": classification,
+            "active_digest": activation["active_digest"],
+            "active_sequence": activation["active_sequence"],
+        }
+
+    @staticmethod
+    def _corpus_inventory(fleet: List[Dict[str, Any]]) -> Dict[str, Any]:
+        classified = {
+            "active": [],
+            "recovery": [],
+            "unready": [],
+            "unknown": [],
+        }
+        groups: Dict[tuple, List[str]] = {}
+        for node in fleet:
+            corpus = node["corpus"]
+            classification = corpus["classification"]
+            classified[classification].append(node["node_id"])
+            if classification in {"active", "recovery"}:
+                key = (corpus["active_digest"], corpus["active_sequence"])
+                groups.setdefault(key, []).append(node["node_id"])
+
+        drift_groups = [
+            {
+                "active_digest": digest,
+                "active_sequence": sequence,
+                "nodes": sorted(node_ids),
+            }
+            for (digest, sequence), node_ids in sorted(groups.items())
+        ]
+        return {
+            "active_nodes": sorted(classified["active"]),
+            "recovery_nodes": sorted(classified["recovery"]),
+            "unready_nodes": sorted(classified["unready"]),
+            "unknown_nodes": sorted(classified["unknown"]),
+            "drift_detected": len(drift_groups) > 1,
+            "drift_groups": drift_groups,
+        }
 
     def get_fleet_summary(self) -> Dict[str, Any]:
         fleet = self.get_fleet_status()
@@ -134,6 +236,7 @@ class NodeManager:
             "total_messages_processed": total_messages,
             "avg_latency_ms": round(avg_latency, 2),
             "total_rag_direct": total_rag_direct,
+            "corpus_inventory": self._corpus_inventory(fleet),
         }
 
     async def route_to_best_node(self, message: SMSMessage) -> Dict[str, Any]:
@@ -229,7 +332,11 @@ async def register_node(registration: NodeRegistration):
 @app.post("/nodes/heartbeat")
 async def node_heartbeat(hb: NodeHeartbeat):
     try:
-        node = manager.heartbeat(node_id=hb.node_id, metrics=hb.metrics)
+        node = manager.heartbeat(
+            node_id=hb.node_id,
+            metrics=hb.metrics,
+            activation=hb.activation,
+        )
         return {"status": "ok", "node_id": hb.node_id}
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

@@ -171,7 +171,9 @@ the selected signed package, expose a bounded activation status, and fail closed
 instead of falling back to unrelated local data.
 Field responses also carry internal, text-free attribution to the exact active
 corpus and selected evidence, while signed exceptional recovery remains bound to
-the live node state and fails closed on unenforceable serving restrictions.
+the live node state and suppresses restricted or unclassified recovery evidence.
+Fleet inventory now distinguishes active, recovery, unready, unknown, and drifted
+nodes without claiming compliance until a desired release is configured.
 
 The factory is domain-agnostic, but promotion is not. Each deployment supplies
 an event policy that names the accepted authorities, required operational facts,

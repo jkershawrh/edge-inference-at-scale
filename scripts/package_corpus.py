@@ -39,6 +39,7 @@ except ImportError:  # Direct execution sets scripts/ as sys.path[0].
 
 
 IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
+SAFETY_CLASSES = {"advisory", "standard", "high", "critical"}
 STOP_WORDS = {"the", "and", "for", "with", "from", "this", "that", "are", "was"}
 
 
@@ -138,6 +139,13 @@ def build_package(args: argparse.Namespace) -> Path:
                             document_id, key
                         )
                     )
+            if (
+                "safety_class" in metadata
+                and metadata["safety_class"] not in SAFETY_CLASSES
+            ):
+                raise ValueError(
+                    "document safety_class is invalid: {0}".format(document_id)
+                )
             category = metadata.get("category", "general")
             if not isinstance(category, str) or not category:
                 raise ValueError("document category must be a non-empty string")

@@ -353,11 +353,41 @@ class RAGService:
         if self.active_release is None:
             return result
         status = self.active_release.status
-        return result.model_copy(
-            update={
-                "active_corpus_digest": status.digest,
-                "active_corpus_sequence": status.sequence,
-            }
+        blocked = set(status.blocked_safety_classes)
+        documents = result.documents
+        scores = result.scores
+        metadata = result.metadata
+        if blocked:
+            allowed_indices = []
+            for index in range(len(documents)):
+                item_metadata = metadata[index] if index < len(metadata) else {}
+                safety_class = (
+                    item_metadata.get("safety_class")
+                    if isinstance(item_metadata, dict)
+                    else None
+                )
+                # Recovery restrictions are fail-closed: unclassified evidence
+                # cannot be assumed safe merely because its class is absent.
+                if (
+                    safety_class in {"advisory", "standard", "high", "critical"}
+                    and safety_class not in blocked
+                    and index < len(scores)
+                    and index < len(metadata)
+                ):
+                    allowed_indices.append(index)
+            filtered = len(documents) - len(allowed_indices)
+            if filtered:
+                self.stats.setdefault("recovery_policy_filtered_documents", 0)
+                self.stats["recovery_policy_filtered_documents"] += filtered
+            documents = [documents[index] for index in allowed_indices]
+            scores = [scores[index] for index in allowed_indices]
+            metadata = [metadata[index] for index in allowed_indices]
+        return RAGResult(
+            documents=documents,
+            scores=scores,
+            metadata=metadata,
+            active_corpus_digest=status.digest,
+            active_corpus_sequence=status.sequence,
         )
 
     async def _hybrid_search(self, query: RAGQuery) -> RAGResult:
@@ -550,6 +580,8 @@ class RAGService:
                     "mode": status.mode,
                     "state": status.activation_state,
                     "ready": True,
+                    "blocked_safety_classes": list(status.blocked_safety_classes),
+                    "recovery_authorization_id": status.recovery_authorization_id,
                     "reason_code": (
                         "RECOVERY_ACTIVE" if status.mode == "recovery" else "READY"
                     ),

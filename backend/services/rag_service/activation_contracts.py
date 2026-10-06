@@ -148,3 +148,17 @@ class ActivationReceiptResponse(StrictContract):
         elif self.transition.to_state != "REJECTED":
             raise ValueError("unsuccessful receipt must transition to REJECTED")
         return self
+
+
+class ActivationAcceptedResponse(StrictContract):
+    """Operator acknowledgement; activation does not mutate the live process."""
+
+    receipt: ActivationReceiptResponse
+    live_reload_performed: Literal[False] = False
+    restart_or_reconciliation_required: Literal[True] = True
+
+    @model_validator(mode="after")
+    def require_success_receipt(self) -> "ActivationAcceptedResponse":
+        if self.receipt.result is not ActivationResult.SUCCESS:
+            raise ValueError("accepted activation must contain a success receipt")
+        return self

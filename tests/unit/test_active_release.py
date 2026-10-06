@@ -7,6 +7,7 @@ import sys
 import types
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -154,8 +155,90 @@ def test_resolves_only_valid_active_or_recovery_release(
     assert selection.status.sequence == sequence
     assert selection.status.sequence_floor == floor
     assert selection.status.activation_state == expected_state
+    assert selection.status.blocked_safety_classes == ()
+    assert selection.status.recovery_authorization_id is None
     with pytest.raises(FrozenInstanceError):
         selection.status.sequence = 99  # type: ignore[misc]
+
+
+def test_exposes_strict_exceptional_recovery_restrictions(tmp_path: Path) -> None:
+    resolver, root, _release = _deployment(tmp_path, mode="recovery")
+    pointer = json.loads((root / "current.json").read_text())
+    authorization_id = "123e4567-e89b-42d3-a456-426614174000"
+    authorization_nonce = "QWxwaGEtTm9uY2UtMDAwMDAx"
+    pointer["used_recovery_authorizations"] = [
+        "authorization:" + authorization_id,
+        "nonce:" + authorization_nonce,
+    ]
+    pointer["recovery_serving_policy"] = {
+        "authorization_id": authorization_id,
+        "authorization_nonce": authorization_nonce,
+        "blocked_safety_classes": ["high", "critical"],
+    }
+    _write_json(root / "current.json", pointer)
+
+    status = resolver.resolve().status
+
+    assert status.mode == "recovery"
+    assert status.recovery_authorization_id == authorization_id
+    assert status.blocked_safety_classes == ("high", "critical")
+
+
+@pytest.mark.parametrize(
+    "mode,policy",
+    [
+        (
+            "production",
+            {
+                "authorization_id": "123e4567-e89b-42d3-a456-426614174000",
+                "authorization_nonce": "QWxwaGEtTm9uY2UtMDAwMDAx",
+                "blocked_safety_classes": ["critical"],
+            },
+        ),
+        (
+            "recovery",
+            {
+                "authorization_id": "not-a-uuid",
+                "authorization_nonce": "QWxwaGEtTm9uY2UtMDAwMDAx",
+                "blocked_safety_classes": ["critical"],
+            },
+        ),
+        (
+            "recovery",
+            {
+                "authorization_id": "123e4567-e89b-42d3-a456-426614174000",
+                "authorization_nonce": "QWxwaGEtTm9uY2UtMDAwMDAx",
+                "blocked_safety_classes": ["critical", "critical"],
+            },
+        ),
+        (
+            "recovery",
+            {
+                "authorization_id": "123e4567-e89b-42d3-a456-426614174000",
+                "authorization_nonce": "QWxwaGEtTm9uY2UtMDAwMDAx",
+                "blocked_safety_classes": ["unclassified"],
+            },
+        ),
+        (
+            "recovery",
+            {
+                "authorization_id": "123e4567-e89b-42d3-a456-426614174000",
+                "authorization_nonce": "QWxwaGEtTm9uY2UtMDAwMDAx",
+                "blocked_safety_classes": ["critical"],
+            },
+        ),
+    ],
+)
+def test_rejects_invalid_or_misbound_recovery_serving_policy(
+    tmp_path: Path, mode: str, policy
+) -> None:
+    resolver, root, _release = _deployment(tmp_path, mode=mode)
+    pointer = json.loads((root / "current.json").read_text())
+    pointer["recovery_serving_policy"] = policy
+    _write_json(root / "current.json", pointer)
+
+    with pytest.raises(ActiveReleaseError, match="recovery serving policy"):
+        resolver.resolve()
 
 
 @pytest.mark.parametrize(
@@ -314,6 +397,8 @@ async def test_rag_runtime_loads_only_the_verified_active_package(
         "mode": "production",
         "state": "ACTIVE",
         "ready": True,
+        "blocked_safety_classes": [],
+        "recovery_authorization_id": None,
         "reason_code": "READY",
     }
 
@@ -351,3 +436,41 @@ def test_rag_runtime_fails_closed_when_active_manifest_identity_changes(
 
     with pytest.raises(ActiveReleaseError, match="digest"):
         rag_main.RAGService()
+
+
+def test_recovery_policy_filters_blocked_and_unclassified_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rag_main = _rag_main_without_optional_database(monkeypatch, tmp_path)
+    service = rag_main.RAGService.__new__(rag_main.RAGService)
+    service.stats = {}
+    service.active_release = SimpleNamespace(
+        status=SimpleNamespace(
+            digest="sha256:" + "a" * 64,
+            sequence=7,
+            blocked_safety_classes=("high", "critical"),
+        )
+    )
+    result = rag_main.RAGResult(
+        documents=[
+            "Standard logistics guidance.",
+            "Critical evacuation guidance.",
+            "Unclassified guidance.",
+        ],
+        scores=[0.9, 0.95, 0.99],
+        metadata=[
+            {"parent_doc_id": "logistics", "safety_class": "standard"},
+            {"parent_doc_id": "evacuation", "safety_class": "critical"},
+            {"parent_doc_id": "unknown"},
+        ],
+    )
+
+    attributed = service._attribute_search_result(result)
+
+    assert attributed.documents == ["Standard logistics guidance."]
+    assert attributed.scores == [0.9]
+    assert attributed.metadata == [
+        {"parent_doc_id": "logistics", "safety_class": "standard"}
+    ]
+    assert attributed.active_corpus_sequence == 7
+    assert service.stats["recovery_policy_filtered_documents"] == 2

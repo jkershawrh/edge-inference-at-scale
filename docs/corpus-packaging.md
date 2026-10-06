@@ -122,20 +122,23 @@ activation. Live hot-swap and the authenticated activation POST endpoint remain
 separate control-plane work; callers cannot activate arbitrary local paths
 through the RAG API.
 
-The transport-independent activation control core is available for that future
-operator endpoint. It uses constant-time bearer authentication, confines every
-candidate beneath a configured local intake root, rejects symlink traversal,
-and returns only a bounded receipt projection. Device receipts can be signed by
-a node-held Ed25519 key. The control is intentionally not mounted as a RAG HTTP
-route yet: activation and serving must not diverge before the operator can
-coordinate the required RAG restart or a fully tested atomic live reload.
+The standalone activation-operator application wraps the control core with a
+bounded JSON HTTP interface. It uses constant-time bearer authentication,
+confines every candidate beneath a configured local intake root, rejects
+symlink traversal, and returns only a bounded receipt projection. A successful
+request returns HTTP 202 and explicitly reports that restart or reconciliation
+is required; it never claims to have live-reloaded the RAG process. Device
+receipts can be signed by a node-held Ed25519 key. The operator is intentionally
+not mounted as a RAG route or enabled by the default chart yet: activation and
+serving must not diverge before deployment-level restart coordination is wired.
 
 Exceptional downgrade uses a separately signed recovery authorization bound to
 the event, site, current digest, sequence floor, target digest, trust generation,
 validity window, and two independent approvers. Authorization ID and nonce are
-single-use. A recovery carrying safety-class restrictions is rejected until the
-serving path can enforce those restrictions; Lil EVY does not accept policy it
-cannot honor.
+single-use. Recovery restrictions are atomically bound to the active pointer.
+The RAG service removes both explicitly blocked and unclassified evidence before
+it reaches the message router, so Lil EVY does not guess that missing metadata
+means safe during exceptional recovery.
 
 ## Promotion gates
 

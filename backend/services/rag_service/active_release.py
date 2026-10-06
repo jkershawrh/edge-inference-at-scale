@@ -10,9 +10,10 @@ from __future__ import annotations
 import json
 import hashlib
 import re
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from .corpus_package import CorpusValidationError, validate_corpus_package
 
@@ -26,6 +27,14 @@ _POINTER_FIELDS = {
     "device_counter",
     "used_recovery_authorizations",
 }
+_RECOVERY_POLICY_FIELD = "recovery_serving_policy"
+_RECOVERY_POLICY_FIELDS = {
+    "authorization_id",
+    "authorization_nonce",
+    "blocked_safety_classes",
+}
+_SAFETY_CLASSES = {"advisory", "standard", "high", "critical"}
+_AUTHORIZATION_NONCE = re.compile(r"^[A-Za-z0-9_-]{22,128}$")
 _STATE_FIELDS = {"digest", "sequence", "state", "history"}
 _ACTIVATION_STATES = {
     "STAGED",
@@ -53,6 +62,8 @@ class RuntimeReleaseStatus:
     mode: str
     activation_state: str
     device_counter: int
+    blocked_safety_classes: Tuple[str, ...]
+    recovery_authorization_id: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -167,6 +178,14 @@ class ActiveReleaseResolver:
             mode=pointer["mode"],
             activation_state=expected_state,
             device_counter=pointer["device_counter"],
+            blocked_safety_classes=tuple(
+                pointer.get(_RECOVERY_POLICY_FIELD, {}).get(
+                    "blocked_safety_classes", []
+                )
+            ),
+            recovery_authorization_id=pointer.get(
+                _RECOVERY_POLICY_FIELD, {}
+            ).get("authorization_id"),
         )
         return RuntimeCorpusSelection(
             status=status,
@@ -187,7 +206,11 @@ class ActiveReleaseResolver:
 
     @staticmethod
     def _validate_pointer(pointer: Mapping[str, Any]) -> Mapping[str, Any]:
-        if set(pointer) != _POINTER_FIELDS:
+        fields = set(pointer)
+        if fields not in {
+            frozenset(_POINTER_FIELDS),
+            frozenset(_POINTER_FIELDS | {_RECOVERY_POLICY_FIELD}),
+        }:
             raise ActiveReleaseError("active pointer fields are invalid")
         if not isinstance(pointer["active_digest"], str) or not _DIGEST.fullmatch(
             pointer["active_digest"]
@@ -220,6 +243,48 @@ class ActiveReleaseResolver:
             raise ActiveReleaseError("active pointer recovery authorizations are invalid")
         if pointer["mode"] == "recovery" and not authorizations:
             raise ActiveReleaseError("recovery pointer has no recovery authorization")
+        policy = pointer.get(_RECOVERY_POLICY_FIELD)
+        if policy is not None:
+            if pointer["mode"] != "recovery":
+                raise ActiveReleaseError(
+                    "recovery serving policy is only valid in recovery mode"
+                )
+            if not isinstance(policy, dict) or set(policy) != _RECOVERY_POLICY_FIELDS:
+                raise ActiveReleaseError("recovery serving policy fields are invalid")
+            try:
+                authorization_id = str(uuid.UUID(policy["authorization_id"]))
+            except (ValueError, TypeError, AttributeError) as exc:
+                raise ActiveReleaseError(
+                    "recovery serving policy authorization ID is invalid"
+                ) from exc
+            if authorization_id != policy["authorization_id"]:
+                raise ActiveReleaseError(
+                    "recovery serving policy authorization ID is not canonical"
+                )
+            nonce = policy["authorization_nonce"]
+            if not isinstance(nonce, str) or not _AUTHORIZATION_NONCE.fullmatch(nonce):
+                raise ActiveReleaseError(
+                    "recovery serving policy authorization nonce is invalid"
+                )
+            if (
+                "authorization:" + authorization_id not in authorizations
+                or "nonce:" + nonce not in authorizations
+            ):
+                raise ActiveReleaseError(
+                    "recovery serving policy is not bound to replay state"
+                )
+            blocked = policy["blocked_safety_classes"]
+            if (
+                not isinstance(blocked, list)
+                or any(
+                    not isinstance(item, str) or item not in _SAFETY_CLASSES
+                    for item in blocked
+                )
+                or len(blocked) != len(set(blocked))
+            ):
+                raise ActiveReleaseError(
+                    "recovery serving policy safety classes are invalid"
+                )
         return pointer
 
     @staticmethod

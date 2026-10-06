@@ -140,6 +140,28 @@ def test_builder_supports_event_neutral_documents(tmp_path):
     assert manifest["sources"][0]["name"] == "clinic.json"
 
 
+def test_builder_rejects_unknown_document_safety_class(tmp_path):
+    input_path = tmp_path / "unsafe-class.json"
+    input_path.write_text(
+        json.dumps(
+            [
+                {
+                    "id": "clinic-hours",
+                    "text": "The mobile clinic opens at 08:00.",
+                    "metadata": {
+                        "category": "health",
+                        "safety_class": "urgent-ish",
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="safety_class"):
+        build_package(_builder_args(tmp_path, input_path))
+
+
 def test_failed_build_leaves_no_partial_version(tmp_path):
     input_path = tmp_path / "duplicate.json"
     input_path.write_text(

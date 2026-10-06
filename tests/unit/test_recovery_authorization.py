@@ -320,8 +320,6 @@ def test_activation_manager_persists_id_and_nonce_and_rejects_replay(
 ) -> None:
     private, public = _key(tmp_path)
     value = _record(private)
-    value["policy"]["blocked_safety_classes"] = []
-    _resign(value, private)
     authorization = _verify(value, public)
     manager, older, verifier, indexer, smoke = _activated_manager(tmp_path)
 
@@ -334,19 +332,29 @@ def test_activation_manager_persists_id_and_nonce_and_rejects_replay(
     assert manager.current()["used_recovery_authorizations"] == list(
         authorization.replay_markers
     )
+    assert manager.current()["recovery_serving_policy"] == {
+        "authorization_id": authorization.authorization_id,
+        "authorization_nonce": authorization.nonce,
+        "blocked_safety_classes": ["critical"],
+    }
     with pytest.raises(RecoveryRejected):
         manager.recover_exceptionally(older, authorization, verifier, indexer, smoke)
 
 
-def test_activation_rejects_restrictions_runtime_cannot_enforce(tmp_path: Path) -> None:
+def test_exceptional_recovery_with_empty_restrictions_is_explicitly_persisted(
+    tmp_path: Path,
+) -> None:
     private, public = _key(tmp_path)
-    authorization = _verify(_record(private), public)
-    assert authorization.blocked_safety_classes == ("critical",)
+    value = _record(private)
+    value["policy"]["blocked_safety_classes"] = []
+    _resign(value, private)
+    authorization = _verify(value, public)
     manager, older, verifier, indexer, smoke = _activated_manager(tmp_path)
-    before = manager.current()
 
-    with pytest.raises(RecoveryRejected) as raised:
-        manager.recover_exceptionally(older, authorization, verifier, indexer, smoke)
+    manager.recover_exceptionally(older, authorization, verifier, indexer, smoke)
 
-    assert raised.value.receipt.reason_code == "RECOVERY_RESTRICTIONS_UNENFORCEABLE"
-    assert manager.current() == before
+    assert manager.current()["recovery_serving_policy"] == {
+        "authorization_id": authorization.authorization_id,
+        "authorization_nonce": authorization.nonce,
+        "blocked_safety_classes": [],
+    }
