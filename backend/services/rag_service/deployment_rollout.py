@@ -303,6 +303,17 @@ class DeploymentRolloutController:
         self._clock = clock or (lambda: datetime.now(timezone.utc))
         self._rollout_id_factory = rollout_id_factory or uuid4
 
+    def current_result(self) -> RolloutResult:
+        """Return the durable rollout projection without calling an external port.
+
+        The first read initializes the rollout record so every subsequent reader
+        observes one stable rollout identifier.  It deliberately does not apply
+        the elapsed-time policy: timeouts are state transitions and therefore
+        happen only when an operator explicitly advances the rollout.
+        """
+
+        return self._result(self._load_or_initialize())
+
     async def advance(self) -> RolloutResult:
         state = self._load_or_initialize()
         if state.phase in {RolloutPhase.VERIFIED, RolloutPhase.FAILED}:

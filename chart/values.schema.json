@@ -105,6 +105,47 @@
                 }
               ],
               "additionalProperties": false
+            },
+            "rollout": {
+              "type": "object",
+              "required": [
+                "enabled", "port", "candidatePath", "targetDigest",
+                "targetSequence", "statePath", "apiBearerSecretName",
+                "apiBearerSecretKey", "maxActivationAttempts",
+                "maxRestartAttempts", "maxStatusPolls", "timeoutSeconds",
+                "dependencyTimeoutSeconds", "workerPollSeconds", "resources"
+              ],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                "candidatePath": {"type": "string"},
+                "targetDigest": {"type": "string"},
+                "targetSequence": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+                "statePath": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+                "apiBearerSecretName": {"type": "string"},
+                "apiBearerSecretKey": {"type": "string", "minLength": 1},
+                "maxActivationAttempts": {"type": "integer", "minimum": 1, "maximum": 100},
+                "maxRestartAttempts": {"type": "integer", "minimum": 1, "maximum": 100},
+                "maxStatusPolls": {"type": "integer", "minimum": 1, "maximum": 10000},
+                "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+                "dependencyTimeoutSeconds": {"type": "number", "minimum": 0.1, "maximum": 60},
+                "workerPollSeconds": {"type": "number", "minimum": 1, "maximum": 60},
+                "resources": {"type": "object"}
+              },
+              "allOf": [
+                {
+                  "if": {"properties": {"enabled": {"const": true}}},
+                  "then": {
+                    "properties": {
+                      "candidatePath": {"pattern": "^/.*$", "minLength": 2},
+                      "targetDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "targetSequence": {"minimum": 1},
+                      "apiBearerSecretName": {"minLength": 1}
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
             }
           },
           "additionalProperties": false
@@ -150,6 +191,35 @@
           "then": {
             "properties": {
               "activation": {"properties": {"enabled": {"const": true}}},
+              "persistence": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "rollout": {
+                    "properties": {"enabled": {"const": true}},
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["rollout"]
+              }
+            },
+            "required": ["activation"]
+          },
+          "then": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "enabled": {"const": true},
+                  "operator": {
+                    "properties": {"enabled": {"const": true}}
+                  }
+                }
+              },
               "persistence": {"properties": {"enabled": {"const": true}}}
             }
           }

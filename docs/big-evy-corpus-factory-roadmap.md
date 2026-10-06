@@ -408,6 +408,9 @@ Already implemented:
 - Crash-resumable rollout control with persisted idempotent intents, durable
   deadlines, a fixed-scope Kubernetes Deployment restart adapter, and exact
   desired-release fleet compliance reporting
+- Autonomous OpenShift rollout sidecar with bounded internal HTTP ports,
+  controller-only projected Kubernetes identity, CA-pinned API access, and RBAC
+  restricted to `patch` on its one RAG Deployment
 
 Still required before this is production-grade:
 
@@ -418,8 +421,8 @@ Still required before this is production-grade:
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody
-- Runtime packaging for the rollout controller, activation/status HTTP adapters,
-  least-privilege OpenShift RBAC, and authenticated fleet heartbeats
+- Authenticated fleet heartbeats and a GitOps policy for controller-owned
+  rollout annotations after promotion
 - Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1

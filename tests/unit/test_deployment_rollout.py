@@ -147,6 +147,37 @@ def _controller(store=None, activation=None, workload=None, status=None, clock=N
     )
 
 
+def test_current_result_initializes_once_without_calling_external_ports():
+    store, activation, workload, status = MemoryStore(), Activation(), Workload(), Status()
+    controller = _controller(
+        store=store, activation=activation, workload=workload, status=status
+    )
+
+    first = controller.current_result()
+    second = controller.current_result()
+
+    assert first == second
+    assert first.rollout_id == ROLLOUT_ID
+    assert first.phase is RolloutPhase.ACTIVATING
+    assert first.reason_code == RolloutReason.ACTIVATION_REQUIRED.value
+    assert len(store.saves) == 1
+    assert activation.calls == []
+    assert workload.calls == []
+    assert status.calls == 0
+
+
+def test_current_result_validates_persisted_state_without_advancing():
+    store = MemoryStore()
+    controller = _controller(store=store)
+    controller.current_result()
+    store.value["unexpected"] = "sensitive"
+
+    with pytest.raises(RolloutStateError, match="invalid") as failure:
+        controller.current_result()
+
+    assert "sensitive" not in str(failure.value)
+
+
 @pytest.mark.asyncio
 async def test_happy_path_requires_activation_restart_and_post_restart_status():
     store, activation, workload, status = MemoryStore(), Activation(), Workload(), Status()

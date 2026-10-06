@@ -181,6 +181,9 @@ accepted package from being mistaken for the release currently serving answers.
 The next control layer is also executable as a crash-resumable state machine:
 restart requests are idempotent, deadlines survive controller restarts, and fleet
 compliance requires live proof of the exact production digest and sequence.
+The opt-in chart profile now runs that controller autonomously with a projected,
+controller-only Kubernetes identity and permission to patch only its own RAG
+Deployment, making the complete cutover testable on OpenShift without field hardware.
 
 The factory is domain-agnostic, but promotion is not. Each deployment supplies
 an event policy that names the accepted authorities, required operational facts,

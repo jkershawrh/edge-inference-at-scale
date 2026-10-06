@@ -158,11 +158,33 @@ rag:
       chunkerDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
       modelDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
       embeddingModelDigest: sha256:REPLACE_WITH_64_HEX_CHARACTERS
+    rollout:
+      enabled: true
+      candidatePath: /data/activation-intake/release-2026.3
+      targetDigest: sha256:REPLACE_WITH_CORPUS_MANIFEST_DIGEST
+      targetSequence: 3
+      apiBearerSecretName: rollout-controller-token
 ```
 
 The token Secret must expose `bearer-token` and the receipt Secret must expose
 `private-key.pem` unless their key names are overridden in values. The token is
 32–512 printable ASCII characters. The receipt key is an Ed25519 private key.
+When rollout is enabled, its API token Secret must contain `bearer-token` and
+must be separate from the activation credential in both Secret and value.
+Provision all three from protected files rather than shell literals:
+
+```bash
+oc create secret generic activation-operator-token \
+  --from-file=bearer-token=/secure/path/activation-token
+oc create secret generic activation-receipt-key \
+  --from-file=private-key.pem=/secure/path/device-receipt-ed25519.pem
+oc create secret generic rollout-controller-token \
+  --from-file=bearer-token=/secure/path/rollout-token
+```
+
+The disconnected importer must place the verified candidate at the exact
+`candidatePath` before rollout is enabled. Chart validation requires that path
+to remain beneath the operator's configured intake root.
 
 HTTP 202 means the signed package was durably activated; it does **not** mean
 the running RAG process serves it. The deployment controller must
@@ -174,9 +196,23 @@ successful. The crash-resumable rollout controller persists intent before each
 external operation, reuses stable idempotency keys after ambiguous failures,
 and enforces durable attempt, poll, and time limits. Its dependency-light
 OpenShift adapter patches only the configured RAG Deployment and binds the pod
-template to the exact rollout operation, digest, and sequence. The remaining
-deployment work is to package the controller with its activation/status HTTP
-adapters and narrowly scoped OpenShift RBAC.
+template to the exact rollout operation, digest, and sequence.
+
+The chart packages that controller as a third sidecar. It disables automatic
+service-account-token mounts, projects a short-lived token and cluster CA only
+into the controller container, and grants `patch` only for the one named
+RAG Deployment. The controller automatically advances one operation at a time,
+persists state on the RAG volume, survives the pod restart it requests, and then
+requires live status before marking the rollout complete. Same-pod activation
+and status calls use pinned IPv4 loopback endpoints, so startup does not depend
+on the pod already being a ready Service endpoint. Its authenticated API
+is not given a Service or Route; use a controlled pod port-forward only when an
+operator needs the bounded rollout status.
+
+Continuous GitOps reconcilers must be configured to preserve the three
+`lilevy.edge/*` pod-template annotations written by the rollout controller (or
+commit those exact values after promotion). Removing them is another pod-template
+change and can cause an unnecessary restart even though the corpus remains safe.
 
 Exceptional downgrade uses a separately signed recovery authorization bound to
 the event, site, current digest, sequence floor, target digest, trust generation,

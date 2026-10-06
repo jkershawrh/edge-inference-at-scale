@@ -1,3 +1,17 @@
+{{- if .Values.rag.activation.rollout.enabled }}
+{{- if eq (int .Values.rag.activation.rollout.port) (int .Values.rag.activation.operator.port) }}
+{{- fail "rag.activation.rollout.port must differ from rag.activation.operator.port" }}
+{{- end }}
+{{- if eq .Values.rag.activation.rollout.apiBearerSecretName .Values.rag.activation.operator.bearerSecretName }}
+{{- fail "rollout and activation bearer Secrets must be distinct" }}
+{{- end }}
+{{- if not (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.operator.intakeRoot)) .Values.rag.activation.rollout.candidatePath) }}
+{{- fail "rag.activation.rollout.candidatePath must be beneath rag.activation.operator.intakeRoot" }}
+{{- end }}
+{{- if or (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.root)) .Values.rag.activation.rollout.statePath) (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.operator.intakeRoot)) .Values.rag.activation.rollout.statePath) }}
+{{- fail "rag.activation.rollout.statePath must be outside activation and intake roots" }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,6 +33,10 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: backend
     spec:
+      {{- if .Values.rag.activation.rollout.enabled }}
+      serviceAccountName: {{ .Release.Name }}-rollout-controller
+      automountServiceAccountToken: false
+      {{- end }}
       {{- if .Values.rag.corpus.enabled }}
       initContainers:
         - name: install-corpus
@@ -205,6 +223,85 @@ spec:
           resources:
             {{- toYaml .Values.rag.activation.operator.resources | nindent 12 }}
         {{- end }}
+        {{- if .Values.rag.activation.rollout.enabled }}
+        - name: rollout-controller
+          image: {{ .Values.rag.image }}
+          command:
+            - python3.11
+            - -m
+            - uvicorn
+            - backend.services.rag_service.deployment_rollout_runtime:create_deployment_rollout_from_environment
+            - --factory
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.rag.activation.rollout.port | quote }}
+          ports:
+            - name: rollout
+              containerPort: {{ .Values.rag.activation.rollout.port }}
+              protocol: TCP
+          env:
+            - name: ROLLOUT_API_TOKEN_PATH
+              value: /run/rollout-api/bearer-token
+            - name: ACTIVATION_BEARER_TOKEN_PATH
+              value: /run/activation-operator/bearer-token
+            - name: SERVICE_ACCOUNT_TOKEN_PATH
+              value: /run/rollout-kubernetes/token
+            - name: SERVICE_ACCOUNT_NAMESPACE_PATH
+              value: /run/rollout-kubernetes/namespace
+            - name: SERVICE_ACCOUNT_CA_PATH
+              value: /run/rollout-kubernetes/ca.crt
+            - name: ACTIVATION_INTERNAL_ORIGIN
+              value: {{ printf "http://127.0.0.1:%v" .Values.rag.activation.operator.port | quote }}
+            - name: RAG_INTERNAL_ORIGIN
+              value: "http://127.0.0.1:8004"
+            - name: ROLLOUT_CANDIDATE_PATH
+              value: {{ .Values.rag.activation.rollout.candidatePath | quote }}
+            - name: ROLLOUT_CANDIDATE_DIGEST
+              value: {{ .Values.rag.activation.rollout.targetDigest | quote }}
+            - name: ROLLOUT_CANDIDATE_SEQUENCE
+              value: {{ .Values.rag.activation.rollout.targetSequence | quote }}
+            - name: ROLLOUT_STATE_PATH
+              value: {{ .Values.rag.activation.rollout.statePath | quote }}
+            - name: RAG_DEPLOYMENT_NAME
+              value: {{ printf "%s-rag-service" .Release.Name | quote }}
+            - name: ROLLOUT_MAX_ACTIVATION_ATTEMPTS
+              value: {{ .Values.rag.activation.rollout.maxActivationAttempts | quote }}
+            - name: ROLLOUT_MAX_RESTART_ATTEMPTS
+              value: {{ .Values.rag.activation.rollout.maxRestartAttempts | quote }}
+            - name: ROLLOUT_MAX_STATUS_POLLS
+              value: {{ .Values.rag.activation.rollout.maxStatusPolls | quote }}
+            - name: ROLLOUT_TIMEOUT_SECONDS
+              value: {{ .Values.rag.activation.rollout.timeoutSeconds | quote }}
+            - name: ROLLOUT_DEPENDENCY_TIMEOUT_SECONDS
+              value: {{ .Values.rag.activation.rollout.dependencyTimeoutSeconds | quote }}
+            - name: ROLLOUT_WORKER_POLL_SECONDS
+              value: {{ .Values.rag.activation.rollout.workerPollSeconds | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: rollout
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: rollout
+            periodSeconds: 30
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+            - name: activation-operator-credential
+              mountPath: /run/activation-operator
+              readOnly: true
+            - name: rollout-api-credential
+              mountPath: /run/rollout-api
+              readOnly: true
+            - name: rollout-kubernetes-identity
+              mountPath: /run/rollout-kubernetes
+              readOnly: true
+          resources:
+            {{- toYaml .Values.rag.activation.rollout.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: rag-data
           {{- if .Values.rag.persistence.enabled }}
@@ -233,4 +330,30 @@ spec:
             items:
               - key: {{ .Values.rag.activation.operator.receiptPrivateKeyKey }}
                 path: private-key.pem
+        {{- end }}
+        {{- if .Values.rag.activation.rollout.enabled }}
+        - name: rollout-api-credential
+          secret:
+            secretName: {{ .Values.rag.activation.rollout.apiBearerSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.rollout.apiBearerSecretKey }}
+                path: bearer-token
+        - name: rollout-kubernetes-identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
         {{- end }}

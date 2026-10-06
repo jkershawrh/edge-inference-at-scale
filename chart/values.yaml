@@ -95,6 +95,29 @@ rag:
         limits:
           cpu: 100m
           memory: 128Mi
+    # Crash-resumable controller sidecar. Requires operator.enabled=true.
+    rollout:
+      enabled: false
+      port: 8015
+      candidatePath: ""
+      targetDigest: ""
+      targetSequence: 0
+      statePath: /data/rollout/state.json
+      apiBearerSecretName: ""
+      apiBearerSecretKey: bearer-token
+      maxActivationAttempts: 3
+      maxRestartAttempts: 3
+      maxStatusPolls: 60
+      timeoutSeconds: 300
+      dependencyTimeoutSeconds: 10
+      workerPollSeconds: 5
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
   resources:
     requests:
       cpu: 250m
