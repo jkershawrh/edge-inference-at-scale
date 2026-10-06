@@ -67,7 +67,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 ```bash
 # Clone and start the edge node
-git clone https://github.com/YOUR_ORG/edge-inference-at-scale.git
+git clone https://github.com/jkershawrh/edge-inference-at-scale.git
 cd edge-inference-at-scale
 docker compose up    # requires x86_64 (Intel/AMD) for BitNet
 
@@ -87,6 +87,22 @@ curl http://localhost:8000/services/health     # All services
 curl http://localhost:8000/llm/stats           # Inference latency
 curl http://localhost:8000/router/statistics   # Throughput + RAG/LLM/delivery stage timing
 ```
+
+### Convergence gates
+
+The executable [core convergence matrix](tests/validation_matrix.yaml) reports
+CDD, TDD, integration, EDD, BDD, CUT, and publication as RED, AMBER, or GREEN.
+A skipped or simulated check remains AMBER; it is never silently promoted.
+
+```bash
+make test-all       # Local evidence; succeeds when there is no RED
+make test-release   # Strict promotion; requires every stage to be GREEN
+make test-openshift # Live retrieval, answer-quality, and capacity evidence
+```
+
+CUT means capability-and-user testing for the complete field product. The
+presentation's component-based testing (CBT) is useful evidence, but cannot by
+itself qualify hardware, GSM delivery, power, or representative field use.
 
 ### Provider and resource experiments
 
@@ -263,7 +279,7 @@ In the field: truck nodes to the affected area, power them up, they start servin
 ├── tests/                         # CDD/TDD/EDD/BDD validation matrix
 ├── docs/architecture.md           # Full architecture document
 ├── docker-compose.yml             # Dev: single edge node
-└── chart/                         # Helm chart for MicroShift (TODO)
+└── chart/                         # Helm chart for MicroShift/OpenShift
 ```
 
 ## Based On

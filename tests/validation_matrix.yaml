@@ -1,276 +1,167 @@
-# Validation Matrix — CDD -> TDD -> EDD -> BDD -> CBT -> Publication
-# Write tests RED, deploy until GREEN. Each stage gates the next.
-# Edge Inference at Scale: SMS -> LLM -> SMS pipeline at the edge.
+# Core Convergence Matrix
+#
+# RED: a required command failed or a capability claim is contradicted.
+# AMBER: exercised behavior passed, but checks were skipped or target/live
+#        evidence is absent. AMBER is never silently promoted to GREEN.
+# GREEN: every required check passed with attributable evidence for this scope.
+#
+# CUT is capability-and-user testing for the field product. The demo's CBT
+# (component-based testing) is one input to CUT; a green demo cannot promote
+# the field product by itself.
+
+version: "2.0"
+rubric:
+  red: "Required failure, contradicted behavior, or unsupported release claim"
+  amber: "Passing partial/simulated evidence with skips or missing target evidence"
+  green: "All required checks passed for the declared profile with retained evidence"
+  policy:
+    - "Do not average colors; any RED makes the overall result RED"
+    - "Any AMBER makes the overall result AMBER"
+    - "PENDING or skipped evidence is AMBER, never GREEN"
+    - "Evidence is bound to the selected code, corpus, model, runtime, channel, and profile"
 
 stages:
+  stage_0_cdd:
+    id: CDD
+    name: Contract-driven development
+    purpose: "Validate API, corpus, signing, activation, and rollout contracts"
+    gate: null
+    execution:
+      local:
+        commands:
+          - argv: [python3, -m, pytest, tests/contracts/, tests/corpus_factory/, -q, -rs]
+      openshift:
+        commands:
+          - argv: [python3, -m, pytest, tests/contracts/, tests/corpus_factory/, -q, -rs]
+    green_requires:
+      - "No contract checks skipped"
+      - "Signed immutable corpus and anti-rollback contracts pass"
+      - "Channel-neutral message and activation contracts pass"
 
-  stage_0_contracts:
-    name: "CDD - Contract-Driven Development"
-    description: "All API contracts defined and parseable"
-    threshold: 100
-    gate: null  # First stage — no prerequisite
-    criteria:
-      openapi_spec_valid:
-        description: "OpenAPI spec validates against 3.1"
-        points: 25
-        required: true
-      openapi_has_paths:
-        description: "Spec defines at least one path with operations"
-        points: 25
-        required: true
-      openapi_refs_resolve:
-        description: "All $ref pointers resolve within the spec"
-        points: 25
-        required: true
-      openapi_responses_defined:
-        description: "Every operation has at least one response schema"
-        points: 25
-        required: true
-
-  stage_1_unit:
-    name: "TDD - Test-Driven Development"
-    description: "Unit tests pass with mocked services — SMS gateway, message router, LLM inference, RAG service"
-    threshold: 90
-    gate: stage_0_contracts
-    criteria:
-      sim_driver_send_receive:
-        description: "SimDriver send_sms and receive_sms store messages correctly"
-        points: 15
-        required: true
-      sim_driver_inbox_outbox:
-        description: "SimDriver get_inbox / get_outbox return correct history"
-        points: 10
-        required: true
-      rate_limiter:
-        description: "Rate limiter blocks after per-minute threshold"
-        points: 10
-        required: true
-      message_receive_and_forward:
-        description: "Gateway receive_message queues envelope for forwarding"
-        points: 10
-        required: true
-      message_parser_intent_detection:
-        description: "MessageParser detects emergency, question, greeting, command intents"
-        points: 10
-        required: true
-      inference_request:
-        description: "LLM inference endpoint returns well-formed LLMResponse"
-        points: 10
-        required: true
-      response_truncation_160:
-        description: "LLM responses are truncated to 160 characters for SMS"
-        points: 10
-        required: true
-      bitnet_unavailable_502:
-        description: "LLM inference returns 502 when BitNet server unreachable"
-        points: 5
-        required: true
-      stats_tracking:
-        description: "Stats counters increment correctly on success/failure"
-        points: 5
-        required: true
-      system_prompt_included:
-        description: "System prompt is included in chat completion request"
-        points: 5
-        required: true
-      classify_emergency:
-        description: "Router classifies emergency keywords as MessageType.EMERGENCY"
-        points: 5
-        required: true
-      classify_command:
-        description: "Router classifies /command messages as MessageType.COMMAND"
-        points: 5
-        required: true
+  stage_1_tdd:
+    id: TDD
+    name: Test-driven development
+    purpose: "Exercise isolated core behavior and failure handling"
+    gate: stage_0_cdd
+    execution:
+      local:
+        commands:
+          - argv: [python3, -m, pytest, tests/unit/, -q, -rs]
+      openshift:
+        commands:
+          - argv: [python3, -m, pytest, tests/unit/, -q, -rs]
+    green_requires:
+      - "No unit checks skipped"
+      - "Fail-closed RAG, activation, recovery, and rollout behavior pass"
+      - "SMS, simulator, Discord, and LoRa envelopes remain channel-neutral"
 
   stage_2_integration:
-    name: "Integration Tests"
-    description: "End-to-end flow tests — SMS receive -> route -> RAG -> LLM -> response"
-    threshold: 85
-    gate: stage_1_unit
-    criteria:
-      full_sms_pipeline:
-        description: "SMS receive -> router -> RAG -> LLM -> SMS response completes"
-        points: 25
-        required: true
-      emergency_bypass:
-        description: "Emergency messages skip RAG/LLM and return canned response"
-        points: 15
-        required: true
-      greeting_template:
-        description: "Simple greetings return Summit Connect welcome without LLM call"
-        points: 10
-        required: true
-      rag_context_forwarded:
-        description: "RAG context is included in the LLM inference request"
-        points: 15
-        required: true
-      sms_chunking:
-        description: "Long responses are chunked into 160-char SMS segments"
-        points: 10
-        required: true
-      error_fallback:
-        description: "LLM failure produces user-friendly fallback message"
-        points: 10
-        required: true
-      health_endpoints:
-        description: "All service /health endpoints return valid ServiceHealth"
-        points: 15
-        required: true
+    id: INT
+    name: Core integration
+    purpose: "Prove offline serving, signed cutover, restart recovery, and suitability flow"
+    gate: stage_1_tdd
+    execution:
+      local:
+        commands:
+          - argv: [python3, -m, pytest, tests/integration/, -q, -rs]
+      openshift:
+        commands:
+          - argv: [python3, -m, pytest, tests/integration/, -q, -rs]
+    green_requires:
+      - "Active corpus survives restart and failed candidates"
+      - "Answers retain release and evidence attribution"
+      - "Synthetic event fails before correction and passes after correction"
 
-  stage_3_benchmarks:
-    name: "EDD - Experiment-Driven Development"
-    description: "Benchmark rubric — inference latency, RAG retrieval quality, message throughput, response evaluation"
-    threshold: 80
+  stage_3_edd:
+    id: EDD
+    name: Evaluation-driven development
+    purpose: "Measure retrieval, answer quality, latency, and capacity independently"
     gate: stage_2_integration
-    criteria:
-      eval_query_pass_rate:
-        description: ">=60% of evaluation queries pass composite score threshold (keyword, entity, forbidden, SMS length, latency, repetition)"
-        points: 20
-        required: true
-        test_command: "python tests/evaluation/run_eval.py"
-        pass_threshold: 0.6
-      eval_keyword_accuracy:
-        description: "Average keyword accuracy across all eval queries >= 50%"
-        points: 10
-        required: false
-      eval_entity_accuracy:
-        description: "Average entity accuracy across all eval queries >= 40%"
-        points: 10
-        required: false
-      eval_sms_compliance:
-        description: ">=90% of responses fit within 160-char SMS limit"
-        points: 10
-        required: true
-      eval_repetition_quality:
-        description: "Average repetition score >= 0.6 (responses are not excessively repetitive)"
-        points: 5
-        required: false
-      eval_treasure_hunt:
-        description: "Treasure hunt eval queries pass (HUNT start, clue display, answers, hints)"
-        points: 10
-        required: true
-      eval_architecture_knowledge:
-        description: "Architecture self-knowledge queries pass (how it works, what model, who built)"
-        points: 5
-        required: false
-      benchmark_latency:
-        description: "SMS end-to-end latency under 15s per benchmark_rubric.yaml"
-        points: 10
-        required: true
-      capacity_burst_10:
-        description: "10-message burst completes with 0 failures (mocked or live)"
-        points: 10
-        required: true
-        test_command: "pytest tests/benchmarks/test_capacity.py::TestBurstCapacity::test_burst_of_10"
-      capacity_degradation_curve:
-        description: "Degradation curve generated for burst sizes 1-50"
-        points: 5
-        required: false
-        test_command: "pytest tests/benchmarks/test_capacity.py::TestDegradationCurve"
-      capacity_semaphore_bottleneck:
-        description: "Semaphore identified as bottleneck; doubling slots improves throughput >30%"
-        points: 5
-        required: false
-        test_command: "pytest tests/benchmarks/test_capacity.py::TestSemaphoreBottleneck::test_semaphore_2_vs_4"
-    # Governed by tests/benchmark_rubric.yaml, tests/claim_registry.yaml,
-    # and tests/evaluation/eval_queries.yaml.
-    # Benchmarks and eval queries run against live compose stack.
-    # Capacity tests: mocked in CI, CAPACITY_LIVE=1 for real numbers.
+    execution:
+      local:
+        status_cap: AMBER
+        reason: "mocked capacity cannot qualify live RAG, model, or target latency"
+        commands:
+          - argv: [python3, -m, pytest, tests/benchmarks/test_capacity.py, -q, -rs]
+            env:
+              CAPACITY_RESULTS_FILE: artifacts/capacity-local.json
+      openshift:
+        required_env:
+          - CORPUS_RELEASE_ID
+          - EMBEDDING_MODEL
+          - LLM_PROVIDER
+          - LLM_MODEL
+          - EDGE_RESOURCE_PROFILE
+          - CHANNEL_DRIVER
+        commands:
+          - argv: [python3, tests/evaluation/run_retrieval_eval.py]
+          - argv: [python3, tests/evaluation/run_eval.py]
+          - argv: [python3, -m, pytest, "tests/benchmarks/test_capacity.py::TestLiveCapacity", -q, -rs]
+            env:
+              CAPACITY_LIVE: "1"
+              CAPACITY_RESULTS_FILE: artifacts/capacity-openshift.json
+    green_requires:
+      - "Retrieval recall, rank, and p50/p95 latency meet the rubric"
+      - "Answer quality and safe no-answer behavior meet the event policy"
+      - "Live capacity passes on the declared OpenShift resource profile"
+      - "Evidence records corpus, embedding, model, runtime, and profile identities"
 
   stage_4_bdd:
-    name: "BDD - Behavior-Driven Development"
-    description: "User scenarios — send SMS, get response, emergency handling, rate limiting, treasure hunt"
-    threshold: 85
-    gate: stage_3_benchmarks
-    criteria:
-      scenario_send_question_get_answer:
-        description: "User sends 'What sessions are about edge computing?' and receives a relevant response"
-        points: 12
-        required: true
-      scenario_emergency_message:
-        description: "User sends 'help fire emergency' and gets immediate security guidance"
-        points: 12
-        required: true
-      scenario_rate_limiting:
-        description: "User sending > max_sms_per_minute receives 429 Too Many Requests"
-        points: 10
-        required: true
-      scenario_greeting_flow:
-        description: "User sends 'hello' and receives Summit Connect welcome message"
-        points: 10
-        required: true
-      scenario_long_response_chunked:
-        description: "Response exceeding 160 chars arrives as multi-part SMS"
-        points: 10
-        required: true
-      scenario_command_help:
-        description: "User sends '/help' and receives command listing"
-        points: 8
-        required: true
-      scenario_hunt_start:
-        description: "User texts 'HUNT' and receives treasure hunt intro with clue instructions"
-        points: 8
-        required: true
-      scenario_hunt_clue_flow:
-        description: "User can request clues, answer correctly to advance, and receive hints"
-        points: 8
-        required: true
-      scenario_hunt_completion:
-        description: "User completes all 7 clues and receives victory message with prize instructions"
-        points: 8
-        required: true
-      scenario_hunt_multi_user:
-        description: "Two concurrent users maintain independent treasure hunt state"
-        points: 7
-        required: true
-      scenario_mixed_traffic:
-        description: "Mixed greetings + queries + hunts process correctly under concurrency"
-        points: 7
-        required: true
+    id: BDD
+    name: Behavior-driven development
+    purpose: "Validate user journeys through the selected message transport"
+    gate: stage_3_edd
+    execution:
+      local:
+        status_cap: AMBER
+        reason: "current journeys are Summit Connect rehearsal scenarios, not approved field workflows"
+        commands:
+          - argv: [python3, -m, pytest, tests/bdd/, -q, -rs]
+      openshift:
+        status_cap: AMBER
+        reason: "field-specific journeys and human approval remain required"
+        commands:
+          - argv: [python3, -m, pytest, tests/bdd/, -q, -rs]
+    green_requires:
+      - "Offline question, supported answer, no-evidence refusal, and emergency bypass pass"
+      - "SMS segmentation and retry behavior pass on the selected channel"
+      - "Scenarios use the approved event corpus and local-language policy"
 
-  stage_5_publication:
-    name: "CBT + Publication"
-    description: "README quality, architecture diagram, claim verification — zero BLOCKERs"
-    threshold: 100
+  stage_5_cut:
+    id: CUT
+    name: Capability and user testing
+    purpose: "Qualify the complete field capability; CBT validates only component behavior"
     gate: stage_4_bdd
-    criteria:
-      title_format:
-        description: "H1 title <= 64 chars, starts with action verb"
-        points: 10
-        required: true
-      short_description:
-        description: "Short description <= 160 chars"
-        points: 10
-        required: true
-      required_sections:
-        description: "All required README sections present in correct order"
-        points: 15
-        required: true
-      architecture_diagram:
-        description: "Architecture diagram in docs/images/ with alt text"
-        points: 10
-        required: true
-      no_credentials:
-        description: "No hardcoded credentials in repo"
-        points: 15
-        required: true
-      links_resolve:
-        description: "All links (internal + external) resolve"
-        points: 10
-        required: true
-      industry_tag:
-        description: "Industry tag from approved list"
-        points: 10
-        required: true
-      tag_format:
-        description: "Tags as bulleted list with bold key and normal value"
-        points: 5
-        required: true
-      opl_compliance:
-        description: "Red Hat trademark first-mention-only rule"
-        points: 10
-        required: true
-      accessibility:
-        description: "WCAG 2.2 AA: heading nesting, alt text, descriptive links"
-        points: 5
-        required: true
+    execution:
+      local:
+        status_cap: AMBER
+        reason: "no field hardware, GSM path, power profile, or representative user exercise"
+        commands:
+          - argv: [python3, -m, pytest, tests/integration/test_lil_evy_field_core.py, -q, -rs]
+      openshift:
+        status_cap: AMBER
+        reason: "OpenShift proves software behavior but not field hardware, radio, or power"
+        commands:
+          - argv: [python3, -m, pytest, tests/integration/test_lil_evy_field_core.py, -q, -rs]
+    green_requires:
+      - "Representative users complete approved field tasks"
+      - "GSM/SMS delivery works with selected modem, carrier, and antenna conditions"
+      - "Power, thermal, storage, reconnect, and recovery drills pass on target hardware"
+      - "Accessibility, privacy, safety, and operational review are approved"
+
+  stage_6_publication:
+    id: PUB
+    name: Publication and claims
+    purpose: "Keep repository instructions, links, architecture, and claims publishable"
+    gate: stage_5_cut
+    execution:
+      local:
+        commands:
+          - argv: [python3, -m, pytest, tests/publication/, -q, -rs]
+      openshift:
+        commands:
+          - argv: [python3, -m, pytest, tests/publication/, -q, -rs]
+    green_requires:
+      - "README structure and local links pass"
+      - "No template repository URLs remain"
+      - "Unverified measurements stay explicitly projected or AMBER"

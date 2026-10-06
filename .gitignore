@@ -14,6 +14,7 @@ venv/
 
 # Data (generated at runtime)
 data/chroma/
+artifacts/
 
 # Node
 node_modules/

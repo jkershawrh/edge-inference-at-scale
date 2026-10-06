@@ -10,8 +10,8 @@ Two modes:
   - Live (compose): hits the real stack, produces actual latency data.
     Requires: docker compose up.  Run with: CAPACITY_LIVE=1 pytest ...
 
-All timing and throughput numbers are written to
-tests/benchmarks/capacity_results.json for the validation matrix.
+Timing and throughput numbers default to tests/benchmarks/capacity_results.json.
+Set CAPACITY_RESULTS_FILE to retain run-specific evidence elsewhere.
 """
 
 import asyncio
@@ -35,7 +35,12 @@ from backend.services.message_router.main import MessageRouter
 
 logger = logging.getLogger("capacity-bench")
 
-RESULTS_FILE = Path(__file__).parent / "capacity_results.json"
+RESULTS_FILE = Path(
+    os.environ.get(
+        "CAPACITY_RESULTS_FILE",
+        str(Path(__file__).parent / "capacity_results.json"),
+    )
+)
 
 LIVE_MODE = os.environ.get("CAPACITY_LIVE", "0") == "1"
 

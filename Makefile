@@ -8,7 +8,7 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-contracts test-corpus-factory test-connected-acquisition test-corpus-audit test-corpus-suitability test-unit test-integration test-benchmarks \
+.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-connected-acquisition test-corpus-audit test-corpus-suitability test-unit test-integration test-benchmarks \
         test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
@@ -70,17 +70,13 @@ test: ## Quick test — unit tests only
 	$(PYTEST) tests/unit/ -q
 
 test-all: ## Run all gated stages sequentially
-	@echo "╔══════════════════════════════════════════╗"
-	@echo "║  $(PROJECT) — Validation Matrix          ║"
-	@echo "╚══════════════════════════════════════════╝"
-	@$(MAKE) test-contracts   && echo "Stage 0: Contracts    ✅" || (echo "Stage 0: Contracts    ❌" && exit 1)
-	@$(MAKE) test-unit        && echo "Stage 1: Unit/TDD     ✅" || (echo "Stage 1: Unit/TDD     ❌" && exit 1)
-	@$(MAKE) test-integration && echo "Stage 2: Integration  ✅" || (echo "Stage 2: Integration  ❌" && exit 1)
-	@$(MAKE) test-capacity    && echo "Stage 3b: Capacity    ✅" || (echo "Stage 3b: Capacity    ❌" && exit 1)
-	@$(MAKE) test-bdd         && echo "Stage 4: BDD          ✅" || (echo "Stage 4: BDD          ❌" && exit 1)
-	@$(MAKE) test-publication && echo "Stage 5: Publication  ✅" || (echo "Stage 5: Publication  ❌" && exit 1)
-	@echo ""
-	@echo "ALL STAGES GREEN ✅"
+	$(PYTHON) scripts/run_convergence.py --profile local
+
+test-release: ## Require every convergence stage to be GREEN
+	$(PYTHON) scripts/run_convergence.py --profile local --require-green
+
+test-openshift: ## Run convergence with live OpenShift EDD evidence
+	$(PYTHON) scripts/run_convergence.py --profile openshift
 
 # ── Lint ──────────────────────────────────────────────────────────────
 lint: ## Lint Python and Helm
