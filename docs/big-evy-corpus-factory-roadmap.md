@@ -405,6 +405,9 @@ Already implemented:
   evidence, plus fleet inventory grouped by active digest and sequence
 - Opt-in OpenShift activation sidecar with projected-Secret-safe key loading,
   an internal-only Service, and bounded post-restart exact-release reconciliation
+- Crash-resumable rollout control with persisted idempotent intents, durable
+  deadlines, a fixed-scope Kubernetes Deployment restart adapter, and exact
+  desired-release fleet compliance reporting
 
 Still required before this is production-grade:
 
@@ -415,9 +418,8 @@ Still required before this is production-grade:
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody
-- A deployment controller that executes the OpenShift rollout restart and feeds
-  live status observations into the completed reconciliation state machine,
-  plus desired-release fleet compliance policy and authenticated heartbeats
+- Runtime packaging for the rollout controller, activation/status HTTP adapters,
+  least-privilege OpenShift RBAC, and authenticated fleet heartbeats
 - Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1

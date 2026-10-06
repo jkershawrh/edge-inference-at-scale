@@ -178,6 +178,9 @@ For OpenShift lab testing, the chart can also enable an internal-only activation
 sidecar. Its credentials are projected from Secrets, a 202 response still
 requires a RAG pod restart, and exact digest/sequence reconciliation prevents an
 accepted package from being mistaken for the release currently serving answers.
+The next control layer is also executable as a crash-resumable state machine:
+restart requests are idempotent, deadlines survive controller restarts, and fleet
+compliance requires live proof of the exact production digest and sequence.
 
 The factory is domain-agnostic, but promotion is not. Each deployment supplies
 an event policy that names the accepted authorities, required operational facts,

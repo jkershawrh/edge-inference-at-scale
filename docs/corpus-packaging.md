@@ -170,9 +170,13 @@ restart the RAG pod and compare `GET /activation/status` with the receipt's exac
 digest and sequence. Reconciliation succeeds only after a post-restart
 production status reports `ACTIVE`, `ready=true`, and `READY`. Attempts and time
 are bounded, and a wrong or recovery-mode target fails rather than being called
-successful. This repository supplies that transport-neutral reconciliation
-state machine; the OpenShift/GitOps controller remains the caller responsible
-for executing the rollout restart.
+successful. The crash-resumable rollout controller persists intent before each
+external operation, reuses stable idempotency keys after ambiguous failures,
+and enforces durable attempt, poll, and time limits. Its dependency-light
+OpenShift adapter patches only the configured RAG Deployment and binds the pod
+template to the exact rollout operation, digest, and sequence. The remaining
+deployment work is to package the controller with its activation/status HTTP
+adapters and narrowly scoped OpenShift RBAC.
 
 Exceptional downgrade uses a separately signed recovery authorization bound to
 the event, site, current digest, sequence floor, target digest, trust generation,

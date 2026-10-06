@@ -10,6 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.shared.models import SMSMessage, ServiceHealth
+from backend.services.node_manager.fleet_compliance import (
+    DesiredReleaseCompliancePolicy,
+    FleetComplianceReport,
+)
 from backend.services.rag_service.activation_contracts import ActivationStatusResponse
 
 logger = logging.getLogger("node-manager")
@@ -238,6 +242,35 @@ class NodeManager:
             "total_rag_direct": total_rag_direct,
             "corpus_inventory": self._corpus_inventory(fleet),
         }
+
+    def get_desired_release_compliance(
+        self,
+        desired: Dict[str, Any],
+        *,
+        accepted_activations: Optional[Dict[str, Any]] = None,
+    ) -> FleetComplianceReport:
+        """Evaluate registered nodes without mistaking acceptance for serving.
+
+        ``accepted_activations`` is optional reconciliation context from the
+        trusted rollout boundary.  It can classify an otherwise healthy live
+        mismatch as pending restart, but never makes a node compliant.
+        """
+        accepted = accepted_activations or {}
+        unknown = set(accepted).difference(self.nodes)
+        if unknown:
+            raise ValueError("activation acceptance references an unknown node")
+
+        observations = []
+        for node_id, node in self.nodes.items():
+            observations.append(
+                {
+                    "node_id": node_id,
+                    "online": self._compute_status(node) == "online",
+                    "activation": node.get("activation"),
+                    "accepted_activation": accepted.get(node_id),
+                }
+            )
+        return DesiredReleaseCompliancePolicy(desired).evaluate(observations)
 
     async def route_to_best_node(self, message: SMSMessage) -> Dict[str, Any]:
         online_nodes = [
