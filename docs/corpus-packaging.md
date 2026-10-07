@@ -4,19 +4,12 @@ Each event corpus is an immutable release artifact. Its identity is the pair
 `eventId/version`; that pair must never be rebuilt with different content. Create
 a new version for every correction, schedule change, or emergency-data update.
 
-## Build and sign
-
-Generate an Ed25519 key once and store the private key outside the repository:
-
-```bash
-openssl genpkey -algorithm ED25519 -out corpus-signing-key.pem
-openssl pkey -in corpus-signing-key.pem -pubout -out corpus-public-key.pem
-```
+## Build the governed candidate
 
 Build the package with an explicit event, version, and release-contract profile.
 The production path is `governed-v1`: it requires a valid `COVERED` report and
 exact mission, source-registry, and lineage identities before any package bytes
-are committed:
+are committed. It deliberately produces an unsigned candidate:
 
 ```bash
 python3 scripts/package_corpus.py \
@@ -27,8 +20,7 @@ python3 scripts/package_corpus.py \
   --mission-profile prepared/mission-profile.json \
   --source-registry prepared/source-registry.json \
   --coverage-report prepared/coverage-report.json \
-  --lineage-manifest prepared/lineage-manifest.json \
-  --signing-key /secure/path/corpus-signing-key.pem
+  --lineage-manifest prepared/lineage-manifest.json
 ```
 
 The checked-in synthetic Summit baseline now reaches `COVERED` for all eleven
@@ -48,8 +40,23 @@ python3 scripts/package_corpus.py \
   --mission-profile prepared/mission-profile.json \
   --source-registry prepared/source-registry.json \
   --coverage-report prepared/coverage-report.json \
-  --lineage-manifest prepared/lineage-manifest.json \
-  --signing-key /secure/path/corpus-signing-key.pem
+  --lineage-manifest prepared/lineage-manifest.json
+```
+
+Evaluate that exact candidate, obtain the independent approvals and evaluation
+attestation, then issue an exact-digest signing authorization as described in
+[Evaluation attestation and release-signing authorization](evaluation-attestation.md).
+The protected external `corpus-release` signer signs only the authorized
+`manifest.json` bytes and returns `manifest.sig`; its private key is never an
+argument to governed packaging. Install both files in the immutable package
+before building its carrier image.
+
+For a disposable `legacy-v1` lab only, generate a local Ed25519 key and pass
+`--signing-key`. Store even that private key outside the repository:
+
+```bash
+openssl genpkey -algorithm ED25519 -out corpus-signing-key.pem
+openssl pkey -in corpus-signing-key.pem -pubout -out corpus-public-key.pem
 ```
 
 `legacy-v1` remains available only as an explicit compatibility selection. It
@@ -62,11 +69,13 @@ python3 scripts/package_corpus.py \
   --event-id lab-demo \
   --event-name "Lab Demo" \
   --version 1.0.0 \
-  --input-documents prepared/lab-demo.json
+  --input-documents prepared/lab-demo.json \
+  --signing-key /secure/path/lab-corpus-signing-key.pem
 ```
 
-The package contains normalized documents, categories, an index, `manifest.json`,
-and `manifest.sig`. The manifest records every file's SHA-256 digest and byte size.
+The package contains normalized documents, categories, an index, and
+`manifest.json`. A release ready for deployment also contains the externally
+produced `manifest.sig`. The manifest records every file's SHA-256 digest and byte size.
 For `governed-v1`, it also binds the full evidence digests and intrinsic IDs for
 the mission profile, source registry, coverage report, and lineage manifest.
 The RAG service refuses packages with a wrong event, wrong version, changed file,
