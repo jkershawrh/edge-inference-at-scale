@@ -85,3 +85,8 @@ Each Helm release names its KafkaTopic resource independently while retaining
 the application topic `sms.inbound` inside that release's broker. When upgrading
 an older release that already owns the legacy Kubernetes resource, set
 `kafka.topic.resourceName=sms.inbound` for that release to preserve ownership.
+
+The OpenShift field preflight requires both the SMS gateway producer and message
+router consumer to report a connected `sms.inbound` stream. HTTP fallback keeps
+laboratory demos usable when Kafka is absent, but it does not provide the
+at-least-once delivery evidence required for field qualification.

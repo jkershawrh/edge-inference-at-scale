@@ -184,6 +184,20 @@ def evaluate_snapshot(
     elif "llm-inference" in (snapshot.get("service_health") or {}):
         reasons.append("generation-disabled gateway still advertises llm-inference")
 
+    for component, key in (
+        ("SMS gateway", "sms_stream_health"),
+        ("message router", "router_stream_health"),
+    ):
+        stream = (snapshot.get(key) or {}).get("stream") or {}
+        if stream.get("status") != "connected":
+            reasons.append(
+                "{0} event stream is not connected".format(component)
+            )
+        if stream.get("topic") != "sms.inbound":
+            reasons.append(
+                "{0} event stream topic is not sms.inbound".format(component)
+            )
+
     service_health = snapshot.get("service_health") or {}
     unhealthy = sorted(
         name
@@ -249,6 +263,8 @@ def collect(namespace: str, release: str, api_url: str) -> Dict[str, Any]:
         "config": config,
         "gateway_health": _get_json(api_url, "/health"),
         "service_health": _get_json(api_url, "/services/health"),
+        "sms_stream_health": _get_json(api_url, "/sms/stream/health"),
+        "router_stream_health": _get_json(api_url, "/router/stream/health"),
         "rag_stats": _get_json(api_url, "/rag/stats"),
     }
     if config.get("GENERATION_ENABLED", "true").lower() == "true":

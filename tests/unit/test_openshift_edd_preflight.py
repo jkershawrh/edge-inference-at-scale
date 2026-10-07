@@ -69,6 +69,12 @@ def _snapshot():
         "service_health": {
             component: {"status": "healthy"} for component in EXPECTED_COMPONENTS
         },
+        "sms_stream_health": {
+            "stream": {"status": "connected", "topic": "sms.inbound"}
+        },
+        "router_stream_health": {
+            "stream": {"status": "connected", "topic": "sms.inbound"}
+        },
     }
 
 
@@ -102,6 +108,20 @@ def test_field_safety_must_be_enabled():
     assert status == "RED"
     assert "RAG_GROUNDING_REQUIRED is not true" in reasons
     assert "EMERGENCY_RAG_ENABLED is not true" in reasons
+
+
+def test_disconnected_event_streams_are_red():
+    snapshot = deepcopy(_snapshot())
+    snapshot["sms_stream_health"] = {"stream": {"status": "disconnected"}}
+    snapshot["router_stream_health"] = {
+        "stream": {"status": "connected", "topic": "wrong-topic"}
+    }
+
+    status, reasons = evaluate_snapshot(snapshot, _expected())
+
+    assert status == "RED"
+    assert "SMS gateway event stream is not connected" in reasons
+    assert "message router event stream topic is not sms.inbound" in reasons
 
 
 def test_rag_only_snapshot_is_green_without_generation_workloads():

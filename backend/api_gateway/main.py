@@ -236,6 +236,11 @@ async def sms_history():
     return await gateway.proxy("sms-gateway", "/sms/history")
 
 
+@app.get("/sms/stream/health")
+async def sms_stream_health():
+    return await gateway.proxy("sms-gateway", "/stream/health")
+
+
 # --- Message Router ---
 
 @app.post("/router/route")
@@ -246,6 +251,11 @@ async def route_message(message: ChannelMessage):
 @app.get("/router/statistics")
 async def router_statistics():
     return await gateway.proxy("message-router", "/statistics")
+
+
+@app.get("/router/stream/health")
+async def router_stream_health():
+    return await gateway.proxy("message-router", "/stream/health")
 
 
 # --- LLM Inference ---
