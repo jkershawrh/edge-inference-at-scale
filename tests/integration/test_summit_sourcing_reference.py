@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 from corpus_factory.coverage import plan_mission_coverage
+from corpus_factory.sourcing import build_sourcing_work_items
+from corpus_factory.summit_lineage import build_summit_lineage
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -61,3 +63,20 @@ def test_summit_reference_set_reports_real_gaps_deterministically():
         "publishes_release": False,
         "human_approval_required": True,
     }
+
+    work_plan = build_sourcing_work_items(mission, first)
+    assert work_plan["summary"] == {
+        "available_gap_requirements": 6,
+        "work_items": 6,
+        "omitted": 0,
+        "truncated": False,
+    }
+    assert work_plan["work_items"][0]["category_id"] == "help_escalation"
+
+    lineage = build_summit_lineage(
+        ROOT / "data" / "summit_connect",
+        EXAMPLE / "source-registry.json",
+        EXAMPLE / "document-classifications.json",
+    )
+    checked_in = _load(EXAMPLE / "lineage-manifest.json")
+    assert lineage == checked_in

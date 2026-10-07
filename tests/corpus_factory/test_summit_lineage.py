@@ -112,6 +112,22 @@ def test_dangling_classification_and_unapproved_source_fail_closed(tmp_path):
         build_summit_lineage(DATA, REGISTRY, unknown_path)
 
 
+def test_malformed_registry_and_classification_contracts_fail_closed(tmp_path):
+    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    registry["sources"][0]["scope"]["languages"] = []
+    registry_path = tmp_path / "bad-registry.json"
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+    with pytest.raises(SummitLineageError, match="source registry fails its contract"):
+        build_summit_lineage(DATA, registry_path, CLASSIFICATIONS)
+
+    classifications = json.loads(CLASSIFICATIONS.read_text(encoding="utf-8"))
+    del classifications["classifications"][0]["coverage"]["audiences"]
+    classifications_path = tmp_path / "bad-classification.json"
+    classifications_path.write_text(json.dumps(classifications), encoding="utf-8")
+    with pytest.raises(SummitLineageError, match="classification 0 fails its contract"):
+        build_summit_lineage(DATA, REGISTRY, classifications_path)
+
+
 def test_tampered_manifest_fails_verification():
     manifest = build_summit_lineage(DATA, REGISTRY, CLASSIFICATIONS)
     tampered = copy.deepcopy(manifest)

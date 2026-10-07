@@ -231,6 +231,8 @@ make test-corpus-audit
 make test-corpus-suitability
 make test-corpus-sourcing
 python scripts/plan_corpus_coverage.py --help
+python scripts/plan_corpus_sourcing.py --help
+python scripts/build_summit_lineage.py --help
 python scripts/acquire_corpus_source.py --help
 python scripts/plan_corpus_refresh.py --help
 python scripts/corpus_audit.py --help

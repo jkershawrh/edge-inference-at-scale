@@ -458,6 +458,11 @@ Already implemented:
 - Autonomous OpenShift rollout sidecar with bounded internal HTTP ports,
   controller-only projected Kubernetes identity, CA-pinned API access, and RBAC
   restricted to `patch` on its one RAG Deployment
+- Summit Connect mission and document-classification contracts, a versioned
+  self-validating coverage report, deterministic bounded sourcing work, and
+  exact-byte/canonical-JSON lineage for the checked-in reference set
+- Optional promotion binding that rejects supplied coverage evidence with gaps,
+  conflicts, tampering, or mission/event/registry identity drift
 
 Still required before this is production-grade:
 
@@ -465,6 +470,8 @@ Still required before this is production-grade:
   external audit anchoring, and OpenShift egress-policy deployment for the HTTPS worker
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
+- Mandatory coverage-report binding for the next release-contract major version;
+  the current promotion input remains optional only for compatibility
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody

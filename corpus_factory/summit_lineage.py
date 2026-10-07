@@ -14,6 +14,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Dict, Mapping
 
+from corpus_factory.validator import ContractValidationError, validate_instance
+
 
 SCHEMA_VERSION = "1.0.0"
 RECORD_TYPE = "corpus_lineage_manifest"
@@ -70,6 +72,12 @@ def _classification_index(document: Mapping[str, Any]) -> Dict[str, Mapping[str,
     for index, record in enumerate(records):
         if not isinstance(record, Mapping):
             raise SummitLineageError(f"classification {index} must be an object")
+        try:
+            validate_instance(record, "document_classification")
+        except ContractValidationError as exc:
+            raise SummitLineageError(
+                f"classification {index} fails its contract: {exc}"
+            ) from exc
         reference = record.get("document")
         if not isinstance(reference, Mapping):
             raise SummitLineageError(f"classification {index} has no document reference")
@@ -126,6 +134,10 @@ def build_summit_lineage(
     classifications_document = _load_json(classifications_path)
     if not isinstance(registry, Mapping) or not isinstance(classifications_document, Mapping):
         raise SummitLineageError("registry and classifications must be JSON objects")
+    try:
+        validate_instance(registry, "source_registry")
+    except ContractValidationError as exc:
+        raise SummitLineageError(f"source registry fails its contract: {exc}") from exc
 
     registry_id = registry.get("registry_id")
     event_id = registry.get("event_id")

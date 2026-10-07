@@ -13,6 +13,9 @@ Inputs:
   fetched by this example.
 - `document-classifications.json` describes only what the checked-in Summit
   documents actually support. Missing facts remain visible as gaps.
+- `lineage-manifest.json` binds the exact bytes and canonical JSON identity of
+  all seven inputs. Six are classified; `architecture.json` is explicitly
+  excluded from attendee answers rather than silently entering the pack.
 
 Generate the deterministic report without network access:
 
@@ -28,3 +31,27 @@ python scripts/plan_corpus_coverage.py \
 Exit code `1` is expected while required coverage is incomplete. That is the
 safe result: the planner recommends bounded source or classification work but
 cannot crawl, approve, sign, publish, or deploy anything.
+
+Turn that report into a ranked, non-executing sourcing queue:
+
+```bash
+python scripts/plan_corpus_sourcing.py \
+  --mission-profile corpus_factory/fixtures/valid/corpus-mission-profile.json \
+  --coverage-report corpus_factory/examples/summit_connect/coverage-report.json \
+  --output corpus_factory/examples/summit_connect/sourcing-work-plan.json
+```
+
+Rebuild the exact source lineage after any input change (the integration test
+then verifies it byte-for-byte):
+
+```bash
+python scripts/build_summit_lineage.py \
+  --data-dir data/summit_connect \
+  --registry corpus_factory/examples/summit_connect/source-registry.json \
+  --classifications corpus_factory/examples/summit_connect/document-classifications.json \
+  --output corpus_factory/examples/summit_connect/lineage-manifest.json
+```
+
+The current report is deliberately not checked in: it is derived evidence and
+must be regenerated for the exact planning time and inputs. Its self-validating
+digest is what a later promotion evaluation binds.
