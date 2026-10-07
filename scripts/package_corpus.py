@@ -8,11 +8,23 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from corpus_factory.governance import (
+    CONTRACT_PROFILES,
+    GOVERNED_PROFILE,
+    validate_governance_evidence,
+)
+from corpus_factory.validator import load_json as load_contract_json
 
 try:
     from scripts.build_summit_corpus import (
@@ -89,6 +101,11 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def build_package(args: argparse.Namespace) -> Path:
+    contract_profile = getattr(args, "contract_profile", None)
+    if contract_profile not in CONTRACT_PROFILES:
+        raise ValueError(
+            "contract_profile must explicitly select governed-v1 or legacy-v1"
+        )
     if not IDENTIFIER.fullmatch(args.event_id) or not IDENTIFIER.fullmatch(args.version):
         raise ValueError("event ID and version must use lowercase letters, digits, '.', '_' or '-'")
     created_at = args.created_at or datetime.now(timezone.utc).replace(microsecond=0).isoformat()
@@ -188,6 +205,7 @@ def build_package(args: argparse.Namespace) -> Path:
             }
         manifest = {
             "schema_version": "1.0",
+            "contract_profile": contract_profile,
             "event": {"id": args.event_id, "name": args.event_name},
             "corpus": {
                 "version": args.version,
@@ -197,6 +215,30 @@ def build_package(args: argparse.Namespace) -> Path:
             "sources": sources,
             "files": package_files,
         }
+        if contract_profile == GOVERNED_PROFILE:
+            evidence_paths = {
+                "mission_profile": getattr(args, "mission_profile", None),
+                "source_registry": getattr(args, "source_registry", None),
+                "coverage_report": getattr(args, "coverage_report", None),
+                "lineage_manifest": getattr(args, "lineage_manifest", None),
+            }
+            missing = sorted(name for name, path in evidence_paths.items() if not path)
+            if missing:
+                raise ValueError(
+                    "governed-v1 requires: " + ", ".join(name.replace("_", "-") for name in missing)
+                )
+            evidence = {
+                name: load_contract_json(path) for name, path in evidence_paths.items()
+            }
+            manifest["governance"] = validate_governance_evidence(
+                event_id=args.event_id,
+                **evidence,
+            )
+        elif any(
+            getattr(args, name, None)
+            for name in ("mission_profile", "source_registry", "coverage_report", "lineage_manifest")
+        ):
+            raise ValueError("legacy-v1 does not accept governance evidence")
         manifest_path = staging / "manifest.json"
         _write_json(manifest_path, manifest)
 
@@ -225,9 +267,19 @@ def main() -> int:
     parser.add_argument("--event-id", required=True)
     parser.add_argument("--event-name", required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument(
+        "--contract-profile",
+        required=True,
+        choices=CONTRACT_PROFILES,
+        help="governed-v1 enforces release evidence; legacy-v1 is compatibility-only",
+    )
     parser.add_argument("--output-dir", default="dist/corpora")
     parser.add_argument("--created-at", help="ISO-8601 timestamp for reproducible builds")
     parser.add_argument("--signing-key", help="Ed25519 private key in PEM format")
+    parser.add_argument("--mission-profile", help="governed-v1 corpus mission profile")
+    parser.add_argument("--source-registry", help="governed-v1 approved source registry")
+    parser.add_argument("--coverage-report", help="governed-v1 COVERED coverage report")
+    parser.add_argument("--lineage-manifest", help="governed-v1 exact evidence lineage manifest")
     parser.add_argument(
         "--input-documents",
         help="event-neutral JSON list of {id or doc_id, text, metadata}; defaults to Summit sources",

@@ -9,7 +9,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from corpus_factory.promotion import BINDING_FIELDS, canonical_json, evaluate_promotion
+from corpus_factory.governance import object_digest
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -174,12 +177,32 @@ def _bind_coverage(release, coverage):
             "registry_id",
         )
     }
+    release["package_governance"] = {
+        "contract_profile": "governed-v1",
+        "event_id": coverage["event_id"],
+        "mission_profile": {
+            "mission_profile_id": coverage["mission_profile_id"],
+            "digest": _digest("1"),
+        },
+        "source_registry": {
+            "registry_id": coverage["registry_id"],
+            "digest": _digest("2"),
+        },
+        "coverage_report": {
+            "report_id": coverage["report_id"],
+            "digest": object_digest(coverage),
+        },
+        "lineage_manifest": {
+            "manifest_digest": _digest("4"),
+            "digest": _digest("5"),
+        },
+    }
 
 
 def test_all_five_layers_pass_independently_and_report_is_deterministic():
     evidence = _passing_evidence()
-    first = evaluate_promotion(*evidence)
-    second = evaluate_promotion(*copy.deepcopy(evidence))
+    first = evaluate_promotion(*evidence, contract_profile="legacy-v1")
+    second = evaluate_promotion(*copy.deepcopy(evidence), contract_profile="legacy-v1")
     assert first == second
     assert first["decision"] == "PASS"
     assert all(value["passed"] for value in first["layers"].values())
@@ -187,10 +210,56 @@ def test_all_five_layers_pass_independently_and_report_is_deterministic():
     assert canonical_json(first) == canonical_json(second)
 
 
+def test_profile_selection_is_explicit_and_governed_requires_coverage():
+    evidence = _passing_evidence()
+    with pytest.raises(TypeError, match="contract_profile"):
+        evaluate_promotion(*evidence)
+
+    report = evaluate_promotion(*evidence, contract_profile="governed-v1")
+    assert report["decision"] == "FAIL"
+    assert report["layers"]["corpus_coverage"]["passed"] is False
+    assert any(item["code"] == "MISSING_COVERAGE_REPORT" for item in report["failures"])
+
+
+def test_governed_promotion_requires_signed_package_governance_binding():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    _bind_coverage(release, coverage)
+    del release["package_governance"]["lineage_manifest"]["manifest_digest"]
+
+    report = evaluate_promotion(
+        release, retrieval, answer, edge, suitability, coverage,
+        contract_profile="governed-v1",
+    )
+
+    assert report["decision"] == "FAIL"
+    assert any(
+        item["path"].endswith("lineage_manifest.manifest_digest")
+        for item in report["failures"]
+    )
+
+
+def test_governed_promotion_rejects_different_coverage_bytes():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    _bind_coverage(release, coverage)
+    release["package_governance"]["coverage_report"]["digest"] = _digest("f")
+
+    report = evaluate_promotion(
+        release, retrieval, answer, edge, suitability, coverage,
+        contract_profile="governed-v1",
+    )
+
+    assert report["decision"] == "FAIL"
+    assert any(item["code"] == "COVERAGE_DIGEST_MISMATCH" for item in report["failures"])
+
+
 def test_mismatched_artifact_binding_blocks_promotion():
     release, retrieval, answer, edge, suitability = _passing_evidence()
     answer["binding"]["model_digest"] = _digest("a")
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
     assert report["decision"] == "FAIL"
     assert report["binding"]["model_digest"] is None
     assert any(item["code"] == "BINDING_MISMATCH" for item in report["failures"])
@@ -201,7 +270,7 @@ def test_missing_evidence_fails_closed():
     del release["checks"]["signatures"]
     del retrieval["safety_classes"]["advisory"]["mrr"]
     del edge["profiles"]["values-lab-small"]["disconnected_smoke_passed"]
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
     assert report["decision"] == "FAIL"
     assert report["layers"]["release_validity"]["passed"] is False
     assert report["layers"]["retrieval"]["passed"] is False
@@ -212,7 +281,7 @@ def test_aggregate_score_cannot_hide_a_critical_case_failure():
     release, retrieval, answer, edge, suitability = _passing_evidence()
     retrieval["overall_score"] = 1.0
     retrieval["safety_classes"]["critical"]["failed_case_ids"] = ["critical-evacuation-007"]
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
     assert report["decision"] == "FAIL"
     assert any(item["code"] == "CRITICAL_CASE_FAILED" for item in report["failures"])
 
@@ -221,7 +290,7 @@ def test_each_safety_class_uses_its_own_threshold():
     release, retrieval, answer, edge, suitability = _passing_evidence()
     retrieval["safety_classes"]["high"]["recall_at_3"] = 0.989
     retrieval["safety_classes"]["standard"]["recall_at_3"] = 0.97
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
     assert report["decision"] == "FAIL"
     paths = [item["path"] for item in report["failures"]]
     assert "retrieval.safety_classes.high.recall_at_3" in paths
@@ -246,6 +315,7 @@ def test_cli_writes_report_and_returns_nonzero_when_blocked(tmp_path):
             "--grounded-answer", str(paths[2]),
             "--edge-profiles", str(paths[3]),
             "--suitability", str(paths[4]),
+            "--contract-profile", "legacy-v1",
             "--output", str(output),
         ],
         cwd=ROOT,
@@ -263,7 +333,7 @@ def test_suitability_failure_blocks_otherwise_passing_release():
     suitability["failures"] = [{"code": "MISSING_REQUIRED_FACT"}]
     suitability["requirements"][0]["passed"] = False
 
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
 
     assert report["decision"] == "FAIL"
     assert report["layers"]["corpus_suitability"]["passed"] is False
@@ -273,7 +343,7 @@ def test_suitability_policy_binding_must_match_promoted_tuple():
     release, retrieval, answer, edge, suitability = _passing_evidence()
     suitability["bindings"]["event_policy_subject_digest"] = _digest("f")
 
-    report = evaluate_promotion(release, retrieval, answer, edge, suitability)
+    report = evaluate_promotion(release, retrieval, answer, edge, suitability, contract_profile="legacy-v1")
 
     assert report["decision"] == "FAIL"
     assert any(
@@ -289,7 +359,8 @@ def test_bound_covered_report_adds_passing_coverage_layer():
     _bind_coverage(release, coverage)
 
     report = evaluate_promotion(
-        release, retrieval, answer, edge, suitability, coverage
+        release, retrieval, answer, edge, suitability, coverage,
+        contract_profile="governed-v1",
     )
 
     assert report["decision"] == "PASS"
@@ -331,7 +402,8 @@ def test_gap_or_conflict_coverage_report_blocks_promotion():
         _bind_coverage(release, coverage)
 
         report = evaluate_promotion(
-            release, retrieval, answer, edge, suitability, coverage
+            release, retrieval, answer, edge, suitability, coverage,
+            contract_profile="governed-v1",
         )
 
         assert report["decision"] == "FAIL"
@@ -350,7 +422,8 @@ def test_coverage_identity_mismatch_blocks_promotion():
     release["coverage_report_binding"]["registry_id"] = "registry-other-event"
 
     report = evaluate_promotion(
-        release, retrieval, answer, edge, suitability, coverage
+        release, retrieval, answer, edge, suitability, coverage,
+        contract_profile="governed-v1",
     )
 
     assert report["decision"] == "FAIL"
@@ -369,7 +442,8 @@ def test_unbound_or_tampered_coverage_report_fails_closed():
     coverage["registry_id"] = "registry-tampered"
 
     report = evaluate_promotion(
-        release, retrieval, answer, edge, suitability, coverage
+        release, retrieval, answer, edge, suitability, coverage,
+        contract_profile="governed-v1",
     )
 
     assert report["decision"] == "FAIL"
@@ -405,6 +479,7 @@ def test_cli_consumes_bound_coverage_report(tmp_path):
             "--edge-profiles", str(paths[3]),
             "--suitability", str(paths[4]),
             "--coverage-report", str(paths[5]),
+            "--contract-profile", "governed-v1",
             "--output", str(output),
         ],
         cwd=ROOT,

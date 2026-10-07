@@ -14,6 +14,12 @@ import re
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from corpus_factory.validator import ContractValidationError, validate_instance
+from corpus_factory.governance import (
+    CONTRACT_PROFILES,
+    GOVERNED_PROFILE,
+    LEGACY_PROFILE,
+    object_digest,
+)
 
 
 SCHEMA_VERSION = "1.1.0"
@@ -410,6 +416,97 @@ def _coverage_layer(
                     )
                 )
 
+    package_governance = release_validity.get("package_governance")
+    package_governance = package_governance if isinstance(package_governance, Mapping) else None
+    if package_governance is None:
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "MISSING_PACKAGE_GOVERNANCE",
+                "release_validity.package_governance",
+                "governed promotion requires the governance binding from the signed package manifest",
+            )
+        )
+    else:
+        expected_values = {
+            "event_id": source.get("event_id"),
+            "mission_profile.mission_profile_id": source.get("mission_profile_id"),
+            "source_registry.registry_id": source.get("registry_id"),
+            "coverage_report.report_id": source.get("report_id"),
+        }
+        observed_values = {
+            "event_id": package_governance.get("event_id"),
+            "mission_profile.mission_profile_id": (
+                package_governance.get("mission_profile", {}).get("mission_profile_id")
+                if isinstance(package_governance.get("mission_profile"), Mapping) else None
+            ),
+            "source_registry.registry_id": (
+                package_governance.get("source_registry", {}).get("registry_id")
+                if isinstance(package_governance.get("source_registry"), Mapping) else None
+            ),
+            "coverage_report.report_id": (
+                package_governance.get("coverage_report", {}).get("report_id")
+                if isinstance(package_governance.get("coverage_report"), Mapping) else None
+            ),
+        }
+        if package_governance.get("contract_profile") != GOVERNED_PROFILE:
+            failures.append(
+                _failure(
+                    "corpus_coverage",
+                    "PROFILE_MISMATCH",
+                    "release_validity.package_governance.contract_profile",
+                    "signed package is not governed-v1",
+                )
+            )
+        for path, expected_value in expected_values.items():
+            if observed_values[path] != expected_value:
+                failures.append(
+                    _failure(
+                        "corpus_coverage",
+                        "COVERAGE_IDENTITY_MISMATCH",
+                        "release_validity.package_governance." + path,
+                        "signed package governance identity does not match coverage evidence",
+                    )
+                )
+        for section in ("mission_profile", "source_registry", "coverage_report", "lineage_manifest"):
+            value = package_governance.get(section)
+            digest = value.get("digest") if isinstance(value, Mapping) else None
+            if not isinstance(digest, str) or not _DIGEST_RE.fullmatch(digest):
+                failures.append(
+                    _failure(
+                        "corpus_coverage",
+                        "MISSING_OR_INVALID_BINDING",
+                        f"release_validity.package_governance.{section}.digest",
+                        "signed package governance digest is missing or invalid",
+                    )
+                )
+        coverage_binding = package_governance.get("coverage_report")
+        packaged_coverage_digest = (
+            coverage_binding.get("digest")
+            if isinstance(coverage_binding, Mapping)
+            else None
+        )
+        if packaged_coverage_digest != object_digest(source):
+            failures.append(
+                _failure(
+                    "corpus_coverage",
+                    "COVERAGE_DIGEST_MISMATCH",
+                    "release_validity.package_governance.coverage_report.digest",
+                    "signed package coverage digest does not match supplied coverage evidence",
+                )
+            )
+        lineage = package_governance.get("lineage_manifest")
+        lineage_id = lineage.get("manifest_digest") if isinstance(lineage, Mapping) else None
+        if not isinstance(lineage_id, str) or not _DIGEST_RE.fullmatch(lineage_id):
+            failures.append(
+                _failure(
+                    "corpus_coverage",
+                    "MISSING_OR_INVALID_BINDING",
+                    "release_validity.package_governance.lineage_manifest.manifest_digest",
+                    "lineage manifest identity is missing or invalid",
+                )
+            )
+
     suitability_event_id = suitability.get("event_id")
     if suitability_event_id is not None and suitability_event_id != source.get("event_id"):
         failures.append(
@@ -575,12 +672,14 @@ def evaluate_promotion(
     edge_profiles: Mapping[str, Any],
     suitability: Mapping[str, Any],
     coverage_report: Optional[Mapping[str, Any]] = None,
+    *,
+    contract_profile: str,
 ) -> Dict[str, Any]:
     """Evaluate release evidence and return a deterministic promotion report.
 
-    ``coverage_report`` is optional for backward compatibility.  Supplying one
-    enables the fail-closed corpus-coverage layer and requires an exact
-    ``coverage_report_binding`` in ``release_validity``.
+    The contract profile is always explicit. ``governed-v1`` requires complete
+    coverage and signed-package governance bindings. ``legacy-v1`` preserves
+    the historical five-layer decision for compatibility only.
     """
 
     evidence = {
@@ -597,6 +696,10 @@ def evaluate_promotion(
         raise TypeError("suitability evidence must be a mapping")
     if coverage_report is not None and not isinstance(coverage_report, Mapping):
         raise TypeError("coverage_report evidence must be a mapping")
+    if contract_profile not in CONTRACT_PROFILES:
+        raise ValueError("contract_profile must explicitly select governed-v1 or legacy-v1")
+    if contract_profile == LEGACY_PROFILE and coverage_report is not None:
+        raise ValueError("legacy-v1 does not accept a coverage report")
 
     binding = _validate_bindings(evidence, failures)
     layer_failures_before = len(failures)
@@ -604,7 +707,17 @@ def evaluate_promotion(
     suitability_result["passed"] = len(failures) == layer_failures_before
 
     coverage_result = None
-    if coverage_report is not None:
+    if contract_profile == GOVERNED_PROFILE and coverage_report is None:
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "MISSING_COVERAGE_REPORT",
+                "coverage_report",
+                "governed-v1 promotion requires a COVERED coverage report",
+            )
+        )
+        coverage_result = {"passed": False}
+    elif coverage_report is not None:
         layer_failures_before = len(failures)
         coverage_result = _coverage_layer(
             coverage_report, release_validity, suitability, failures
@@ -641,6 +754,7 @@ def evaluate_promotion(
     report_body = {
         "schema_version": SCHEMA_VERSION,
         "spec_version": SPEC_VERSION,
+        "contract_profile": contract_profile,
         "binding": binding,
         "layers": layers,
         "failures": failures,

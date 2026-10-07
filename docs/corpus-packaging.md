@@ -13,30 +13,61 @@ openssl genpkey -algorithm ED25519 -out corpus-signing-key.pem
 openssl pkey -in corpus-signing-key.pem -pubout -out corpus-public-key.pem
 ```
 
-Build the package with an explicit event and version:
+Build the package with an explicit event, version, and release-contract profile.
+The production path is `governed-v1`: it requires a valid `COVERED` report and
+exact mission, source-registry, and lineage identities before any package bytes
+are committed:
 
 ```bash
 python3 scripts/package_corpus.py \
-  --event-id summit-connect \
-  --event-name "Summit Connect 2026" \
+  --contract-profile governed-v1 \
+  --event-id summit-connect-2026 \
+  --event-name "Summit Connect" \
   --version 2026.1 \
+  --mission-profile prepared/mission-profile.json \
+  --source-registry prepared/source-registry.json \
+  --coverage-report prepared/coverage-report.json \
+  --lineage-manifest prepared/lineage-manifest.json \
   --signing-key /secure/path/corpus-signing-key.pem
 ```
+
+The checked-in Summit baseline currently reports gaps and is intentionally not
+eligible for this command until its coverage report reaches `COVERED`.
 
 For any non-Summit event, pass a normalized JSON list containing
 `{"id": "...", "text": "...", "metadata": {...}}` records:
 
 ```bash
 python3 scripts/package_corpus.py \
+  --contract-profile governed-v1 \
   --event-id flood-response-region-4 \
   --event-name "Region 4 Flood Response" \
   --version 2026.3 \
   --input-documents prepared/flood-response.json \
+  --mission-profile prepared/mission-profile.json \
+  --source-registry prepared/source-registry.json \
+  --coverage-report prepared/coverage-report.json \
+  --lineage-manifest prepared/lineage-manifest.json \
   --signing-key /secure/path/corpus-signing-key.pem
+```
+
+`legacy-v1` remains available only as an explicit compatibility selection. It
+does not accept governance evidence and must not be used for a new field
+release:
+
+```bash
+python3 scripts/package_corpus.py \
+  --contract-profile legacy-v1 \
+  --event-id lab-demo \
+  --event-name "Lab Demo" \
+  --version 1.0.0 \
+  --input-documents prepared/lab-demo.json
 ```
 
 The package contains normalized documents, categories, an index, `manifest.json`,
 and `manifest.sig`. The manifest records every file's SHA-256 digest and byte size.
+For `governed-v1`, it also binds the full evidence digests and intrinsic IDs for
+the mission profile, source registry, coverage report, and lineage manifest.
 The RAG service refuses packages with a wrong event, wrong version, changed file,
 invalid document count, or invalid signature.
 
@@ -235,8 +266,12 @@ Before promoting a package to field nodes:
 6. Promote the same corpus image digest—do not rebuild it.
 7. Roll out to a canary node/site before the rest of the fleet.
 
-The promotion decision consumes all five reports: corpus suitability, release
-validity, retrieval, grounded-answer, and edge operation. Each report is bound
+The governed promotion decision consumes six reports: corpus coverage, corpus
+suitability, release validity, retrieval, grounded-answer, and edge operation.
+Invoke `scripts/evaluate_corpus_release.py` with
+`--contract-profile governed-v1 --coverage-report ...`. The release-validity
+evidence must carry the exact `package_governance` object from the signed
+package manifest plus its matching `coverage_report_binding`. Each report is bound
 to the same immutable policy, source, document, evaluation-case, release,
 model, embedding, and chunker identities. No layer can compensate for another.
 See [corpus-suitability.md](corpus-suitability.md) for the event-policy contract

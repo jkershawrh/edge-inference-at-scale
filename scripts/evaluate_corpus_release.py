@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from corpus_factory.promotion import evaluate_promotion, load_json_document
+from corpus_factory.governance import CONTRACT_PROFILES
 
 
 def main(argv=None) -> int:
@@ -22,6 +23,12 @@ def main(argv=None) -> int:
     parser.add_argument("--grounded-answer", required=True)
     parser.add_argument("--edge-profiles", required=True)
     parser.add_argument("--suitability", required=True)
+    parser.add_argument(
+        "--contract-profile",
+        required=True,
+        choices=CONTRACT_PROFILES,
+        help="governed-v1 requires coverage and package governance; legacy-v1 is compatibility-only",
+    )
     parser.add_argument(
         "--coverage-report",
         help=(
@@ -40,6 +47,7 @@ def main(argv=None) -> int:
             load_json_document(args.edge_profiles),
             load_json_document(args.suitability),
             load_json_document(args.coverage_report) if args.coverage_report else None,
+            contract_profile=args.contract_profile,
         )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"Promotion evaluation failed: {exc}", file=sys.stderr)

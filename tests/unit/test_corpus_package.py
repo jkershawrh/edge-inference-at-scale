@@ -106,6 +106,7 @@ def test_requires_signature_when_policy_is_enabled(tmp_path):
 
 def _builder_args(tmp_path, input_path, version="v1"):
     return Namespace(
+        contract_profile="legacy-v1",
         event_id="rural-clinic",
         event_name="Rural Clinic Deployment",
         version=version,
@@ -221,6 +222,7 @@ def test_builder_signs_manifest_with_ed25519_key(tmp_path):
 
 def test_default_event_package_signs_interaction_assets(tmp_path):
     args = Namespace(
+        contract_profile="legacy-v1",
         event_id="summit-connect",
         event_name="Summit Connect",
         version="event-assets",
