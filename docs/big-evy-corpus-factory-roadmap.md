@@ -501,6 +501,14 @@ Already implemented:
 - Site-scoped encrypted disconnected transfer using AES-256-GCM and HPKE
   X25519/HKDF-SHA256 key wrapping, with verify-before-decrypt, wrong-site,
   replay, tamper, and wrong-key rejection
+- Deployment-enforced governed transfer/import/activation verification that
+  preserves the existing transfer wire formats, rejects invalid governance
+  before replay state is committed, retains the signed evaluation and promotion
+  evidence, and installs the runtime manifest signature only after verification
+- GitOps- and RHACM-governed fleet identity enrollment with a strict public-key
+  registry, exact node/key binding, controlled rotation that preserves replay
+  floors, emergency disablement, persistent single-writer state, and no public
+  Route
 - Signed offline time anchors and revocation snapshots with persistent monotonic
   replay floors, bounded same-boot anchored time, and opt-in fail-closed RAG
   enforcement for active release, signing key, and contributing source identities
@@ -519,11 +527,8 @@ Still required before this is production-grade:
   governed coverage/lineage/evaluation contract
 - A real PKCS#11/KMS/HSM signer adapter and production key lifecycle; the
   repository provides only the protected boundary and fake test adapter
-- Make release-signature governance evidence mandatory in every transfer/import
-  workflow and retain it with activation/audit evidence
 - Production site-key provisioning, rotation, device custody, and physical-media
   chain of custody for encrypted transfers
-- GitOps policy for fleet identity enrollment
 - Run physical target-hardware CUT for GSM/SMS, LoRa, antenna/range, thermal,
   power-loss, battery endurance, and solar recharge behavior
 
