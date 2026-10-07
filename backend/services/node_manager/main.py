@@ -344,6 +344,26 @@ manager = NodeManager()
 _fleet_authenticator: Optional[FleetAuthenticator] = None
 
 
+def _initialize_fleet_authenticator() -> None:
+    """Fail startup when the configured fleet trust boundary is unavailable."""
+    global _fleet_authenticator
+    mode = settings.fleet_auth_mode.strip().lower()
+    if mode == "lab":
+        _fleet_authenticator = None
+        return
+    if mode != "required":
+        raise RuntimeError("FLEET_AUTH_MODE must be 'required' or 'lab'")
+    _fleet_authenticator = FleetAuthenticator(
+        settings.fleet_node_registry_path,
+        FleetReplayStore(settings.fleet_replay_state_path),
+        max_clock_skew_seconds=settings.fleet_max_clock_skew_seconds,
+    )
+    try:
+        _fleet_authenticator.validate_registry()
+    except FleetAuthError as exc:
+        raise RuntimeError("fleet enrollment registry failed startup validation") from exc
+
+
 def _authenticate_fleet_message(kind: str, request: BaseModel) -> None:
     """Authenticate signed control messages, with an explicit lab escape hatch."""
     global _fleet_authenticator
@@ -373,6 +393,7 @@ def _authenticate_fleet_message(kind: str, request: BaseModel) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Node Manager starting up...")
+    _initialize_fleet_authenticator()
     await manager.initialize()
     yield
     logger.info("Node Manager shutting down...")

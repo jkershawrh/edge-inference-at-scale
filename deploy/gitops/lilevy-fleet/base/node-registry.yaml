@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lil-evy-node-registry
+  namespace: lil-evy-fleet
+  labels:
+    app.kubernetes.io/name: lil-evy-node-manager
+    lilevy.edge/identity-registry: "true"
+  annotations:
+    lilevy.edge/change-control: pull-request-required
+    lilevy.edge/key-material: synthetic-public-placeholders-replace-before-field-use
+data:
+  nodes.json: |
+    {
+      "schema_version": 1,
+      "nodes": {
+        "field-001": {
+          "key_id": "field-001-2026q4",
+          "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAHcbWEZk4gU/5IN23cr8TjI9Re0Wq48r3NaD36TIGb1U=\n-----END PUBLIC KEY-----\n",
+          "enabled": true
+        },
+        "field-002": {
+          "key_id": "field-002-retired-2026q4",
+          "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAFyLy7NjBHv54vL0RWH3DirN13kPOVa2ifcrf9vOc94Y=\n-----END PUBLIC KEY-----\n",
+          "enabled": false
+        }
+      }
+    }

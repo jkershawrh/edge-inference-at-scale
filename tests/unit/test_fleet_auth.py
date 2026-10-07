@@ -139,6 +139,78 @@ def test_registry_rejects_node_id_key_binding_mismatch(tmp_path):
         )
 
 
+@pytest.mark.parametrize("extra_field", ["private_key_pem", "notes", "next_key"])
+def test_registry_is_closed_and_cannot_carry_private_or_ambiguous_keys(tmp_path, extra_field):
+    _private_key, registry = _registry(tmp_path)
+    value = json.loads(registry.read_text())
+    value["nodes"]["field-001"][extra_field] = "forbidden"
+    registry.write_text(json.dumps(value))
+    auth = FleetAuthenticator(registry, FleetReplayStore(tmp_path / "state.sqlite3"))
+    with pytest.raises(FleetAuthError, match="fields"):
+        auth.validate_registry()
+
+
+def test_key_rotation_is_exact_and_preserves_node_replay_floor(tmp_path):
+    old_key, registry = _registry(tmp_path)
+    state = tmp_path / "state.sqlite3"
+    payload = {"node_id": "field-001", "metrics": {}}
+    FleetAuthenticator(registry, FleetReplayStore(state)).verify(
+        kind="heartbeat", payload=payload,
+        proof=_proof(old_key, payload=payload, sequence=7),
+    )
+    new_key = Ed25519PrivateKey.generate()
+    value = json.loads(registry.read_text())
+    value["nodes"]["field-001"] = {
+        "key_id": "field-001-2027q1",
+        "public_key_pem": new_key.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("ascii"),
+        "enabled": True,
+    }
+    registry.write_text(json.dumps(value))
+
+    with pytest.raises(FleetAuthError, match="key id"):
+        FleetAuthenticator(registry, FleetReplayStore(state)).verify(
+            kind="heartbeat", payload=payload,
+            proof=_proof(old_key, payload=payload, sequence=8),
+        )
+    issued_at = int(time.time())
+    message = canonical_fleet_message(
+        kind="heartbeat", node_id="field-001", key_id="field-001-2027q1",
+        issued_at=issued_at, sequence=8, payload=payload,
+    )
+    FleetAuthenticator(registry, FleetReplayStore(state)).verify(
+        kind="heartbeat", payload=payload,
+        proof={
+            "key_id": "field-001-2027q1", "issued_at": issued_at,
+            "sequence": 8,
+            "signature": base64.b64encode(new_key.sign(message)).decode("ascii"),
+        },
+    )
+    assert FleetReplayStore(state).last_sequence("field-001") == 8
+
+
+def test_replay_database_is_owner_only(tmp_path):
+    path = tmp_path / "state.sqlite3"
+    FleetReplayStore(path)
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_registry_duplicate_node_or_key_fields_are_rejected(tmp_path):
+    _private_key, registry = _registry(tmp_path)
+    registry.write_text(
+        '{"schema_version":1,"nodes":{"field-001":'
+        '{"key_id":"field-001-2026q4","key_id":"shadow-key",'
+        '"public_key_pem":"not-used","enabled":true}}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(FleetAuthError, match="duplicate"):
+        FleetAuthenticator(
+            registry, FleetReplayStore(tmp_path / "state.sqlite3")
+        ).validate_registry()
+
+
 def test_heartbeat_endpoint_requires_proof_by_default(monkeypatch, tmp_path):
     _, registry = _registry(tmp_path)
     monkeypatch.setattr(node_manager_main.settings, "fleet_auth_mode", "required")

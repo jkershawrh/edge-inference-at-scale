@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lil-evy-fleet-replay
+  namespace: lil-evy-fleet
+  labels:
+    app.kubernetes.io/name: lil-evy-node-manager
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

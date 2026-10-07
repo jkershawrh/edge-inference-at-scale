@@ -10,6 +10,8 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import os
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -22,6 +24,20 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 class FleetAuthError(ValueError):
     """A fleet control-plane message could not be authenticated."""
+
+
+_IDENTIFIER = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
+_REGISTRY_FIELDS = {"schema_version", "nodes"}
+_ENROLLMENT_FIELDS = {"key_id", "public_key_pem", "enabled"}
+
+
+def _reject_duplicate_keys(pairs):
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise FleetAuthError("fleet enrollment registry contains duplicate fields")
+        value[key] = item
+    return value
 
 
 def canonical_fleet_message(
@@ -54,8 +70,11 @@ class FleetReplayStore:
 
     def __init__(self, path: Union[str, Path]):
         self.path = Path(path)
+        if self.path.is_symlink():
+            raise FleetAuthError("fleet replay state path cannot be a symbolic link")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._initialize()
+        os.chmod(self.path, 0o600)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self.path), timeout=5.0)
@@ -128,13 +147,51 @@ class FleetAuthenticator:
         self.replay_store = replay_store
         self.max_clock_skew_seconds = max_clock_skew_seconds
 
-    def _enrollment(self, node_id: str, key_id: str) -> Mapping[str, Any]:
+    def _load_registry(self) -> Mapping[str, Any]:
         try:
-            registry = json.loads(self.registry_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            registry = json.loads(
+                self.registry_path.read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_keys,
+            )
+        except FleetAuthError:
+            raise
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise FleetAuthError("fleet enrollment registry is unavailable or invalid") from exc
-        if registry.get("schema_version") != 1 or not isinstance(registry.get("nodes"), dict):
+        if not isinstance(registry, dict) or set(registry) != _REGISTRY_FIELDS \
+                or registry.get("schema_version") != 1 \
+                or not isinstance(registry.get("nodes"), dict):
             raise FleetAuthError("fleet enrollment registry has an unsupported schema")
+        if not registry["nodes"] or len(registry["nodes"]) > 10_000:
+            raise FleetAuthError("fleet enrollment registry node count is invalid")
+        for enrolled_node_id, enrolled in registry["nodes"].items():
+            if not isinstance(enrolled_node_id, str) or not _IDENTIFIER.fullmatch(enrolled_node_id):
+                raise FleetAuthError("enrolled node identity is invalid")
+            if not isinstance(enrolled, dict) or set(enrolled) != _ENROLLMENT_FIELDS:
+                raise FleetAuthError("node enrollment fields are invalid")
+            if not isinstance(enrolled["key_id"], str) \
+                    or not _IDENTIFIER.fullmatch(enrolled["key_id"]):
+                raise FleetAuthError("enrolled key identity is invalid")
+            if type(enrolled["enabled"]) is not bool:
+                raise FleetAuthError("node enrollment enablement is invalid")
+            if not isinstance(enrolled["public_key_pem"], str) \
+                    or "PRIVATE KEY" in enrolled["public_key_pem"]:
+                raise FleetAuthError("enrolled public key is invalid")
+            try:
+                candidate = serialization.load_pem_public_key(
+                    enrolled["public_key_pem"].encode("ascii")
+                )
+            except (TypeError, ValueError, UnicodeEncodeError) as exc:
+                raise FleetAuthError("enrolled public key is invalid") from exc
+            if not isinstance(candidate, Ed25519PublicKey):
+                raise FleetAuthError("enrolled key must be Ed25519")
+        return registry
+
+    def validate_registry(self) -> None:
+        """Validate the complete declarative registry during controller startup."""
+        self._load_registry()
+
+    def _enrollment(self, node_id: str, key_id: str) -> Mapping[str, Any]:
+        registry = self._load_registry()
         enrollment = registry["nodes"].get(node_id)
         if not isinstance(enrollment, dict):
             raise FleetAuthError("node is not enrolled")

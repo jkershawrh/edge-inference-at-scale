@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lil-evy-fleet-identity
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/jkershawrh/edge-inference-at-scale.git
+    targetRevision: main
+    path: deploy/gitops/lilevy-fleet/base
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: lil-evy-fleet
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
