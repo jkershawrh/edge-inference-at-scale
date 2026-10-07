@@ -31,6 +31,8 @@ SCHEMA_BY_RECORD_TYPE = {
     "review_attestation": "review-attestation.schema.json",
     "evaluation_attestation": "evaluation-attestation.schema.json",
     "release_signing_authorization": "release-signing-authorization.schema.json",
+    "corpus_audit_checkpoint": "audit-checkpoint.schema.json",
+    "corpus_audit_anchor_receipt": "audit-anchor-receipt.schema.json",
     "release_manifest": "release-manifest.schema.json",
     "activation_receipt": "activation-receipt.schema.json",
     "event_policy": "event-policy.schema.json",
@@ -319,6 +321,46 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         ).hexdigest()
         if instance["authorization_id"] != expected:
             raise ContractValidationError("authorization_id does not match authorization body")
+    elif record_type == "corpus_audit_checkpoint":
+        previous = instance["previous_anchor"]
+        if (previous["receipt_id"] is None) != (previous["receipt_digest"] is None):
+            raise ContractValidationError("previous anchor ID and digest must be set together")
+        if instance["checkpoint_sequence"] == 1 and previous["receipt_id"] is not None:
+            raise ContractValidationError("first checkpoint cannot name a previous anchor")
+        if instance["checkpoint_sequence"] > 1 and previous["receipt_id"] is None:
+            raise ContractValidationError("later checkpoint requires a previous anchor")
+        body = {key: value for key, value in instance.items() if key != "checkpoint_id"}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if instance["checkpoint_id"] != expected:
+            raise ContractValidationError("checkpoint_id does not match checkpoint body")
+    elif record_type == "corpus_audit_anchor_receipt":
+        checkpoint = instance["checkpoint"]
+        _semantic_validate(checkpoint)
+        created_at = _parse_time(checkpoint["created_at"])
+        signed_at = _parse_time(instance["witness"]["signed_at"])
+        key = instance["signing_key"]
+        key_start = _parse_time(key["valid_from"])
+        key_end = _parse_time(key["expires_at"])
+        checked_at = _parse_time(instance["revocation_snapshot"]["checked_at"])
+        if signed_at < created_at:
+            raise ContractValidationError("witness signature cannot predate checkpoint")
+        if not key_start <= signed_at < key_end:
+            raise ContractValidationError("witness signing time must be inside key validity")
+        if checked_at > signed_at:
+            raise ContractValidationError("witness revocation snapshot cannot postdate signing")
+        if instance["witness"]["identity"] == checkpoint["requester_identity"]:
+            raise ContractValidationError("external witness must be independent of requester")
+        snapshot = instance["revocation_snapshot"]
+        if (snapshot["key_revoked_at"] is None) != (snapshot["key_revocation_reason"] is None):
+            raise ContractValidationError("witness key revocation time and reason must be set together")
+        body = {key: value for key, value in instance.items() if key not in {"receipt_id", "signature"}}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if instance["receipt_id"] != expected:
+            raise ContractValidationError("receipt_id does not match witness statement body")
     elif record_type == "activation_receipt" and instance["result"] == "success":
         if instance["activated"] != instance["desired"]:
             raise ContractValidationError("successful activation must activate the desired release")

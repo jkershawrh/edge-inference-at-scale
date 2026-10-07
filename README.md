@@ -230,6 +230,10 @@ Governed candidates now remain unsigned until an independently approved,
 externally signed evaluation attestation authorizes a protected signer for the
 exact evaluated digest. The repository holds no production private key; see
 [docs/evaluation-attestation.md](docs/evaluation-attestation.md).
+The acquisition and release audit chain can also be checkpointed by an
+independent external Ed25519 witness and verified offline for rollback, replay,
+tampering, and forks; see
+[docs/external-audit-anchoring.md](docs/external-audit-anchoring.md).
 
 ```bash
 make test-corpus-factory
@@ -239,6 +243,7 @@ make test-corpus-suitability
 make test-corpus-sourcing
 make test-corpus-mcp
 make test-evaluation-attestation
+make test-audit-anchor
 python scripts/plan_corpus_coverage.py --help
 python scripts/plan_corpus_sourcing.py --help
 python scripts/build_summit_lineage.py --help

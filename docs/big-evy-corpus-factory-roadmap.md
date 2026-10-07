@@ -476,10 +476,13 @@ Already implemented:
 - OpenShift GitOps and RHACM canary policy that keeps desired release identity
   reviewable while preserving controller-owned rollout annotations with exact
   Argo CD ignores and fail-closed admission ownership
+- Strict external audit checkpoints and Ed25519 witness receipts with exact
+  ledger-prefix and predecessor binding, offline rollback/replay/tamper/fork
+  detection, monotonic sequences, and no witness private key in the application
 
 Still required before this is production-grade:
 
-- Authenticated API/SFTP adapters and protected external audit anchoring
+- Authenticated API/SFTP adapters and production external witness service
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
 - Mandatory coverage-report binding for the next release-contract major version;

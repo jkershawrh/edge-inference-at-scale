@@ -19,6 +19,13 @@ EVENT_TYPES = {
     "acquisition_failed",
     "source_changed",
     "source_unchanged",
+    "release_candidate_built",
+    "promotion_evaluated",
+    "evaluation_attested",
+    "release_signing_authorized",
+    "release_signed",
+    "release_published",
+    "release_revoked",
 }
 _ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")

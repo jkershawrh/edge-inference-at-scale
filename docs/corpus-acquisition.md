@@ -123,9 +123,11 @@ python3 scripts/corpus_audit.py verify state/acquisition-audit.jsonl
 
 The chain detects modification, deletion within an anchored chain, reordering,
 noncanonical records, duplicate keys, gaps, and backwards timestamps. To detect
-truncation of the newest entries, periodically anchor the returned last-entry
-digest in protected external storage. A local hash chain without such an anchor
-cannot prove that an attacker did not rewrite the entire file.
+truncation of the newest entries, checkpoint it with the independent Ed25519
+witness workflow in
+[external-audit-anchoring.md](external-audit-anchoring.md). A local hash chain
+without an external receipt cannot prove that an attacker did not rewrite the
+entire file.
 
 ## Production boundary
 
@@ -137,7 +139,7 @@ internal services. The current preflight DNS check cannot alone eliminate a DNS
 rebinding race inside a general-purpose HTTP library.
 
 The pipeline now emits versioned acquisition reports, deterministic refresh
-plans, and a tamper-evident local audit chain. It does not yet provide an
-always-on scheduler/controller, protected external audit anchoring,
-authenticated API connectors, or review-queue integration. Those are the next
-connected Big EVY increments.
+plans, a tamper-evident local audit chain, and offline-verifiable external
+witness receipts. Production still needs a separately administered witness
+service and retention system, authenticated API connectors, and review-queue
+integration.
