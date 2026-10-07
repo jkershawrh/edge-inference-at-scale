@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import subprocess
 import sys
@@ -123,6 +124,58 @@ def _passing_evidence():
     return release, retrieval, answer, edge, suitability
 
 
+def _passing_coverage():
+    report = {
+        "schema_version": "1.0.0",
+        "record_type": "coverage_report",
+        "mission_profile_id": "summit-connect-2026",
+        "event_id": "summit-connect-2026",
+        "registry_id": "registry-summit-connect-2026",
+        "as_of": "2026-07-02T12:00:00-05:00",
+        "decision": "COVERED",
+        "summary": {"requirements": 1, "covered": 1, "gaps": 0, "conflicted": 0},
+        "requirements": [
+            {
+                "requirement_id": "summit-event-identity",
+                "category_id": "event_identity",
+                "safety_class": "standard",
+                "status": "COVERED",
+                "classification_ids": ["classification-event-identity"],
+                "qualifying_classification_ids": ["classification-event-identity"],
+                "qualifying_source_ids": ["source-event-identity"],
+                "gaps": [],
+                "conflicts": [],
+                "recommended_actions": [],
+            }
+        ],
+        "source_findings": [],
+        "conflicts": [],
+        "automation_boundary": {
+            "advisory_only": True,
+            "network_access": False,
+            "publishes_release": False,
+            "human_approval_required": True,
+        },
+    }
+    report["report_id"] = "sha256:" + hashlib.sha256(
+        canonical_json(report).encode("utf-8")
+    ).hexdigest()
+    return report
+
+
+def _bind_coverage(release, coverage):
+    release["coverage_report_binding"] = {
+        field: coverage[field]
+        for field in (
+            "schema_version",
+            "report_id",
+            "mission_profile_id",
+            "event_id",
+            "registry_id",
+        )
+    }
+
+
 def test_all_five_layers_pass_independently_and_report_is_deterministic():
     evidence = _passing_evidence()
     first = evaluate_promotion(*evidence)
@@ -227,3 +280,140 @@ def test_suitability_policy_binding_must_match_promoted_tuple():
         item["layer"] == "corpus_suitability" and item["code"] == "BINDING_MISMATCH"
         for item in report["failures"]
     )
+
+
+def test_bound_covered_report_adds_passing_coverage_layer():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    _bind_coverage(release, coverage)
+
+    report = evaluate_promotion(
+        release, retrieval, answer, edge, suitability, coverage
+    )
+
+    assert report["decision"] == "PASS"
+    assert report["layers"]["corpus_coverage"] == {
+        "schema_version": "1.0.0",
+        "report_id": coverage["report_id"],
+        "mission_profile_id": "summit-connect-2026",
+        "event_id": "summit-connect-2026",
+        "registry_id": "registry-summit-connect-2026",
+        "decision": "COVERED",
+        "requirement_count": 1,
+        "passed": True,
+    }
+
+
+def test_gap_or_conflict_coverage_report_blocks_promotion():
+    for decision, status, summary_field in (
+        ("GAPS", "GAP", "gaps"),
+        ("CONFLICTS", "CONFLICTED", "conflicted"),
+    ):
+        release, retrieval, answer, edge, suitability = _passing_evidence()
+        coverage = _passing_coverage()
+        coverage["decision"] = decision
+        coverage["requirements"][0]["status"] = status
+        coverage["summary"] = {
+            "requirements": 1,
+            "covered": 0,
+            "gaps": 0,
+            "conflicted": 0,
+        }
+        coverage["summary"][summary_field] = 1
+        coverage_body = {
+            key: value for key, value in coverage.items() if key != "report_id"
+        }
+        coverage["report_id"] = "sha256:" + hashlib.sha256(
+            canonical_json(coverage_body).encode("utf-8")
+        ).hexdigest()
+        suitability["event_id"] = coverage["event_id"]
+        _bind_coverage(release, coverage)
+
+        report = evaluate_promotion(
+            release, retrieval, answer, edge, suitability, coverage
+        )
+
+        assert report["decision"] == "FAIL"
+        assert report["layers"]["corpus_coverage"]["passed"] is False
+        assert any(
+            item["layer"] == "corpus_coverage" and item["code"] == "COVERAGE_BLOCKED"
+            for item in report["failures"]
+        )
+
+
+def test_coverage_identity_mismatch_blocks_promotion():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    _bind_coverage(release, coverage)
+    release["coverage_report_binding"]["registry_id"] = "registry-other-event"
+
+    report = evaluate_promotion(
+        release, retrieval, answer, edge, suitability, coverage
+    )
+
+    assert report["decision"] == "FAIL"
+    assert any(
+        item["layer"] == "corpus_coverage"
+        and item["code"] == "COVERAGE_IDENTITY_MISMATCH"
+        and item["path"] == "coverage_report.registry_id"
+        for item in report["failures"]
+    )
+
+
+def test_unbound_or_tampered_coverage_report_fails_closed():
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    coverage["registry_id"] = "registry-tampered"
+
+    report = evaluate_promotion(
+        release, retrieval, answer, edge, suitability, coverage
+    )
+
+    assert report["decision"] == "FAIL"
+    codes = {
+        item["code"]
+        for item in report["failures"]
+        if item["layer"] == "corpus_coverage"
+    }
+    assert "INVALID_COVERAGE_REPORT" in codes
+    assert "MISSING_COVERAGE_BINDING" in codes
+
+
+def test_cli_consumes_bound_coverage_report(tmp_path):
+    release, retrieval, answer, edge, suitability = _passing_evidence()
+    coverage = _passing_coverage()
+    suitability["event_id"] = coverage["event_id"]
+    _bind_coverage(release, coverage)
+    values = (release, retrieval, answer, edge, suitability, coverage)
+    paths = []
+    for index, value in enumerate(values):
+        path = tmp_path / "evidence-{0}.json".format(index)
+        path.write_text(json.dumps(value), encoding="utf-8")
+        paths.append(path)
+    output = tmp_path / "promotion.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "evaluate_corpus_release.py"),
+            "--release-validity", str(paths[0]),
+            "--retrieval", str(paths[1]),
+            "--grounded-answer", str(paths[2]),
+            "--edge-profiles", str(paths[3]),
+            "--suitability", str(paths[4]),
+            "--coverage-report", str(paths[5]),
+            "--output", str(output),
+        ],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["decision"] == "PASS"
+    assert report["layers"]["corpus_coverage"]["passed"] is True

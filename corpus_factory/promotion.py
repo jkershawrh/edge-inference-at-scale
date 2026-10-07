@@ -11,7 +11,9 @@ import hashlib
 import json
 import math
 import re
-from typing import Any, Dict, List, Mapping, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+
+from corpus_factory.validator import ContractValidationError, validate_instance
 
 
 SCHEMA_VERSION = "1.1.0"
@@ -31,6 +33,14 @@ BINDING_FIELDS = (
 )
 
 SAFETY_CLASSES = ("critical", "high", "standard", "advisory")
+
+COVERAGE_IDENTITY_FIELDS = (
+    "schema_version",
+    "report_id",
+    "mission_profile_id",
+    "event_id",
+    "registry_id",
+)
 
 RETRIEVAL_THRESHOLDS = {
     "critical": {
@@ -352,6 +362,100 @@ def _suitability_layer(
     }
 
 
+def _coverage_layer(
+    source: Mapping[str, Any],
+    release_validity: Mapping[str, Any],
+    suitability: Mapping[str, Any],
+    failures: List[Dict[str, str]],
+) -> Dict[str, Any]:
+    """Validate and bind an optional agentic coverage report.
+
+    Coverage is advisory during sourcing, but once it is supplied to the
+    promotion gate it becomes mandatory release evidence.  Its content-addressed
+    identity must match the release evaluator's declared binding.
+    """
+
+    try:
+        validate_instance(source, "coverage_report")
+    except (ContractValidationError, KeyError, TypeError, ValueError) as exc:
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "INVALID_COVERAGE_REPORT",
+                "coverage_report",
+                "coverage report contract validation failed: {0}".format(exc),
+            )
+        )
+
+    expected = release_validity.get("coverage_report_binding")
+    expected = expected if isinstance(expected, Mapping) else None
+    if expected is None:
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "MISSING_COVERAGE_BINDING",
+                "release_validity.coverage_report_binding",
+                "release evidence must bind the supplied coverage report identity",
+            )
+        )
+    else:
+        for field in COVERAGE_IDENTITY_FIELDS:
+            if expected.get(field) != source.get(field):
+                failures.append(
+                    _failure(
+                        "corpus_coverage",
+                        "COVERAGE_IDENTITY_MISMATCH",
+                        "coverage_report.{0}".format(field),
+                        "coverage report identity does not match release evidence",
+                    )
+                )
+
+    suitability_event_id = suitability.get("event_id")
+    if suitability_event_id is not None and suitability_event_id != source.get("event_id"):
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "COVERAGE_IDENTITY_MISMATCH",
+                "coverage_report.event_id",
+                "coverage report event does not match corpus suitability evidence",
+            )
+        )
+
+    requirements = source.get("requirements")
+    requirements = requirements if isinstance(requirements, list) else []
+    blocked_requirements = [
+        item.get("requirement_id") if isinstance(item, Mapping) else None
+        for item in requirements
+        if not isinstance(item, Mapping) or item.get("status") != "COVERED"
+    ]
+    if source.get("decision") != "COVERED":
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "COVERAGE_BLOCKED",
+                "coverage_report.decision",
+                "coverage report contains gaps or conflicts",
+            )
+        )
+    if blocked_requirements:
+        failures.append(
+            _failure(
+                "corpus_coverage",
+                "REQUIREMENT_BLOCKED",
+                "coverage_report.requirements",
+                "every mission coverage requirement must be COVERED",
+            )
+        )
+
+    return {
+        field: source.get(field)
+        for field in COVERAGE_IDENTITY_FIELDS
+    } | {
+        "decision": source.get("decision"),
+        "requirement_count": len(requirements),
+    }
+
+
 def _safety_layer(
     layer: str,
     source: Mapping[str, Any],
@@ -470,8 +574,14 @@ def evaluate_promotion(
     grounded_answer: Mapping[str, Any],
     edge_profiles: Mapping[str, Any],
     suitability: Mapping[str, Any],
+    coverage_report: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Evaluate five evidence documents and return a deterministic report."""
+    """Evaluate release evidence and return a deterministic promotion report.
+
+    ``coverage_report`` is optional for backward compatibility.  Supplying one
+    enables the fail-closed corpus-coverage layer and requires an exact
+    ``coverage_report_binding`` in ``release_validity``.
+    """
 
     evidence = {
         "release_validity": release_validity,
@@ -485,11 +595,21 @@ def evaluate_promotion(
             raise TypeError(f"{name} evidence must be a mapping")
     if not isinstance(suitability, Mapping):
         raise TypeError("suitability evidence must be a mapping")
+    if coverage_report is not None and not isinstance(coverage_report, Mapping):
+        raise TypeError("coverage_report evidence must be a mapping")
 
     binding = _validate_bindings(evidence, failures)
     layer_failures_before = len(failures)
     suitability_result = _suitability_layer(suitability, binding, failures)
     suitability_result["passed"] = len(failures) == layer_failures_before
+
+    coverage_result = None
+    if coverage_report is not None:
+        layer_failures_before = len(failures)
+        coverage_result = _coverage_layer(
+            coverage_report, release_validity, suitability, failures
+        )
+        coverage_result["passed"] = len(failures) == layer_failures_before
 
     layer_failures_before = len(failures)
     release_result = _release_layer(release_validity, failures)
@@ -515,6 +635,8 @@ def evaluate_promotion(
         "grounded_answer": answer_result,
         "edge_operation": edge_result,
     }
+    if coverage_result is not None:
+        layers["corpus_coverage"] = coverage_result
     decision = "PASS" if not failures and all(layer["passed"] for layer in layers.values()) else "FAIL"
     report_body = {
         "schema_version": SCHEMA_VERSION,

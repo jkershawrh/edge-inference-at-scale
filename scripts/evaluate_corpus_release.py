@@ -22,6 +22,13 @@ def main(argv=None) -> int:
     parser.add_argument("--grounded-answer", required=True)
     parser.add_argument("--edge-profiles", required=True)
     parser.add_argument("--suitability", required=True)
+    parser.add_argument(
+        "--coverage-report",
+        help=(
+            "optional versioned coverage report; when supplied, release-validity "
+            "must contain its exact coverage_report_binding"
+        ),
+    )
     parser.add_argument("--output", help="write the report here instead of stdout")
     args = parser.parse_args(argv)
 
@@ -32,6 +39,7 @@ def main(argv=None) -> int:
             load_json_document(args.grounded_answer),
             load_json_document(args.edge_profiles),
             load_json_document(args.suitability),
+            load_json_document(args.coverage_report) if args.coverage_report else None,
         )
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
         print(f"Promotion evaluation failed: {exc}", file=sys.stderr)
