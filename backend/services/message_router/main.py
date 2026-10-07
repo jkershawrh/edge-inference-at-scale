@@ -110,6 +110,7 @@ class MessageRouter:
             bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
             topic=settings.stream_topic,
             group_name=settings.stream_consumer_group,
+            enable_producer=False,
         )
         self.consumer_name = os.getenv("NODE_ID", settings.node_id)
         self._stream_task: Optional[asyncio.Task[None]] = None

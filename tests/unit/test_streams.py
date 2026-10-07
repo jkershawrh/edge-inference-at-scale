@@ -19,11 +19,15 @@ def _make_stream(
     bootstrap_servers: str = "localhost:9092",
     topic: str = "sms.inbound",
     group_name: str = "processors",
+    enable_producer: bool = True,
+    enable_consumer: bool = True,
 ) -> SMSEventStream:
     return SMSEventStream(
         bootstrap_servers=bootstrap_servers,
         topic=topic,
         group_name=group_name,
+        enable_producer=enable_producer,
+        enable_consumer=enable_consumer,
     )
 
 
@@ -79,6 +83,32 @@ class TestConnect:
 
         mock_p.start.assert_called_once()
         mock_c.start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_producer_only_does_not_join_consumer_group(self):
+        stream = _make_stream(enable_consumer=False)
+        mock_p = _mock_producer()
+
+        with patch("backend.shared.streams.AIOKafkaProducer", return_value=mock_p), \
+             patch("backend.shared.streams.AIOKafkaConsumer") as consumer_class:
+            await stream.connect()
+
+        mock_p.start.assert_awaited_once()
+        consumer_class.assert_not_called()
+        assert stream._consumer is None
+
+    @pytest.mark.asyncio
+    async def test_consumer_only_does_not_allocate_producer(self):
+        stream = _make_stream(enable_producer=False)
+        mock_c = _mock_consumer()
+
+        with patch("backend.shared.streams.AIOKafkaProducer") as producer_class, \
+             patch("backend.shared.streams.AIOKafkaConsumer", return_value=mock_c):
+            await stream.connect()
+
+        producer_class.assert_not_called()
+        mock_c.start.assert_awaited_once()
+        assert stream._producer is None
 
     @pytest.mark.asyncio
     async def test_failed_producer_start_leaves_stream_fully_disconnected(self):
@@ -236,7 +266,7 @@ class TestHealth:
 
     @pytest.mark.asyncio
     async def test_health_returns_topic_info(self):
-        stream = _make_stream()
+        stream = _make_stream(enable_producer=False)
         stream._consumer = _mock_consumer()
         stream._consumer.partitions_for_topic = MagicMock(return_value={0, 1})
 
@@ -253,4 +283,22 @@ class TestHealth:
         assert stream._consumer is None
 
         info = await stream.health()
-        assert info == {"status": "disconnected"}
+        assert info == {
+            "status": "disconnected",
+            "topic": "sms.inbound",
+            "roles": ["producer", "consumer"],
+            "group": "processors",
+        }
+
+    @pytest.mark.asyncio
+    async def test_producer_only_health_does_not_require_consumer(self):
+        stream = _make_stream(enable_consumer=False)
+        stream._producer = _mock_producer()
+
+        info = await stream.health()
+
+        assert info == {
+            "status": "connected",
+            "topic": "sms.inbound",
+            "roles": ["producer"],
+        }

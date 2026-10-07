@@ -124,6 +124,7 @@ class SMSGateway:
             bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
             topic=settings.stream_topic,
             group_name=settings.stream_consumer_group,
+            enable_consumer=False,
         )
 
         # Rate limiter

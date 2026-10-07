@@ -24,10 +24,16 @@ class SMSEventStream:
         bootstrap_servers: str,
         topic: str = "sms.inbound",
         group_name: str = "processors",
+        enable_producer: bool = True,
+        enable_consumer: bool = True,
     ) -> None:
+        if not enable_producer and not enable_consumer:
+            raise ValueError("stream must enable a producer or consumer")
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.group_name = group_name
+        self.enable_producer = enable_producer
+        self.enable_consumer = enable_consumer
         self._producer: Optional[AIOKafkaProducer] = None
         self._consumer: Optional[AIOKafkaConsumer] = None
         # Map message_id -> TopicPartition + offset for manual commit
@@ -38,57 +44,61 @@ class SMSEventStream:
     # ------------------------------------------------------------------
 
     async def connect(self) -> None:
-        """Create and start the Kafka producer and consumer."""
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self.bootstrap_servers,
-            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-        )
-        try:
-            await producer.start()
-        except BaseException:
-            # A half-started producer must never be visible to publish(); it
-            # would make the SMS worker hang instead of using HTTP fallback.
+        """Create and start only the Kafka roles requested by this service."""
+        producer: Optional[AIOKafkaProducer] = None
+        if self.enable_producer:
+            producer = AIOKafkaProducer(
+                bootstrap_servers=self.bootstrap_servers,
+                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            )
             try:
-                await producer.stop()
-            except Exception:
-                logger.debug("Failed producer cleanup after startup error", exc_info=True)
-            self._producer = None
-            self._consumer = None
-            raise
-        self._producer = producer
-        logger.info(
-            "Kafka producer started, bootstrap_servers=%s",
-            self.bootstrap_servers,
-        )
+                await producer.start()
+            except BaseException:
+                # A half-started producer must never be visible to publish(); it
+                # would make the SMS worker hang instead of using HTTP fallback.
+                try:
+                    await producer.stop()
+                except Exception:
+                    logger.debug("Failed producer cleanup after startup error", exc_info=True)
+                self._producer = None
+                self._consumer = None
+                raise
+            self._producer = producer
+            logger.info(
+                "Kafka producer started, bootstrap_servers=%s",
+                self.bootstrap_servers,
+            )
 
-        consumer = AIOKafkaConsumer(
-            self.topic,
-            bootstrap_servers=self.bootstrap_servers,
-            group_id=self.group_name,
-            enable_auto_commit=False,
-            auto_offset_reset="earliest",
-            value_deserializer=lambda v: json.loads(v.decode("utf-8")),
-        )
-        try:
-            await consumer.start()
-        except BaseException:
+        if self.enable_consumer:
+            consumer = AIOKafkaConsumer(
+                self.topic,
+                bootstrap_servers=self.bootstrap_servers,
+                group_id=self.group_name,
+                enable_auto_commit=False,
+                auto_offset_reset="earliest",
+                value_deserializer=lambda v: json.loads(v.decode("utf-8")),
+            )
             try:
-                await consumer.stop()
-            except Exception:
-                logger.debug("Failed consumer cleanup after startup error", exc_info=True)
-            try:
-                await producer.stop()
-            except Exception:
-                logger.debug("Failed producer cleanup after consumer error", exc_info=True)
-            self._producer = None
-            self._consumer = None
-            raise
-        self._consumer = consumer
-        logger.info(
-            "Kafka consumer started, topic='%s', group='%s'",
-            self.topic,
-            self.group_name,
-        )
+                await consumer.start()
+            except BaseException:
+                try:
+                    await consumer.stop()
+                except Exception:
+                    logger.debug("Failed consumer cleanup after startup error", exc_info=True)
+                if producer is not None:
+                    try:
+                        await producer.stop()
+                    except Exception:
+                        logger.debug("Failed producer cleanup after consumer error", exc_info=True)
+                self._producer = None
+                self._consumer = None
+                raise
+            self._consumer = consumer
+            logger.info(
+                "Kafka consumer started, topic='%s', group='%s'",
+                self.topic,
+                self.group_name,
+            )
         logger.info(
             "SMSEventStream connected to %s", self.bootstrap_servers,
         )
@@ -209,20 +219,37 @@ class SMSEventStream:
 
     async def health(self) -> dict:
         """Return topic metadata for the configured topic."""
-        if self._consumer is None:
-            return {"status": "disconnected"}
+        producer_connected = not self.enable_producer or self._producer is not None
+        consumer_connected = not self.enable_consumer or self._consumer is not None
+        info = {
+            "status": "connected" if producer_connected and consumer_connected else "disconnected",
+            "topic": self.topic,
+            "roles": [
+                role
+                for role, enabled in (
+                    ("producer", self.enable_producer),
+                    ("consumer", self.enable_consumer),
+                )
+                if enabled
+            ],
+        }
+        if self.enable_consumer:
+            info["group"] = self.group_name
+        if info["status"] != "connected" or self._consumer is None:
+            return info
         try:
             partitions = self._consumer.partitions_for_topic(self.topic)
-            return {
-                "status": "connected",
-                "topic": self.topic,
-                "partitions": len(partitions) if partitions else 0,
-                "group": self.group_name,
-                "assignment": [
-                    {"topic": tp.topic, "partition": tp.partition}
-                    for tp in self._consumer.assignment()
-                ],
-            }
+            info.update(
+                {
+                    "partitions": len(partitions) if partitions else 0,
+                    "assignment": [
+                        {"topic": tp.topic, "partition": tp.partition}
+                        for tp in self._consumer.assignment()
+                    ],
+                }
+            )
+            return info
         except Exception as exc:
             logger.warning("Topic health check failed: %s", exc)
-            return {"status": "error", "error": str(exc)}
+            info.update({"status": "error", "error": str(exc)})
+            return info
