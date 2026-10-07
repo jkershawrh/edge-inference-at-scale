@@ -11,10 +11,25 @@ venv/
 
 # Environment
 .env
+.env.*
+!.env.example
+*.key
+*.p12
+*.pfx
+kubeconfig
+kubeconfig.*
 
 # Data (generated at runtime)
 data/chroma/
 artifacts/
+tests/evaluation/results.json
+tests/evaluation/retrieval_results.json
+hardware/observations/raw/
+hardware/observations/*-private.json
+
+# Local deployment identity and generated OAuth configuration
+demo/deploy/oauth-client.json
+demo/deploy/*secret*
 
 # Node
 node_modules/

@@ -39,7 +39,8 @@ def _fraction(value: Any, label: str, *, allow_zero: bool = False) -> float:
 def _validate_trial(trial: Mapping[str, Any]) -> dict[str, Any]:
     required = {
         "trial_id", "mode", "evidence_class", "passed", "cpu_limit_cores",
-        "peak_cpu_cores", "memory_limit_gib", "peak_memory_gib", "base_storage_gib",
+        "cpu_request_cores", "peak_cpu_cores", "memory_limit_gib",
+        "memory_request_gib", "peak_memory_gib", "base_storage_gib",
         "release_storage_gib", "p95_latency_ms", "error_rate",
     }
     optional = {"hardware_identity", "average_watts", "peak_watts"}
@@ -53,7 +54,8 @@ def _validate_trial(trial: Mapping[str, Any]) -> dict[str, Any]:
         raise HardwareSizingError(f"trial {trial['trial_id']} passed must be boolean")
     values = dict(trial)
     for key in (
-        "cpu_limit_cores", "peak_cpu_cores", "memory_limit_gib", "peak_memory_gib",
+        "cpu_limit_cores", "cpu_request_cores", "peak_cpu_cores",
+        "memory_limit_gib", "memory_request_gib", "peak_memory_gib",
         "base_storage_gib", "release_storage_gib", "p95_latency_ms",
     ):
         values[key] = _number(trial[key], f"{trial['trial_id']}.{key}")
@@ -64,6 +66,10 @@ def _validate_trial(trial: Mapping[str, Any]) -> dict[str, Any]:
         raise HardwareSizingError(f"trial {trial['trial_id']} peak memory exceeds its limit")
     if values["peak_cpu_cores"] > values["cpu_limit_cores"]:
         raise HardwareSizingError(f"trial {trial['trial_id']} peak CPU exceeds its limit")
+    if values["cpu_request_cores"] > values["cpu_limit_cores"]:
+        raise HardwareSizingError(f"trial {trial['trial_id']} CPU request exceeds its limit")
+    if values["memory_request_gib"] > values["memory_limit_gib"]:
+        raise HardwareSizingError(f"trial {trial['trial_id']} memory request exceeds its limit")
     if trial["evidence_class"] == "PHYSICAL_HARDWARE":
         if not isinstance(trial.get("hardware_identity"), Mapping):
             raise HardwareSizingError(f"trial {trial['trial_id']} needs hardware_identity")
@@ -142,8 +148,14 @@ def build_hardware_sizing_report(plan: Mapping[str, Any]) -> dict[str, Any]:
             envelopes.append({"mode": mode, "status": "NO_PASSING_TRIAL"})
             continue
         selected = min(passing, key=lambda item: (item["memory_limit_gib"], item["cpu_limit_cores"], item["trial_id"]))
-        memory = selected["peak_memory_gib"] / (1.0 - assumptions["memory_headroom_fraction"])
-        cpu = selected["peak_cpu_cores"] * (1.0 + assumptions["cpu_headroom_fraction"])
+        memory = max(
+            selected["memory_request_gib"],
+            selected["peak_memory_gib"] / (1.0 - assumptions["memory_headroom_fraction"]),
+        )
+        cpu = max(
+            selected["cpu_request_cores"],
+            selected["peak_cpu_cores"] * (1.0 + assumptions["cpu_headroom_fraction"]),
+        )
         storage = (
             selected["base_storage_gib"]
             + selected["release_storage_gib"] * (1 + assumptions["rollback_releases"])
