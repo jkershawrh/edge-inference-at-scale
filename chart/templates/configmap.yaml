@@ -23,7 +23,7 @@ data:
   DISCORD_EPHEMERAL: {{ .Values.discord.ephemeral | quote }}
   # Legacy aliases retained for compatibility with older images.
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
-  {{- if .Values.kafka.managed }}
+  {{- if ne .Values.kafka.managed false }}
   KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
   {{- else }}
   KAFKA_BOOTSTRAP_SERVERS: {{ required "kafka.bootstrapServers is required when kafka.managed=false" .Values.kafka.bootstrapServers | quote }}

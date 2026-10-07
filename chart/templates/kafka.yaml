@@ -1,4 +1,4 @@
-{{- if .Values.kafka.managed }}
+{{- if ne .Values.kafka.managed false }}
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
 metadata:
