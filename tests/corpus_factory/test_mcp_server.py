@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 import pytest
+
+mcp = pytest.importorskip("mcp", reason="MCP SDK requires the project Python 3.11 runtime")
 from mcp import Client
 
 from corpus_factory.mcp_server import (

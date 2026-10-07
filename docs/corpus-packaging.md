@@ -31,8 +31,9 @@ python3 scripts/package_corpus.py \
   --signing-key /secure/path/corpus-signing-key.pem
 ```
 
-The checked-in Summit baseline currently reports gaps and is intentionally not
-eligible for this command until its coverage report reaches `COVERED`.
+The checked-in synthetic Summit baseline now reaches `COVERED` for all eleven
+declared requirements. It is suitable for governed pipeline testing only; its
+synthetic approvals and facts do not qualify a field release.
 
 For any non-Summit event, pass a normalized JSON list containing
 `{"id": "...", "text": "...", "metadata": {...}}` records:
