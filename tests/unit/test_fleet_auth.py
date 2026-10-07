@@ -16,6 +16,7 @@ from backend.services.node_manager.fleet_auth import (
     canonical_fleet_message,
 )
 from backend.services.node_manager import main as node_manager_main
+from backend.services.node_manager.fleet_client import FleetMessageSigner, FleetSequenceStore
 
 
 def _registry(tmp_path):
@@ -203,3 +204,47 @@ def test_heartbeat_rejects_unbounded_or_content_bearing_metrics():
     )
 
     assert response.status_code == 422
+
+
+def test_node_signer_and_controller_interoperate_across_restarts(tmp_path):
+    private_key, registry = _registry(tmp_path)
+    private_path = tmp_path / "node-key.pem"
+    private_path.write_bytes(
+        private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+    )
+    payload = {
+        "node_id": "field-001",
+        "metrics": {
+            "messages_received": 2,
+            "avg_latency_ms": None,
+            "rag_direct": 1,
+            "queue_depth": None,
+            "load_percent": None,
+        },
+        "activation": None,
+    }
+    sequence_path = tmp_path / "node-sequence.sqlite3"
+    proof_one = FleetMessageSigner(
+        node_id="field-001",
+        key_id="field-001-2026q4",
+        private_key_path=private_path,
+        sequence_store=FleetSequenceStore(sequence_path),
+    ).sign(kind="heartbeat", payload=payload)
+    authenticator = FleetAuthenticator(
+        registry, FleetReplayStore(tmp_path / "controller-replay.sqlite3")
+    )
+    authenticator.verify(kind="heartbeat", payload=payload, proof=proof_one)
+
+    proof_two = FleetMessageSigner(
+        node_id="field-001",
+        key_id="field-001-2026q4",
+        private_key_path=private_path,
+        sequence_store=FleetSequenceStore(sequence_path),
+    ).sign(kind="heartbeat", payload=payload)
+    authenticator.verify(kind="heartbeat", payload=payload, proof=proof_two)
+
+    assert proof_two["sequence"] == proof_one["sequence"] + 1

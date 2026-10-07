@@ -47,6 +47,11 @@ Heartbeat metrics are a small allowlist of counts, latency, queue depth, and
 load. Unknown fields are rejected so message text, retrieved documents, phone
 numbers, and other user data cannot leak into fleet inventory.
 
+The node-side `FleetMessageSigner` uses the same canonical contract and reserves
+its sequence in durable SQLite before signing. Both the node sequence database
+and its private key must live on persistent, access-controlled storage. Sequence
+gaps are safe; sequence reuse is not.
+
 ## Modes and limitations
 
 - `FLEET_AUTH_MODE=required` is the default and fails closed.
