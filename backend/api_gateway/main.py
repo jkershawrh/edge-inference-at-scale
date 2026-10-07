@@ -40,7 +40,11 @@ class APIGateway:
         self.client: httpx.AsyncClient | None = None
 
     async def initialize(self):
-        self.client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=5.0))
+        self.client = httpx.AsyncClient(
+            timeout=httpx.Timeout(
+                settings.api_gateway_proxy_timeout_seconds, connect=5.0
+            )
+        )
 
     async def shutdown(self):
         if self.client:
@@ -76,6 +80,8 @@ class APIGateway:
             raise HTTPException(status_code=e.response.status_code, detail=str(e))
         except httpx.ConnectError:
             raise HTTPException(status_code=502, detail=f"Service {service} unreachable")
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail=f"Service {service} timed out")
 
 
 gateway = APIGateway()

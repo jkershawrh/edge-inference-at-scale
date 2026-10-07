@@ -2,8 +2,10 @@
 """Build Summit Connect RAG corpus from JSON data files."""
 
 import json
+import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import httpx
 
@@ -25,6 +27,12 @@ def build_schedule_docs(schedule: dict) -> list[dict]:
         "doc_id": "schedule_overview",
     })
     for day in schedule["days"]:
+        summary = ", ".join(block["title"] for block in day["blocks"])
+        docs.append({
+            "text": f"{day['label']} schedule: {summary}.",
+            "metadata": {"category": "schedule", "day": day["date"], "summary": True},
+            "doc_id": f"schedule_day_{day['date']}",
+        })
         for block in day["blocks"]:
             text = f"{day['label']} — {block['time']}: {block['title']}. Location: {block['location']}."
             if "speaker" in block:
@@ -37,13 +45,20 @@ def build_schedule_docs(schedule: dict) -> list[dict]:
     return docs
 
 
-def build_session_docs(sessions: dict) -> list[dict]:
+def build_session_docs(sessions: dict, speakers: Optional[dict] = None) -> list[dict]:
     docs = []
+    speaker_names = {
+        speaker["id"]: speaker["name"]
+        for speaker in (speakers or {}).get("speakers", [])
+    }
     for s in sessions["sessions"]:
+        names = [speaker_names[item] for item in s.get("speakers", []) if item in speaker_names]
         text = (
             f"Session: {s['title']}. Track: {s['track']}. Day {s['day']}, {s['time']}, Room {s['room']}. "
             f"Type: {s['type']}. {s['description']}"
         )
+        if names:
+            text += f" Speakers: {', '.join(names)}."
         docs.append({
             "text": text,
             "metadata": {"category": "sessions", "track": s["track"], "type": s["type"]},
@@ -71,16 +86,26 @@ def build_venue_docs(venues: dict) -> list[dict]:
     docs = []
     mv = venues["main_venue"]
     docs.append({
-        "text": f"Main venue: {mv['name']}, {mv['address']}. Amenities: {'; '.join(mv['amenities'])}.",
+        "text": f"Main venue: {mv['name']}, {mv['address']}.",
         "metadata": {"category": "venue"},
         "doc_id": "venue_main",
     })
     for level in mv["levels"]:
-        areas = ", ".join(level["areas"])
+        for index, area in enumerate(level["areas"]):
+            area_name = re.sub(r"\s*\([^)]*\)\s*", "", area).strip()
+            text = f"Venue area: {area} is on Level {level['level']}."
+            if "cafeteria" in area.lower():
+                text += " This is an onsite food and dining location where attendees can eat."
+            docs.append({
+                "text": text,
+                "metadata": {"category": "venue", "level": str(level["level"])},
+                "doc_id": f"venue_area_{level['level']}_{index}_{area_name.lower().replace(' ', '_')}",
+            })
+    for index, amenity in enumerate(mv["amenities"]):
         docs.append({
-            "text": f"Level {level['level']}: {areas}.",
+            "text": f"Venue amenity: {amenity}.",
             "metadata": {"category": "venue"},
-            "doc_id": f"venue_level_{level['level']}",
+            "doc_id": f"venue_amenity_{index}",
         })
     for hotel in venues["hotels"]:
         docs.append({
@@ -96,7 +121,7 @@ def build_venue_docs(venues: dict) -> list[dict]:
         })
     t = venues["transport"]
     docs.append({
-        "text": f"Transport: {t['shuttle']} {t['rideshare']} {t['parking']} {t['public_transit']}",
+        "text": f"Directions and transportation to the venue: Shuttle: {t['shuttle']} Rideshare: {t['rideshare']} Parking: {t['parking']} Public transit: {t['public_transit']}",
         "metadata": {"category": "transport"},
         "doc_id": "transport_info",
     })
@@ -111,11 +136,19 @@ def build_city_docs(city: dict) -> list[dict]:
         "doc_id": "city_weather",
     })
     e = city["emergency"]
-    docs.append({
-        "text": f"Emergency: Event security — {e['event_security']}. First aid at {e['first_aid']}. Local emergency: {e['local_emergency']}. Nearest hospital: {e['nearest_hospital']}. Pharmacy: {e['pharmacy']}.",
-        "metadata": {"category": "emergency", "priority": "high"},
-        "doc_id": "city_emergency",
-    })
+    emergency_facts = (
+        ("event_security", f"Emergency event security contact: {e['event_security']}."),
+        ("first_aid", f"Emergency first aid location: {e['first_aid']}."),
+        ("local", f"Local emergency number: {e['local_emergency']}."),
+        ("hospital", f"Nearest hospital: {e['nearest_hospital']}."),
+        ("pharmacy", f"Closest pharmacy: {e['pharmacy']}."),
+    )
+    for fact_id, text in emergency_facts:
+        docs.append({
+            "text": text,
+            "metadata": {"category": "emergency", "priority": "high"},
+            "doc_id": f"city_emergency_{fact_id}",
+        })
     for attr in city["attractions"]:
         docs.append({
             "text": f"{attr['name']} ({attr['type']}), {attr['distance']} from venue: {attr['description']}",
@@ -147,8 +180,9 @@ def main():
 
     all_docs = []
     all_docs.extend(build_schedule_docs(load_json("schedule.json")))
-    all_docs.extend(build_session_docs(load_json("sessions.json")))
-    all_docs.extend(build_speaker_docs(load_json("speakers.json")))
+    speakers = load_json("speakers.json")
+    all_docs.extend(build_session_docs(load_json("sessions.json"), speakers))
+    all_docs.extend(build_speaker_docs(speakers))
     all_docs.extend(build_venue_docs(load_json("venues.json")))
     all_docs.extend(build_city_docs(load_json("city_guide.json")))
     all_docs.extend(build_architecture_docs(load_json("architecture.json")))

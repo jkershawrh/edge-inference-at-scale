@@ -217,3 +217,23 @@ def test_builder_signs_manifest_with_ed25519_key(tmp_path):
         public_key_path=str(public_key_path),
         require_signature=True,
     )
+
+
+def test_default_event_package_signs_interaction_assets(tmp_path):
+    args = Namespace(
+        event_id="summit-connect",
+        event_name="Summit Connect",
+        version="event-assets",
+        output_dir=str(tmp_path / "output"),
+        created_at="2026-10-06T00:00:00+00:00",
+        signing_key=None,
+        input_documents=None,
+    )
+
+    package = build_package(args)
+    manifest = validate_corpus_package(
+        str(package / "manifest.json"), "summit-connect", "event-assets"
+    )
+
+    assert "treasure_hunt.json" in manifest["files"]
+    assert json.loads((package / "treasure_hunt.json").read_text())["clues"]

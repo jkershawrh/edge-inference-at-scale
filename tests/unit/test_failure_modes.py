@@ -155,7 +155,7 @@ class TestLLMFailure:
         rag_resp = MagicMock()
         rag_resp.status_code = 200
         rag_resp.raise_for_status = MagicMock()
-        rag_resp.json = MagicMock(return_value={"documents": ["Some context"], "scores": [0.6]})
+        rag_resp.json = MagicMock(return_value={"documents": ["Some context"], "scores": [0.54]})
 
         sms_resp = MagicMock()
         sms_resp.status_code = 200

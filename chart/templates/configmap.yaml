@@ -33,10 +33,15 @@ data:
   CHROMA_PORT: "8000"
   MODEL_NAME: {{ .Values.bitnet.model | quote }}
   EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}
+  RAG_MIN_SIMILARITY: {{ .Values.rag.minSimilarity | quote }}
+  RAG_CANDIDATE_POOL_MULTIPLIER: {{ .Values.rag.candidatePoolMultiplier | quote }}
+  RAG_CANDIDATE_POOL_MIN: {{ .Values.rag.candidatePoolMin | quote }}
   LLM_REQUEST_TIMEOUT_SECONDS: "60"
   SMS_ROUTER_TIMEOUT_SECONDS: "60"
   LLM_MAX_INFLIGHT_REQUESTS: "2"
-  RAG_DIRECT_THRESHOLD: "0.8"
+  RAG_DIRECT_THRESHOLD: {{ .Values.rag.directThreshold | quote }}
+  RAG_DIRECT_MAX_CHARS: {{ .Values.rag.directMaxChars | quote }}
+  API_GATEWAY_PROXY_TIMEOUT_SECONDS: "125"
   RAG_GROUNDING_REQUIRED: {{ .Values.safety.groundingRequired | quote }}
   EMERGENCY_RAG_ENABLED: {{ .Values.safety.emergencyRagEnabled | quote }}
   HOME: "/tmp"

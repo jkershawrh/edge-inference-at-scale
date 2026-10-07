@@ -54,9 +54,10 @@ def _keywords(text: str) -> List[str]:
 
 def _source_documents() -> List[Dict[str, Any]]:
     documents: List[Dict[str, Any]] = []
+    speakers = load_json("speakers.json")
     documents.extend(build_schedule_docs(load_json("schedule.json")))
-    documents.extend(build_session_docs(load_json("sessions.json")))
-    documents.extend(build_speaker_docs(load_json("speakers.json")))
+    documents.extend(build_session_docs(load_json("sessions.json"), speakers))
+    documents.extend(build_speaker_docs(speakers))
     documents.extend(build_venue_docs(load_json("venues.json")))
     documents.extend(build_city_docs(load_json("city_guide.json")))
     documents.extend(build_architecture_docs(load_json("architecture.json")))
@@ -107,7 +108,7 @@ def build_package(args: argparse.Namespace) -> Path:
         else:
             source_names = (
                 "schedule.json", "sessions.json", "speakers.json", "venues.json",
-                "city_guide.json", "architecture.json",
+                "city_guide.json", "architecture.json", "treasure_hunt.json",
             )
             sources = [
                 {"name": name, "sha256": _sha256(DATA_DIR / name)} for name in source_names
@@ -170,8 +171,17 @@ def build_package(args: argparse.Namespace) -> Path:
         _write_json(staging / "categories.json", {"categories": sorted(categories)})
         _write_json(staging / "document_index.json", index)
 
+        # Event interactions are release content too. Keep them optional for
+        # event-neutral input packages, but signed and immutable when present.
+        event_asset = DATA_DIR / "treasure_hunt.json"
+        if input_path is None and event_asset.is_file():
+            shutil.copyfile(event_asset, staging / event_asset.name)
+
         package_files = {}
-        for name in ("documents.json", "categories.json", "document_index.json"):
+        package_names = ["documents.json", "categories.json", "document_index.json"]
+        if (staging / "treasure_hunt.json").is_file():
+            package_names.append("treasure_hunt.json")
+        for name in package_names:
             file_path = staging / name
             package_files[name] = {
                 "sha256": _sha256(file_path), "bytes": file_path.stat().st_size

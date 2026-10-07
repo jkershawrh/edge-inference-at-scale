@@ -274,7 +274,7 @@ async def test_malformed_corpus_identity_cannot_be_attached_to_field_guidance(
                     "documents": ["Unbound guidance must not be served."],
                     "scores": [0.99],
                     "metadata": [{"parent_doc_id": "unbound-document"}],
-                    "active_corpus_digest": "sha256:" + "a" * 64,
+                    "active_corpus_sequence": 7,
                 },
             )
         return httpx.Response(404)

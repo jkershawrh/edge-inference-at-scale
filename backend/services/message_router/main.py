@@ -536,12 +536,23 @@ class MessageRouter:
         """Handle treasure hunt commands. Returns response or None if not a hunt message."""
         text = content.strip().lower()
 
-        # Load hunt data (lazy, cached)
+        # Load event interaction data lazily.  Packaged deployments fetch this
+        # from the RAG service so the state machine travels with the signed
+        # event release rather than the generic application image.
         if not hasattr(self, "_hunt_data"):
             try:
-                hunt_path = Path(__file__).parent.parent.parent.parent / "data" / "summit_connect" / "treasure_hunt.json"
+                hunt_path = Path(settings.summit_data_dir) / "treasure_hunt.json"
+                if not hunt_path.exists():
+                    hunt_path = Path(__file__).parent.parent.parent.parent / "data" / "summit_connect" / "treasure_hunt.json"
                 if hunt_path.exists():
                     self._hunt_data = json.loads(hunt_path.read_text())
+                elif self.http_client is not None:
+                    response = await self.http_client.get(
+                        f"{self.rag_service_url}/event-assets/treasure-hunt",
+                        timeout=5.0,
+                    )
+                    response.raise_for_status()
+                    self._hunt_data = response.json()
                 else:
                     self._hunt_data = None
             except Exception:
@@ -729,13 +740,18 @@ class MessageRouter:
             if processed.requires_rag:
                 context, top_score, top_doc = await self.route_to_rag(message.content)
 
-            # 3b. RAG-direct: if top result is high confidence and fits SMS, skip LLM
+            # 3b. RAG-direct: bounded, high-confidence evidence is safer and
+            # faster than asking a small model to paraphrase it. Delivery owns
+            # 160-character chunking, so this limit may span a few SMS parts.
             rag_threshold = float(os.getenv("RAG_DIRECT_THRESHOLD", settings.rag_direct_threshold))
+            rag_direct_max_chars = int(
+                os.getenv("RAG_DIRECT_MAX_CHARS", settings.rag_direct_max_chars)
+            )
             if (
                 top_doc
                 and top_score >= rag_threshold
                 and (
-                    len(top_doc) <= 160
+                    len(top_doc) <= rag_direct_max_chars
                     or processed.message_type == MessageType.EMERGENCY
                 )
             ):

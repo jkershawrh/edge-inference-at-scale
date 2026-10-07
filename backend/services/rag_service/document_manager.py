@@ -11,6 +11,36 @@ import re
 
 logger = logging.getLogger(__name__)
 
+SEARCH_STOP_WORDS = {
+    "a", "an", "and", "are", "at", "be", "can", "do", "does", "for",
+    "from", "how", "i", "in", "is", "it", "me", "of", "on", "or",
+    "the", "there", "this", "to", "what", "when", "where", "who", "with",
+}
+
+QUERY_ALIASES = {
+    "eat": {"cafeteria", "dining", "food", "lunch", "restaurant"},
+    "wifi": {"internet", "network", "wireless"},
+    "directions": {"bus", "parking", "rideshare", "shuttle", "transport"},
+    "pharmacy": {"chemist", "drugstore", "medication"},
+}
+
+
+def _tokens(value: str) -> Set[str]:
+    return set(re.findall(r"[a-z0-9]+", value.lower()))
+
+
+def _query_tokens(value: str) -> Set[str]:
+    tokens = _tokens(value) - SEARCH_STOP_WORDS
+    expanded = set(tokens)
+    for token in tokens:
+        expanded.update(QUERY_ALIASES.get(token, set()))
+    normalized = " ".join(re.findall(r"[a-z0-9]+", value.lower()))
+    if "get to" in normalized or "way to" in normalized:
+        expanded.update(QUERY_ALIASES["directions"])
+    if "last day" in normalized or "final day" in normalized:
+        expanded.update({"closing", "farewell", "final", "wrap"})
+    return expanded
+
 
 class DocumentManager:
     """Manages local documents and knowledge base."""
@@ -184,7 +214,8 @@ class DocumentManager:
     ) -> List[Dict[str, Any]]:
         """Search documents by text content."""
         try:
-            query_lower = query.lower()
+            query_lower = " ".join(re.findall(r"[a-z0-9]+", query.lower()))
+            query_tokens = _query_tokens(query)
             results = []
             
             for doc_id, doc in self.documents.items():
@@ -194,32 +225,36 @@ class DocumentManager:
                 
                 # Simple text matching
                 text = doc.get('text', '').lower()
+                normalized_text = " ".join(re.findall(r"[a-z0-9]+", text))
                 title = doc.get('title', '').lower()
-                keywords = [kw.lower() for kw in doc.get('keywords', [])]
+                keywords = set(kw.lower() for kw in doc.get('keywords', []))
+                document_tokens = _tokens(text) | _tokens(title) | keywords
+                category_token = str(doc.get('category', '')).lower()
                 
                 # Calculate relevance score
                 score = 0
                 
                 # Title matches are most important
-                if query_lower in title:
+                if query_lower and query_lower in title:
+                    score += 10
+
+                # An explicit category word (for example "sessions") is a
+                # strong user intent signal and should outrank documents that
+                # merely mention that word incidentally.
+                if category_token and category_token in query_tokens:
                     score += 10
                 
                 # Keyword matches
-                for keyword in keywords:
-                    if keyword in query_lower or query_lower in keyword:
-                        score += 5
+                score += len(query_tokens & keywords) * 5
                 
                 # Text content matches
-                if query_lower in text:
+                if query_lower and query_lower in normalized_text:
                     # Count occurrences
-                    occurrences = text.count(query_lower)
+                    occurrences = normalized_text.count(query_lower)
                     score += occurrences * 2
                 
                 # Partial word matches
-                query_words = query_lower.split()
-                for word in query_words:
-                    if word in text:
-                        score += 1
+                score += len(query_tokens & document_tokens) * 2
                 
                 if score > 0:
                     results.append({

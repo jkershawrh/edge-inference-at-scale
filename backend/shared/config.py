@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     default_model: str = "bitnet-2b4t"
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_cache_dir: str = "/data/models/embedding_cache"
-    rag_min_similarity: float = 0.5
+    rag_min_similarity: float = 0.4
+    rag_candidate_pool_multiplier: int = 4
+    rag_candidate_pool_min: int = 10
 
     # Vector Database
     chroma_host: str = "chromadb"
@@ -89,7 +91,9 @@ class Settings(BaseSettings):
     sms_router_timeout_seconds: float = 60.0
     llm_request_timeout_seconds: float = 60.0
     llm_max_inflight_requests: int = 2
-    rag_direct_threshold: float = 0.7
+    rag_direct_threshold: float = 0.55
+    rag_direct_max_chars: int = 400
+    api_gateway_proxy_timeout_seconds: float = 125.0
     rag_grounding_required: bool = False
     emergency_rag_enabled: bool = False
     grounding_failure_message: str = (

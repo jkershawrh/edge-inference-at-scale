@@ -7,6 +7,7 @@ except ImportError:
     pass
 
 import hashlib
+import json
 import logging
 import os
 import time
@@ -26,6 +27,7 @@ from backend.services.rag_service.active_release import ActiveReleaseResolver
 from backend.services.rag_service.activation_contracts import ActivationStatusResponse
 from backend.services.rag_service.embedding_service import LocalEmbeddingService, SimpleEmbeddingService
 from backend.services.rag_service.retrieval import (
+    candidate_pool_size,
     cosine_distance_to_confidence,
     fuse_ranked_results,
 )
@@ -46,7 +48,9 @@ class RAGService:
         self.embedding_service = LocalEmbeddingService(model_name=settings.embedding_model)
         self.simple_embedding_service = SimpleEmbeddingService()
         self.corpus_manifest = None
+        self.packaged_corpus_digest = None
         self.active_release = None
+        self.event_assets: Dict[str, Any] = {}
         self.corpus_read_only = settings.corpus_read_only
         data_dir = settings.summit_data_dir
         manifest_path = settings.corpus_manifest_path
@@ -85,6 +89,21 @@ class RAGService:
                     or self.active_release is not None
                 ),
             )
+            with open(manifest_path, "rb") as handle:
+                self.packaged_corpus_digest = "sha256:{0}".format(
+                    hashlib.sha256(handle.read()).hexdigest()
+                )
+        asset_path = os.path.join(data_dir, "treasure_hunt.json")
+        asset_is_declared = bool(
+            self.corpus_manifest
+            and "treasure_hunt.json" in (self.corpus_manifest.get("files") or {})
+        )
+        if os.path.isfile(asset_path) and (not self.corpus_manifest or asset_is_declared):
+            with open(asset_path, "r", encoding="utf-8") as handle:
+                hunt = json.load(handle)
+            if not isinstance(hunt, dict) or not isinstance(hunt.get("clues"), list):
+                raise RuntimeError("treasure hunt event asset is invalid")
+            self.event_assets["treasure-hunt"] = hunt
         self.document_manager = DocumentManager(data_dir=data_dir)
 
         self.stats = {
@@ -351,7 +370,13 @@ class RAGService:
     def _attribute_search_result(self, result: RAGResult) -> RAGResult:
         """Bind retrieval evidence to the exact activation-managed corpus."""
         if self.active_release is None:
-            return result
+            return RAGResult(
+                documents=result.documents,
+                scores=result.scores,
+                metadata=result.metadata,
+                active_corpus_digest=self.packaged_corpus_digest,
+                active_corpus_sequence=None,
+            )
         status = self.active_release.status
         blocked = set(status.blocked_safety_classes)
         documents = result.documents
@@ -391,18 +416,23 @@ class RAGService:
         )
 
     async def _hybrid_search(self, query: RAGQuery) -> RAGResult:
+        candidate_limit = candidate_pool_size(
+            query.top_k,
+            multiplier=settings.rag_candidate_pool_multiplier,
+            minimum=settings.rag_candidate_pool_min,
+        )
         vector_results = []
         text_results = []
         if self.collection and self.stats["chromadb_available"]:
             started_at = time.perf_counter()
             try:
-                vector_results = await self._vector_search(query)
+                vector_results = await self._vector_search(query, candidate_limit)
             finally:
                 self._record_stage_timing("vector_search", started_at)
 
         started_at = time.perf_counter()
         try:
-            text_results = await self._text_search(query)
+            text_results = await self._text_search(query, candidate_limit)
         finally:
             self._record_stage_timing("text_search", started_at)
 
@@ -414,7 +444,9 @@ class RAGService:
         finally:
             self._record_stage_timing("fusion", started_at)
 
-    async def _vector_search(self, query: RAGQuery) -> List[Dict[str, Any]]:
+    async def _vector_search(
+        self, query: RAGQuery, candidate_limit: int
+    ) -> List[Dict[str, Any]]:
         try:
             query_embedding = await self.embedding_service.encode_text(query.query)
             if query_embedding is None:
@@ -422,7 +454,7 @@ class RAGService:
                 return []
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(query.top_k, 10),
+                n_results=candidate_limit,
                 where=query.filter_metadata if query.filter_metadata else None,
             )
             documents = results["documents"][0] if results["documents"] else []
@@ -447,12 +479,14 @@ class RAGService:
             logger.error(f"Vector search error: {e}")
             return []
 
-    async def _text_search(self, query: RAGQuery) -> List[Dict[str, Any]]:
+    async def _text_search(
+        self, query: RAGQuery, candidate_limit: int
+    ) -> List[Dict[str, Any]]:
         try:
             results = await self.document_manager.search_documents(
                 query=query.query,
                 category=query.filter_metadata.get("category") if query.filter_metadata else None,
-                limit=query.top_k,
+                limit=candidate_limit,
             )
             text_results = []
             for result in results:
@@ -594,6 +628,18 @@ class RAGService:
                 "embedding_service": embedding_info,
                 "embedding_fingerprint": self.embedding_fingerprint,
                 "retrieval_index_fingerprint": self.retrieval_index_fingerprint,
+                "corpus_identity": {
+                    "digest": (
+                        self.active_release.status.digest
+                        if self.active_release is not None
+                        else self.packaged_corpus_digest
+                    ),
+                    "sequence": (
+                        self.active_release.status.sequence
+                        if self.active_release is not None
+                        else None
+                    ),
+                },
                 "corpus": self.corpus_manifest or {"status": "unpackaged"},
                 "activation": activation or {"status": "not_configured"},
             }
@@ -662,6 +708,14 @@ async def add_document(request: RAGAddDocumentRequest):
 @app.get("/stats")
 async def get_statistics():
     return rag_service.get_stats()
+
+
+@app.get("/event-assets/{asset_name}")
+async def get_event_asset(asset_name: str):
+    asset = rag_service.event_assets.get(asset_name)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Event asset is not available")
+    return asset
 
 
 @app.get("/activation/status", response_model=ActivationStatusResponse)

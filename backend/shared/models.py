@@ -93,10 +93,8 @@ class RAGResult(BaseModel):
 
     @model_validator(mode="after")
     def validate_corpus_identity(self) -> "RAGResult":
-        if (self.active_corpus_digest is None) != (
-            self.active_corpus_sequence is None
-        ):
-            raise ValueError("active corpus digest and sequence must be returned together")
+        if self.active_corpus_sequence is not None and self.active_corpus_digest is None:
+            raise ValueError("active corpus sequence requires a digest")
         return self
 
 
@@ -134,10 +132,8 @@ class AnswerAttribution(BaseModel):
 
     @model_validator(mode="after")
     def validate_coherent_attribution(self) -> "AnswerAttribution":
-        if (self.active_corpus_digest is None) != (
-            self.active_corpus_sequence is None
-        ):
-            raise ValueError("active corpus digest and sequence must be recorded together")
+        if self.active_corpus_sequence is not None and self.active_corpus_digest is None:
+            raise ValueError("active corpus sequence requires a digest")
         expected_grounded = self.response_mode in {"rag_direct", "llm_grounded"}
         if self.grounded is not expected_grounded:
             raise ValueError("grounded flag does not match response mode")

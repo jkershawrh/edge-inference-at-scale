@@ -4,6 +4,17 @@ import hashlib
 from typing import Any, Dict, List, Tuple
 
 
+def candidate_pool_size(
+    top_k: int, multiplier: int = 4, minimum: int = 10, maximum: int = 50
+) -> int:
+    """Return a bounded candidate count for rank fusion.
+
+    Retrieving only ``top_k`` items from each source makes fusion unable to
+    rescue evidence that one source ranks just outside the response window.
+    """
+    return min(max(int(top_k) * max(1, int(multiplier)), int(minimum)), int(maximum))
+
+
 def cosine_distance_to_confidence(distance: float) -> float:
     """Convert Chroma cosine distance (0 is best) to bounded similarity."""
     return max(0.0, min(1.0, 1.0 - float(distance)))
@@ -94,7 +105,16 @@ def fuse_ranked_results(
             }
         )
 
+    # Exact lexical rank is the deterministic tie-breaker for equal fusion
+    # scores. At the edge, returning the source passage is safer than allowing
+    # a semantically nearby document to win solely because it was encountered
+    # first in the vector result list.
     fused.sort(
-        key=lambda item: (item["fused_score"], item["score"]), reverse=True
+        key=lambda item: (
+            -item["fused_score"],
+            -item["score"],
+            item["metadata"].get("retrieval_source_ranks", {}).get("text", 10**9),
+            item["metadata"].get("parent_doc_id", ""),
+        )
     )
     return fused[:top_k]

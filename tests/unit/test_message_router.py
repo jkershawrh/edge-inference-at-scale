@@ -290,13 +290,13 @@ class TestRAGContextIncludedInLLMRequest:
         """When RAG returns context below direct threshold, it is included in the LLM request."""
         self.router.http_client = MagicMock()
 
-        # Mock RAG response — score below RAG_DIRECT_THRESHOLD (0.7) so LLM is called
+        # Mock RAG response — score below RAG_DIRECT_THRESHOLD so LLM is called
         rag_response = MagicMock()
         rag_response.status_code = 200
         rag_response.raise_for_status = MagicMock()
         rag_response.json = MagicMock(return_value={
             "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-            "scores": [0.65],
+            "scores": [0.54],
         })
 
         # Mock LLM response
@@ -528,8 +528,8 @@ class TestRAGDirectFallback:
         assert response == doc
 
     @pytest.mark.asyncio
-    async def test_rag_direct_long_doc_calls_llm(self):
-        """Score=0.9 but doc is 200 chars -> too long for SMS, LLM IS called."""
+    async def test_rag_direct_multi_part_doc_skips_llm(self):
+        """Bounded evidence may span SMS parts without involving the LLM."""
         long_doc = "A" * 200
         assert len(long_doc) > 160
         call_log = self._mock_http_client(
@@ -542,7 +542,21 @@ class TestRAGDirectFallback:
         response = await self.router.process_message(msg)
 
         llm_calls = [c for c in call_log if "/inference" in c["url"]]
-        assert len(llm_calls) == 1, "LLM should be called when doc exceeds 160 chars"
+        assert len(llm_calls) == 0
+        assert response == long_doc
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_oversized_doc_calls_llm(self):
+        oversized_doc = "A" * 401
+        call_log = self._mock_http_client(
+            rag_docs=[oversized_doc],
+            rag_scores=[0.9],
+            llm_response_text="Summarised by LLM",
+        )
+
+        response = await self.router.process_message(_make_sms("Tell me everything"))
+
+        assert len([c for c in call_log if "/inference" in c["url"]]) == 1
         assert response == "Summarised by LLM"
 
     @pytest.mark.asyncio
