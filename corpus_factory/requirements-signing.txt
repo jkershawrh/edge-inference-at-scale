@@ -1,0 +1,4 @@
+# Protected signing boundary only. Private-key providers are environment-specific.
+-r requirements.txt
+fastapi>=0.115,<1
+uvicorn>=0.30,<1

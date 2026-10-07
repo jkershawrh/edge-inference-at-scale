@@ -31,6 +31,7 @@ SCHEMA_BY_RECORD_TYPE = {
     "review_attestation": "review-attestation.schema.json",
     "evaluation_attestation": "evaluation-attestation.schema.json",
     "release_signing_authorization": "release-signing-authorization.schema.json",
+    "release_signature": "release-signature.schema.json",
     "corpus_audit_checkpoint": "audit-checkpoint.schema.json",
     "corpus_audit_anchor_receipt": "audit-anchor-receipt.schema.json",
     "release_manifest": "release-manifest.schema.json",
@@ -321,6 +322,22 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         ).hexdigest()
         if instance["authorization_id"] != expected:
             raise ContractValidationError("authorization_id does not match authorization body")
+    elif record_type == "release_signature":
+        key = instance["signing_key"]
+        _ordered_time_window(key, "valid_from", "expires_at", "release signing key")
+        signed_at = _parse_time(instance["signed_at"])
+        if not _parse_time(key["valid_from"]) <= signed_at < _parse_time(key["expires_at"]):
+            raise ContractValidationError("release signing time must be inside key validity")
+        body = {
+            field: value
+            for field, value in instance.items()
+            if field not in {"signature_id", "signature", "manifest_signature"}
+        }
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        if instance["signature_id"] != expected:
+            raise ContractValidationError("signature_id does not match release signature body")
     elif record_type == "corpus_audit_checkpoint":
         previous = instance["previous_anchor"]
         if (previous["receipt_id"] is None) != (previous["receipt_digest"] is None):
