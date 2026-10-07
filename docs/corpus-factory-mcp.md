@@ -91,3 +91,24 @@ memory, with a 250m CPU and 256Mi memory limit; actual requests must be adjusted
 from measured pod telemetry. The service performs no model inference, embedding,
 or vector indexing, so its idle footprint should be small relative to the RAG
 runtime.
+
+A hardened internal-only baseline is provided at
+`deploy/corpus-factory-mcp/base`. It runs without a service-account token, with
+a read-only root filesystem, all Linux capabilities dropped, default-deny
+ingress and egress, and a ClusterIP Service only. There is deliberately no
+Route. Before applying it, set the reviewed immutable image digest; the checked-in
+all-zero digest is an intentional fail-closed placeholder. Only same-namespace
+client pods labeled `lilevy.edge/mcp-client=approved` can connect:
+
+```bash
+cd deploy/corpus-factory-mcp/base
+kustomize edit set image \
+  quay.io/replace-me/big-evy-corpus-mcp=quay.io/your-org/big-evy-corpus-mcp@sha256:REVIEWED_DIGEST
+cd ../../..
+oc apply -k deploy/corpus-factory-mcp/base
+```
+
+That label is an authorization boundary only when namespace write access is
+restricted. For people or clients outside the namespace, keep the server
+internal and add the organization's authenticated service proxy; do not weaken
+the NetworkPolicy or expose the unauthenticated MCP process directly.
