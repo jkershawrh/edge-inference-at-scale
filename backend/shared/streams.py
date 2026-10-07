@@ -39,7 +39,13 @@ class RedisSMSEventStream:
 
     async def connect(self) -> None:
         """Connect, verify the server, and create the consumer group."""
-        client = aioredis.from_url(self.redis_url, decode_responses=True)
+        client = aioredis.from_url(
+            self.redis_url,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=10,
+            health_check_interval=15,
+        )
         try:
             await client.ping()
             if self.enable_consumer:
