@@ -56,9 +56,12 @@ def create_release_signing_app(service: ReleaseSigningService, *, bearer_token: 
             return _error(422, "INVALID_CONTENT_TYPE", "The request content type must be application/json.")
         try:
             payload = json.loads(await _body(request, max_request_bytes))
-            if not isinstance(payload, dict) or set(payload) != {"candidate_base64", "authorization", "key_id", "signed_at"}:
+            if not isinstance(payload, dict) or set(payload) != {"candidate_base64", "authorization", "promotion_report", "evaluation_attestation", "key_id"}:
                 raise ValueError
-            if not all(isinstance(payload[field], str) for field in ("candidate_base64", "key_id", "signed_at")) or not isinstance(payload["authorization"], dict):
+            if not all(isinstance(payload[field], str) for field in ("candidate_base64", "key_id")) or not all(
+                isinstance(payload[field], dict)
+                for field in ("authorization", "promotion_report", "evaluation_attestation")
+            ):
                 raise ValueError
             candidate = base64.b64decode(payload["candidate_base64"], validate=True)
         except ReleaseSigningError:
@@ -66,7 +69,13 @@ def create_release_signing_app(service: ReleaseSigningService, *, bearer_token: 
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, binascii.Error):
             return _error(422, "INVALID_REQUEST", "The signing request is invalid.")
         try:
-            return service.sign(candidate, payload["authorization"], key_id=payload["key_id"], signed_at=payload["signed_at"])
+            return service.sign(
+                candidate,
+                payload["authorization"],
+                payload["promotion_report"],
+                payload["evaluation_attestation"],
+                key_id=payload["key_id"],
+            )
         except ReleaseSigningError:
             return _error(409, "SIGNING_REJECTED", "The release signing policy rejected the request.")
         except Exception:

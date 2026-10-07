@@ -1,6 +1,6 @@
 # Protected release-signing service boundary
 
-Big EVY now has a narrow boundary between governed authorization and release signing. The boundary accepts only candidate bytes, a valid `release_signing_authorization`, an allowlisted key ID, and a trusted signing time. It verifies the exact candidate digest, authorization age, attestation trust and revocation generation, key role, rotation state, revocation generation, and validity window before requesting a signature.
+Big EVY now has a narrow boundary between governed authorization and release signing. The boundary accepts candidate bytes, a `release_signing_authorization`, its exact promotion report and signed evaluation attestation, and an allowlisted key ID. The signing time comes from the service clock, never the caller. The service verifies the evaluation signature using a separately configured trusted public key, validates revocation state, and checks every authorization digest against the supplied evidence. A fabricated content-addressed authorization is therefore insufficient. It also verifies the exact candidate digest, authorization age, key role, rotation state, release-key revocation generation, and validity window before requesting a signature.
 
 The `ProtectedSignerAdapter` contract exposes only `describe_key(key_id)` and `sign(key_id, payload)`. It has no private-key import, export, or inspection operation. A production adapter should map these calls to PKCS#11 or a KMS `Describe/GetPublicKey` and `Sign` operation. This repository intentionally includes no software-key adapter, private key, cloud-specific integration, or signer deployment that could be mistaken for production custody.
 
@@ -10,7 +10,7 @@ An operator policy allowlists release key IDs and trusted evaluation-attestation
 
 ## HTTP boundary
 
-`create_release_signing_app()` builds an internal FastAPI application with a single bearer-protected `POST /v1/sign-release` route. The request body is bounded and has exactly four fields: `candidate_base64`, `authorization`, `key_id`, and `signed_at`. Errors do not expose adapter or policy details. API documentation endpoints are disabled.
+`create_release_signing_app()` builds an internal FastAPI application with a single bearer-protected `POST /v1/sign-release` route. The request body is bounded and has exactly five fields: `candidate_base64`, `authorization`, `promotion_report`, `evaluation_attestation`, and `key_id`. Errors do not expose adapter or policy details. API documentation endpoints are disabled.
 
 Do not expose this service publicly. Provision its bearer credential from a secret manager and use network policy plus workload identity in OpenShift. An OpenShift profile is intentionally deferred until a real protected adapter and its device/socket permissions are selected; deploying the test adapter would undermine the boundary.
 

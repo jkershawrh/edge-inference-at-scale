@@ -8,15 +8,22 @@ import hashlib
 import json
 import sqlite3
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
-from corpus_factory.evaluation_attestation import bytes_digest, canonical_json, object_digest
+from corpus_factory.evaluation_attestation import (
+    EvaluationAttestationError,
+    bytes_digest,
+    canonical_json,
+    object_digest,
+    public_key_id,
+    verify_attestation,
+)
 from corpus_factory.validator import ContractValidationError, validate_instance
 
 
@@ -48,17 +55,24 @@ class ProtectedSignerAdapter(Protocol):
 @dataclass(frozen=True)
 class ReleaseSigningPolicy:
     allowed_key_ids: tuple[str, ...]
-    trusted_attestation_key_ids: tuple[str, ...]
+    trusted_attestation_keys: tuple[tuple[str, Ed25519PublicKey], ...]
     minimum_key_revocation_generation: int
     minimum_attestation_revocation_generation: int
     maximum_authorization_age_seconds: int = 86400
     maximum_candidate_bytes: int = 4 * 1024 * 1024
+    revoked_attestation_ids: tuple[str, ...] = ()
+    revoked_attestation_key_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.allowed_key_ids or not self.trusted_attestation_key_ids:
+        if not self.allowed_key_ids or not self.trusted_attestation_keys:
             raise ValueError("signing and attestation key allowlists cannot be empty")
         if len(set(self.allowed_key_ids)) != len(self.allowed_key_ids):
             raise ValueError("allowed_key_ids must be unique")
+        attestation_ids = [item[0] for item in self.trusted_attestation_keys]
+        if len(set(attestation_ids)) != len(attestation_ids):
+            raise ValueError("trusted attestation key IDs must be unique")
+        if any(not isinstance(key, Ed25519PublicKey) or public_key_id(key) != key_id for key_id, key in self.trusted_attestation_keys):
+            raise ValueError("trusted attestation key ID does not match its Ed25519 public key")
         if self.minimum_key_revocation_generation < 1 or self.minimum_attestation_revocation_generation < 1:
             raise ValueError("revocation generation floors must be positive")
         if not 1 <= self.maximum_authorization_age_seconds <= 7 * 86400:
@@ -131,12 +145,28 @@ class SigningReplayStore:
 
 
 class ReleaseSigningService:
-    def __init__(self, adapter: ProtectedSignerAdapter, policy: ReleaseSigningPolicy, replay_store: SigningReplayStore):
+    def __init__(
+        self,
+        adapter: ProtectedSignerAdapter,
+        policy: ReleaseSigningPolicy,
+        replay_store: SigningReplayStore,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ):
         self._adapter = adapter
         self._policy = policy
         self._replay_store = replay_store
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
 
-    def sign(self, candidate: bytes, authorization: Mapping[str, Any], *, key_id: str, signed_at: str) -> dict[str, Any]:
+    def sign(
+        self,
+        candidate: bytes,
+        authorization: Mapping[str, Any],
+        promotion_report: Mapping[str, Any],
+        evaluation_attestation: Mapping[str, Any],
+        *,
+        key_id: str,
+    ) -> dict[str, Any]:
         if not isinstance(candidate, bytes) or not candidate or len(candidate) > self._policy.maximum_candidate_bytes:
             raise ReleaseSigningError("candidate is absent or exceeds the configured size limit")
         try:
@@ -147,17 +177,58 @@ class ReleaseSigningService:
             raise ReleaseSigningError("candidate bytes do not match the authorized digest")
         if key_id not in self._policy.allowed_key_ids:
             raise ReleaseSigningError("requested signing key is not allowlisted")
-        attestation = authorization["evaluation_attestation"]
-        if attestation["key_id"] not in self._policy.trusted_attestation_key_ids:
+        attestation_reference = authorization["evaluation_attestation"]
+        trusted_keys = dict(self._policy.trusted_attestation_keys)
+        attestation_public_key = trusted_keys.get(attestation_reference["key_id"])
+        if attestation_public_key is None:
             raise ReleaseSigningError("authorization names an untrusted attestation key")
-        if attestation["revocation_generation"] < self._policy.minimum_attestation_revocation_generation:
+        if attestation_reference["revocation_generation"] < self._policy.minimum_attestation_revocation_generation:
             raise ReleaseSigningError("authorization attestation revocation state is stale")
 
-        signing_time = _time(signed_at, "signed_at")
+        signing_time = self._clock()
+        if not isinstance(signing_time, datetime) or signing_time.tzinfo is None:
+            raise ReleaseSigningError("protected signing clock must return a timezone-aware time")
+        signed_at = signing_time.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
         authorized_time = _time(authorization["authorization"]["authorized_at"], "authorized_at")
         age = signing_time - authorized_time
         if age < timedelta(0) or age > timedelta(seconds=self._policy.maximum_authorization_age_seconds):
             raise ReleaseSigningError("release signing authorization is not current")
+        try:
+            verify_attestation(
+                evaluation_attestation,
+                promotion_report,
+                attestation_public_key,
+                as_of=signed_at,
+                revoked_attestation_ids=self._policy.revoked_attestation_ids,
+                revoked_key_ids=self._policy.revoked_attestation_key_ids,
+            )
+        except EvaluationAttestationError as exc:
+            raise ReleaseSigningError("signed evaluation evidence is not trusted") from exc
+        if (
+            bytes_digest(candidate) != promotion_report.get("binding", {}).get("release_digest")
+            or bytes_digest(candidate) != evaluation_attestation.get("subject", {}).get("release_digest")
+        ):
+            raise ReleaseSigningError("candidate is not the release covered by signed evaluation evidence")
+        expected_report = {
+            "report_id": promotion_report.get("report_id"),
+            "digest": object_digest(promotion_report),
+        }
+        expected_attestation = {
+            "attestation_id": evaluation_attestation.get("attestation_id"),
+            "digest": object_digest(evaluation_attestation),
+            "key_id": evaluation_attestation.get("signing_key", {}).get("key_id"),
+            "revocation_generation": evaluation_attestation.get("revocation_snapshot", {}).get("generation"),
+        }
+        expected_bindings = {
+            "evaluation_report_digest": object_digest(promotion_report),
+            "approval_attestation_digests": [object_digest(evaluation_attestation)],
+        }
+        if authorization["promotion_report"] != expected_report or attestation_reference != expected_attestation:
+            raise ReleaseSigningError("authorization does not bind the supplied signed evaluation evidence")
+        if authorization["release_signature_bindings"] != expected_bindings:
+            raise ReleaseSigningError("authorization governance bindings do not match signed evidence")
+        if authorized_time < _time(evaluation_attestation["signer"]["signed_at"], "attestation signed_at"):
+            raise ReleaseSigningError("authorization predates its signed evaluation evidence")
 
         metadata = self._adapter.describe_key(key_id)
         if metadata.key_id != key_id or metadata.role != "corpus-release" or metadata.algorithm != "Ed25519":
