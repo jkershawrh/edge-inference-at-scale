@@ -24,6 +24,7 @@ from backend.shared.models import RAGAddDocumentRequest, RAGQuery, RAGResult, Se
 from backend.services.rag_service.document_manager import DocumentManager
 from backend.services.rag_service.corpus_package import validate_corpus_package
 from backend.services.rag_service.active_release import ActiveReleaseResolver
+from backend.services.rag_service.offline_trust_runtime import OfflineTrustRuntime
 from backend.services.rag_service.activation_contracts import ActivationStatusResponse
 from backend.services.rag_service.embedding_service import LocalEmbeddingService, SimpleEmbeddingService
 from backend.services.rag_service.retrieval import (
@@ -50,6 +51,7 @@ class RAGService:
         self.corpus_manifest = None
         self.packaged_corpus_digest = None
         self.active_release = None
+        self.offline_trust = None
         self.event_assets: Dict[str, Any] = {}
         self.corpus_read_only = settings.corpus_read_only
         data_dir = settings.summit_data_dir
@@ -139,6 +141,11 @@ class RAGService:
     async def initialize(self) -> bool:
         try:
             logger.info("Initializing RAG Service...")
+
+            if settings.offline_trust_enabled:
+                self.offline_trust = OfflineTrustRuntime.from_settings(
+                    settings, self.active_release
+                )
 
             embedding_initialized = await self.embedding_service.initialize()
             if not embedding_initialized:
@@ -357,7 +364,23 @@ class RAGService:
         self.stats["total_searches"] += 1
         self.stats["last_search"] = datetime.utcnow().isoformat()
         try:
+            if self.offline_trust is not None:
+                release_decision = self.offline_trust.release_eligibility()
+                if not release_decision.eligible:
+                    self._record_trust_refusal(release_decision.reason_codes)
+                    self.stats["failed_searches"] += 1
+                    return self._attribute_search_result(
+                        RAGResult(documents=[], scores=[], metadata=[])
+                    )
             results = await self._hybrid_search(query)
+            if self.offline_trust is not None:
+                source_decision = self.offline_trust.sources_eligibility(results.metadata)
+                if not source_decision.eligible:
+                    self._record_trust_refusal(source_decision.reason_codes)
+                    self.stats["failed_searches"] += 1
+                    return self._attribute_search_result(
+                        RAGResult(documents=[], scores=[], metadata=[])
+                    )
             self.stats["successful_searches"] += 1
             return self._attribute_search_result(results)
         except Exception as e:
@@ -368,6 +391,12 @@ class RAGService:
             )
         finally:
             self._record_stage_timing("search_total", started_at)
+
+    def _record_trust_refusal(self, reason_codes: Any) -> None:
+        self.stats.setdefault("offline_trust_refusals", 0)
+        self.stats["offline_trust_refusals"] += 1
+        # Bounded machine reason codes only; never record the query or evidence.
+        self.stats["offline_trust_last_reasons"] = list(reason_codes)[:8]
 
     def _attribute_search_result(self, result: RAGResult) -> RAGResult:
         """Bind retrieval evidence to the exact activation-managed corpus."""
@@ -644,6 +673,11 @@ class RAGService:
                 },
                 "corpus": self.corpus_manifest or {"status": "unpackaged"},
                 "activation": activation or {"status": "not_configured"},
+                "offline_trust": (
+                    self.offline_trust.health_payload()
+                    if self.offline_trust is not None
+                    else {"enabled": False}
+                ),
             }
         except Exception as e:
             logger.error(f"Failed to get stats: {e}")
@@ -683,9 +717,14 @@ app.add_middleware(
 @app.get("/health", response_model=ServiceHealth)
 async def health_check():
     stats = rag_service.get_stats()
+    trust = stats.get("offline_trust", {})
+    healthy = not settings.offline_trust_enabled or (
+        trust.get("offline_trust_eligible") is True
+        and trust.get("active_release_eligible") is True
+    )
     return ServiceHealth(
         service_name="rag-service",
-        status="healthy",
+        status="healthy" if healthy else "degraded",
         version="1.0.0",
         details=stats,
     )

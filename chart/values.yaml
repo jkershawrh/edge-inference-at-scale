@@ -135,6 +135,28 @@ rag:
         limits:
           cpu: 100m
           memory: 128Mi
+  # Signed time/revocation enforcement is opt-in. Field deployments should use
+  # values-field-offline-trust.yaml and provision the named evidence and keys.
+  offlineTrust:
+    enabled: false
+    statePath: /data/offline-trust/state.json
+    bootIdPath: /proc/sys/kernel/random/boot_id
+    siteId: ""
+    trustGeneration: 0
+    maxSnapshotAgeSeconds: 0
+    timeKeyId: ""
+    revocationKeyId: ""
+    releaseSigningKeyId: ""
+    authoritySecretName: ""
+    timePublicKeyKey: time-public-key.pem
+    revocationPublicKeyKey: revocation-public-key.pem
+    timePublicKeyPath: /var/run/offline-trust/keys/time-public-key.pem
+    revocationPublicKeyPath: /var/run/offline-trust/keys/revocation-public-key.pem
+    evidenceConfigMapName: ""
+    anchorKey: time-anchor.json
+    snapshotKey: revocation-snapshot.json
+    anchorPath: /var/run/offline-trust/evidence/time-anchor.json
+    snapshotPath: /var/run/offline-trust/evidence/revocation-snapshot.json
   resources:
     requests:
       cpu: 250m

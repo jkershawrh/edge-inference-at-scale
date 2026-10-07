@@ -56,6 +56,22 @@ class Settings(BaseSettings):
     corpus_read_only: bool = False
     corpus_activation_root: Optional[str] = None
 
+    # Opt-in disconnected trusted-time and revocation enforcement. Disabled in
+    # labs until a field profile supplies dedicated authority keys and evidence.
+    offline_trust_enabled: bool = False
+    offline_trust_state_path: str = "/data/offline-trust/state.json"
+    offline_trust_boot_id_path: str = "/proc/sys/kernel/random/boot_id"
+    offline_trust_anchor_path: Optional[str] = None
+    offline_trust_revocation_snapshot_path: Optional[str] = None
+    offline_trust_time_public_key_path: Optional[str] = None
+    offline_trust_revocation_public_key_path: Optional[str] = None
+    offline_trust_time_key_id: Optional[str] = None
+    offline_trust_revocation_key_id: Optional[str] = None
+    offline_trust_release_signing_key_id: Optional[str] = None
+    offline_trust_site_id: Optional[str] = None
+    offline_trust_generation: int = 0
+    offline_trust_max_snapshot_age_seconds: int = 0
+
     # Durable message stream. Redis Streams is the lightweight field default;
     # Kafka remains available for connected OpenShift/AMQ Streams labs.
     stream_backend: str = "redis"

@@ -245,6 +245,15 @@ class OfflineTrustStore:
         self._write_state(state)
         return TimeConfidence("anchored", anchored_at, "ANCHOR_ACCEPTED", sequence, digest, 0.0)
 
+    def has_current_time_anchor(self, record: Mapping[str, Any]) -> bool:
+        """Return true only when this exact signed record is already installed."""
+        state = self._read_state()["time_anchor"]
+        return (
+            type(record.get("sequence")) is int
+            and state["sequence"] == record["sequence"]
+            and state["digest"] == signed_record_digest(record)
+        )
+
     def time_confidence(self) -> TimeConfidence:
         state = self._read_state()["time_anchor"]
         if state["sequence"] == 0:
@@ -315,6 +324,15 @@ class OfflineTrustStore:
         }
         self._write_state(state)
         return digest
+
+    def has_current_revocation_snapshot(self, record: Mapping[str, Any]) -> bool:
+        """Return true only when this exact signed snapshot is already installed."""
+        state = self._read_state()["revocation_snapshot"]
+        return (
+            type(record.get("generation")) is int
+            and state["generation"] == record["generation"]
+            and state["digest"] == signed_record_digest(record)
+        )
 
     def assess_eligibility(
         self,

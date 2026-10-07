@@ -50,10 +50,27 @@ confidence, effective bounded time, and revocation generation—never queries or
 document text.
 
 `OfflineTrustStore.health_payload` exposes the same non-sensitive summary for
-service-health composition. Runtime wiring must configure the event policy's
-maximum revocation-snapshot age and pass the active release/key/source IDs into
-the eligibility check. Until that wiring is configured, the existing runtime
-must not claim that revocation-aware serving is enabled.
+service-health composition. When `OFFLINE_TRUST_ENABLED=true`, the RAG service
+loads the two dedicated Ed25519 authority keys and signed evidence records at
+startup. Invalid configuration or evidence prevents startup. Before retrieval
+it checks the exact active release digest and configured release-signing key;
+after retrieval it checks every contributing `source_id` or comma-separated
+`source_ids` metadata value. Missing provenance or any ineligible contributor
+refuses the entire result instead of allowing the model to fill the gap.
+
+The `/health` response exposes only bounded confidence, effective anchored
+time, revocation generation, eligibility booleans, and reason codes. It reports
+`degraded` whenever the configured trust or active release is ineligible.
+Signed records are loaded on process startup; delivering newer projected
+evidence requires a controlled RAG restart so its replay floor and index view
+change together.
+
+The Helm default remains disabled for current labs. The explicit field overlay
+is `chart/profiles/values-field-offline-trust.yaml`; it also requires the
+activation-managed corpus profile, persistent storage, an authority-key Secret,
+and a signed-evidence ConfigMap. Site identity, key IDs, trust generation, and
+maximum snapshot age are deployment-specific and must be overridden from the
+example values before field use.
 
 The state file is written atomically with owner-only permissions. This protects
 against crashes and accidental disclosure, not a privileged attacker who can

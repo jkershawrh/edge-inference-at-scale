@@ -4,6 +4,14 @@
 {{- if and .Values.rag.activation.enabled (not .Values.rag.corpus.publicKeySecretName) }}
 {{- fail "activation-managed corpus requires rag.corpus.publicKeySecretName" }}
 {{- end }}
+{{- if .Values.rag.offlineTrust.enabled }}
+{{- if not .Values.rag.activation.enabled }}
+{{- fail "offline trust requires an activation-managed corpus" }}
+{{- end }}
+{{- if or (not .Values.rag.offlineTrust.authoritySecretName) (not .Values.rag.offlineTrust.evidenceConfigMapName) }}
+{{- fail "offline trust requires authoritySecretName and evidenceConfigMapName" }}
+{{- end }}
+{{- end }}
 {{- if .Values.rag.activation.rollout.enabled }}
 {{- if eq (int .Values.rag.activation.rollout.port) (int .Values.rag.activation.operator.port) }}
 {{- fail "rag.activation.rollout.port must differ from rag.activation.operator.port" }}
@@ -100,6 +108,34 @@ spec:
               value: "1"
             - name: TRANSFORMERS_OFFLINE
               value: "1"
+          {{- if .Values.rag.offlineTrust.enabled }}
+            - name: OFFLINE_TRUST_ENABLED
+              value: "true"
+            - name: OFFLINE_TRUST_STATE_PATH
+              value: {{ .Values.rag.offlineTrust.statePath | quote }}
+            - name: OFFLINE_TRUST_BOOT_ID_PATH
+              value: {{ .Values.rag.offlineTrust.bootIdPath | quote }}
+            - name: OFFLINE_TRUST_ANCHOR_PATH
+              value: {{ .Values.rag.offlineTrust.anchorPath | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_SNAPSHOT_PATH
+              value: {{ .Values.rag.offlineTrust.snapshotPath | quote }}
+            - name: OFFLINE_TRUST_TIME_PUBLIC_KEY_PATH
+              value: {{ .Values.rag.offlineTrust.timePublicKeyPath | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_PUBLIC_KEY_PATH
+              value: {{ .Values.rag.offlineTrust.revocationPublicKeyPath | quote }}
+            - name: OFFLINE_TRUST_TIME_KEY_ID
+              value: {{ .Values.rag.offlineTrust.timeKeyId | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_KEY_ID
+              value: {{ .Values.rag.offlineTrust.revocationKeyId | quote }}
+            - name: OFFLINE_TRUST_RELEASE_SIGNING_KEY_ID
+              value: {{ .Values.rag.offlineTrust.releaseSigningKeyId | quote }}
+            - name: OFFLINE_TRUST_SITE_ID
+              value: {{ .Values.rag.offlineTrust.siteId | quote }}
+            - name: OFFLINE_TRUST_GENERATION
+              value: {{ .Values.rag.offlineTrust.trustGeneration | quote }}
+            - name: OFFLINE_TRUST_MAX_SNAPSHOT_AGE_SECONDS
+              value: {{ .Values.rag.offlineTrust.maxSnapshotAgeSeconds | quote }}
+          {{- end }}
           {{- if or .Values.rag.corpus.enabled .Values.rag.activation.enabled }}
             {{- if .Values.rag.activation.enabled }}
             - name: CORPUS_ACTIVATION_ROOT
@@ -155,6 +191,14 @@ spec:
             {{- if and (or .Values.rag.corpus.enabled .Values.rag.activation.enabled) .Values.rag.corpus.publicKeySecretName }}
             - name: corpus-public-key
               mountPath: /var/run/corpus-key
+              readOnly: true
+            {{- end }}
+            {{- if .Values.rag.offlineTrust.enabled }}
+            - name: offline-trust-authorities
+              mountPath: /var/run/offline-trust/keys
+              readOnly: true
+            - name: offline-trust-evidence
+              mountPath: /var/run/offline-trust/evidence
               readOnly: true
             {{- end }}
           resources:
@@ -334,6 +378,26 @@ spec:
         - name: corpus-public-key
           secret:
             secretName: {{ .Values.rag.corpus.publicKeySecretName }}
+        {{- end }}
+        {{- if .Values.rag.offlineTrust.enabled }}
+        - name: offline-trust-authorities
+          secret:
+            secretName: {{ .Values.rag.offlineTrust.authoritySecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.offlineTrust.timePublicKeyKey }}
+                path: {{ base .Values.rag.offlineTrust.timePublicKeyPath }}
+              - key: {{ .Values.rag.offlineTrust.revocationPublicKeyKey }}
+                path: {{ base .Values.rag.offlineTrust.revocationPublicKeyPath }}
+        - name: offline-trust-evidence
+          configMap:
+            name: {{ .Values.rag.offlineTrust.evidenceConfigMapName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.offlineTrust.anchorKey }}
+                path: {{ base .Values.rag.offlineTrust.anchorPath }}
+              - key: {{ .Values.rag.offlineTrust.snapshotKey }}
+                path: {{ base .Values.rag.offlineTrust.snapshotPath }}
         {{- end }}
         {{- if .Values.rag.activation.operator.enabled }}
         - name: activation-operator-credential
