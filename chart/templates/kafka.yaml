@@ -50,10 +50,11 @@ spec:
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
-  name: sms.inbound
+  name: {{ .Values.kafka.topic.resourceName | default (printf "%s-sms-inbound" .Release.Name) }}
   labels:
     strimzi.io/cluster: {{ .Release.Name }}-kafka
 spec:
+  topicName: {{ .Values.kafka.topic.name | default "sms.inbound" | quote }}
   partitions: 1
   replicas: 1
   config:

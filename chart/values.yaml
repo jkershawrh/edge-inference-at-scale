@@ -152,6 +152,12 @@ privacyFilter:
 kafka:
   version: "4.2.0"
   replicas: 1
+  topic:
+    # Kubernetes resource names share a namespace across Helm releases. The
+    # Kafka topic itself may keep the same name because each release owns a
+    # separate broker cluster.
+    resourceName: ""
+    name: sms.inbound
   resources:
     requests:
       cpu: 250m

@@ -78,3 +78,8 @@ This profile is appropriate only when corpus authors produce response-ready
 documents and the event evaluation demonstrates adequate coverage. It is not a
 substitute for corpus-quality, stale-data, geography, language, or field-user
 testing.
+
+Each Helm release names its KafkaTopic resource independently while retaining
+the application topic `sms.inbound` inside that release's broker. When upgrading
+an older release that already owns the legacy Kubernetes resource, set
+`kafka.topic.resourceName=sms.inbound` for that release to preserve ownership.

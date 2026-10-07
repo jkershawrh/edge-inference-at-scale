@@ -24,6 +24,7 @@ data:
   # Legacy aliases retained for compatibility with older images.
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
   KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
+  STREAM_TOPIC: {{ .Values.kafka.topic.name | default "sms.inbound" | quote }}
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
   MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
   LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"

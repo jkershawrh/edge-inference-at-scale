@@ -71,9 +71,13 @@ def test_field_rag_only_chart_omits_generation_workloads(tmp_path):
     objects = [item for item in rendered if isinstance(item, dict)]
     names = {item.get("metadata", {}).get("name") for item in objects}
     config = next(item for item in objects if item.get("kind") == "ConfigMap")
+    topic = next(item for item in objects if item.get("kind") == "KafkaTopic")
 
     assert "lil-evy-bitnet" not in names
     assert "lil-evy-llm-inference" not in names
     assert config["data"]["GENERATION_ENABLED"] == "false"
     assert config["data"]["RAG_DIRECT_THRESHOLD"] == "0.4"
     assert config["data"]["RAG_DIRECT_MAX_CHARS"] == "1000"
+    assert topic["metadata"]["name"] == "lil-evy-sms-inbound"
+    assert topic["spec"]["topicName"] == "sms.inbound"
+    assert config["data"]["STREAM_TOPIC"] == "sms.inbound"
