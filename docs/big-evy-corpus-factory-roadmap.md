@@ -473,6 +473,9 @@ Already implemented:
 - Operator-enrolled Ed25519 fleet registration and heartbeat authentication,
   bounded content-free metrics, timestamp checks, and restart-durable monotonic
   replay protection; the unsigned path is explicitly local-lab-only
+- OpenShift GitOps and RHACM canary policy that keeps desired release identity
+  reviewable while preserving controller-owned rollout annotations with exact
+  Argo CD ignores and fail-closed admission ownership
 
 Still required before this is production-grade:
 
@@ -484,8 +487,8 @@ Still required before this is production-grade:
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody
-- GitOps policy for fleet identity enrollment and controller-owned rollout
-  annotations after promotion, plus a disconnected trusted-time mechanism
+- GitOps policy for fleet identity enrollment and a disconnected trusted-time
+  mechanism
 - Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1

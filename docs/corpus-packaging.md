@@ -251,9 +251,13 @@ is not given a Service or Route; use a controlled pod port-forward only when an
 operator needs the bounded rollout status.
 
 Continuous GitOps reconcilers must be configured to preserve the three
-`lilevy.edge/*` pod-template annotations written by the rollout controller (or
-commit those exact values after promotion). Removing them is another pod-template
+`lilevy.edge/*` pod-template annotations written by the rollout controller.
+They must never be committed as desired state. Removing them is another pod-template
 change and can cause an unnecessary restart even though the corpus remains safe.
+The concrete OpenShift GitOps and RHACM policy in
+[`gitops-rollout-ownership.md`](gitops-rollout-ownership.md) ignores only those
+three fields and uses fail-closed admission to keep the rollout controller as
+their sole writer.
 
 Exceptional downgrade uses a separately signed recovery authorization bound to
 the event, site, current digest, sequence floor, target digest, trust generation,

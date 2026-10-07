@@ -21,7 +21,7 @@ _DNS_SUBDOMAIN = re.compile(
 )
 _OPERATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
-_OPERATION_ANNOTATION = "lilevy.edge/restart-operation"
+_OPERATION_ANNOTATION = "lilevy.edge/restart-operation-id"
 _TARGET_DIGEST_ANNOTATION = "lilevy.edge/target-digest"
 _TARGET_SEQUENCE_ANNOTATION = "lilevy.edge/target-sequence"
 _MAX_TOKEN_BYTES = 16 * 1024

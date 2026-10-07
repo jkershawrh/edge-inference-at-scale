@@ -40,7 +40,7 @@ def _response(
                 "template": {
                     "metadata": {
                         "annotations": {
-                            "lilevy.edge/restart-operation": operation_id,
+                            "lilevy.edge/restart-operation-id": operation_id,
                             "lilevy.edge/target-digest": digest,
                             "lilevy.edge/target-sequence": str(sequence),
                         }
@@ -109,7 +109,7 @@ async def test_patches_only_configured_deployment_template_annotation(tmp_path: 
             "template": {
                 "metadata": {
                     "annotations": {
-                        "lilevy.edge/restart-operation": OPERATION_ID,
+                        "lilevy.edge/restart-operation-id": OPERATION_ID,
                         "lilevy.edge/target-digest": DIGEST,
                         "lilevy.edge/target-sequence": "7",
                     }
@@ -236,7 +236,7 @@ async def test_caps_response_before_json_parsing(tmp_path: Path):
                     "template": {
                         "metadata": {
                             "annotations": {
-                                "lilevy.edge/restart-operation": OPERATION_ID,
+                                "lilevy.edge/restart-operation-id": OPERATION_ID,
                                 "lilevy.edge/target-digest": DIGEST,
                                 "lilevy.edge/target-sequence": "7",
                             }

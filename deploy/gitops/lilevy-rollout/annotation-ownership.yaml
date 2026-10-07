@@ -1,0 +1,48 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: lilevy-rollout-annotation-ownership
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["UPDATE"]
+        resources: ["deployments"]
+  variables:
+    - name: oldAnnotations
+      expression: "has(oldObject.spec.template.metadata.annotations) ? oldObject.spec.template.metadata.annotations : {}"
+    - name: newAnnotations
+      expression: "has(object.spec.template.metadata.annotations) ? object.spec.template.metadata.annotations : {}"
+  validations:
+    - expression: >-
+        object.metadata.name != 'lil-evy-rag-service' ||
+        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+        ((!('lilevy.edge/restart-operation-id' in variables.oldAnnotations) && !('lilevy.edge/restart-operation-id' in variables.newAnnotations)) ||
+         (('lilevy.edge/restart-operation-id' in variables.oldAnnotations) && ('lilevy.edge/restart-operation-id' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/restart-operation-id'] == variables.newAnnotations['lilevy.edge/restart-operation-id']))
+      message: Only the Lil EVY rollout controller may change restart-operation-id.
+    - expression: >-
+        object.metadata.name != 'lil-evy-rag-service' ||
+        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+        ((!('lilevy.edge/target-digest' in variables.oldAnnotations) && !('lilevy.edge/target-digest' in variables.newAnnotations)) ||
+         (('lilevy.edge/target-digest' in variables.oldAnnotations) && ('lilevy.edge/target-digest' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/target-digest'] == variables.newAnnotations['lilevy.edge/target-digest']))
+      message: Only the Lil EVY rollout controller may change target-digest.
+    - expression: >-
+        object.metadata.name != 'lil-evy-rag-service' ||
+        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+        ((!('lilevy.edge/target-sequence' in variables.oldAnnotations) && !('lilevy.edge/target-sequence' in variables.newAnnotations)) ||
+         (('lilevy.edge/target-sequence' in variables.oldAnnotations) && ('lilevy.edge/target-sequence' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/target-sequence'] == variables.newAnnotations['lilevy.edge/target-sequence']))
+      message: Only the Lil EVY rollout controller may change target-sequence.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: lilevy-rollout-annotation-ownership
+spec:
+  policyName: lilevy-rollout-annotation-ownership
+  validationActions: ["Deny"]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        lilevy.edge/rollout-protected: "true"
