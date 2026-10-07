@@ -39,17 +39,29 @@ class SMSEventStream:
 
     async def connect(self) -> None:
         """Create and start the Kafka producer and consumer."""
-        self._producer = AIOKafkaProducer(
+        producer = AIOKafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
         )
-        await self._producer.start()
+        try:
+            await producer.start()
+        except BaseException:
+            # A half-started producer must never be visible to publish(); it
+            # would make the SMS worker hang instead of using HTTP fallback.
+            try:
+                await producer.stop()
+            except Exception:
+                logger.debug("Failed producer cleanup after startup error", exc_info=True)
+            self._producer = None
+            self._consumer = None
+            raise
+        self._producer = producer
         logger.info(
             "Kafka producer started, bootstrap_servers=%s",
             self.bootstrap_servers,
         )
 
-        self._consumer = AIOKafkaConsumer(
+        consumer = AIOKafkaConsumer(
             self.topic,
             bootstrap_servers=self.bootstrap_servers,
             group_id=self.group_name,
@@ -57,7 +69,21 @@ class SMSEventStream:
             auto_offset_reset="earliest",
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         )
-        await self._consumer.start()
+        try:
+            await consumer.start()
+        except BaseException:
+            try:
+                await consumer.stop()
+            except Exception:
+                logger.debug("Failed consumer cleanup after startup error", exc_info=True)
+            try:
+                await producer.stop()
+            except Exception:
+                logger.debug("Failed producer cleanup after consumer error", exc_info=True)
+            self._producer = None
+            self._consumer = None
+            raise
+        self._consumer = consumer
         logger.info(
             "Kafka consumer started, topic='%s', group='%s'",
             self.topic,

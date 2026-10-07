@@ -242,8 +242,18 @@ class SMSGateway:
         """Drain the inbound queue and POST each message to the router."""
         while True:
             envelope = await self._inbound_queue.get()
-            await self._forward_to_router(envelope)
-            self._inbound_queue.task_done()
+            try:
+                await self._forward_to_router(envelope)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self._total_forward_failures += 1
+                logger.exception(
+                    "Unexpected forwarding failure for message from %s",
+                    envelope.get("sender"),
+                )
+            finally:
+                self._inbound_queue.task_done()
 
     async def _forward_to_router(self, envelope: Dict[str, Any]) -> None:
         """Forward a message via Kafka, falling back to HTTP POST."""
