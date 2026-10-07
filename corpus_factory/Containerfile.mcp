@@ -5,7 +5,7 @@ RUN microdnf install -y python3.11 python3.11-pip && microdnf clean all
 WORKDIR /opt/app-root/src
 
 COPY corpus_factory/requirements.txt /tmp/corpus-factory-requirements.txt
-RUN pip install --no-cache-dir -r /tmp/corpus-factory-requirements.txt
+RUN python3.11 -m pip install --no-cache-dir -r /tmp/corpus-factory-requirements.txt
 
 COPY corpus_factory /opt/app-root/src/corpus_factory
 COPY data/summit_connect /opt/app-root/src/data/summit_connect
