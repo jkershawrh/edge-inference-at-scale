@@ -28,6 +28,10 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  # The RAG data volume is normally ReadWriteOnce and corpus activation is an
+  # immutable, single-writer operation.  Do not overlap old and new pods.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: rag-service
@@ -56,7 +60,9 @@ spec:
             - -ec
             - |
               if [ -f "${CORPUS_TARGET_DIR}/manifest.json" ]; then
-                cmp -s /corpus/manifest.json "${CORPUS_TARGET_DIR}/manifest.json" || {
+                packaged_manifest="$(cat /corpus/manifest.json)"
+                installed_manifest="$(cat "${CORPUS_TARGET_DIR}/manifest.json")"
+                [ "${packaged_manifest}" = "${installed_manifest}" ] || {
                   echo "Refusing to replace an existing immutable corpus version" >&2
                   exit 1
                 }

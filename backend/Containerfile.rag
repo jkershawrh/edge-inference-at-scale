@@ -10,12 +10,19 @@ RUN microdnf install -y python3.11 python3.11-pip && \
 
 WORKDIR /app
 
-# Install CPU-only PyTorch first to avoid pulling CUDA
-RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+# Install a matched CPU-only PyTorch/torchvision pair to avoid CUDA and ABI drift.
+COPY constraints-rag.txt ./
+RUN python3.11 -m pip install --no-cache-dir \
+    -c constraints-rag.txt torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple
 
 COPY requirements-rag.txt requirements.txt ./
 RUN python3.11 -m pip install --no-cache-dir pysqlite3-binary && \
-    python3.11 -m pip install --no-cache-dir -r requirements-rag.txt
+    python3.11 -m pip install --no-cache-dir \
+      -c constraints-rag.txt -r requirements-rag.txt \
+      --extra-index-url https://download.pytorch.org/whl/cpu && \
+    python3.11 -c "from sentence_transformers import SentenceTransformer; import openvino"
 
 COPY . /app/backend/
 ENV PYTHONPATH=/app
