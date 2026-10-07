@@ -92,13 +92,25 @@ class RedisSMSEventStream:
     ) -> List[Tuple[str, Dict[str, Any]]]:
         if self._redis is None:
             raise RuntimeError("SMSEventStream is not connected")
-        result = await self._redis.xreadgroup(
+        claimed = await self._redis.xautoclaim(
+            name=self.stream_name,
             groupname=self.group_name,
             consumername=consumer_name,
-            streams={self.stream_name: ">"},
+            min_idle_time=settings.stream_claim_idle_ms,
+            start_id="0-0",
             count=count,
-            block=block_ms,
         )
+        claimed_entries = claimed[1] if claimed and len(claimed) > 1 else []
+        if claimed_entries:
+            result = [(self.stream_name, claimed_entries)]
+        else:
+            result = await self._redis.xreadgroup(
+                groupname=self.group_name,
+                consumername=consumer_name,
+                streams={self.stream_name: ">"},
+                count=count,
+                block=block_ms,
+            )
         messages: List[Tuple[str, Dict[str, Any]]] = []
         for _stream, entries in result or []:
             for message_id, fields in entries:
@@ -175,6 +187,7 @@ class SMSEventStream:
             raise ValueError("stream must enable a producer or consumer")
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
+        self.stream_name = topic
         self.group_name = group_name
         self.enable_producer = enable_producer
         self.enable_consumer = enable_consumer

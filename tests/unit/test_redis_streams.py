@@ -16,6 +16,7 @@ def _client():
     client.aclose = AsyncMock()
     client.xadd = AsyncMock(return_value="1-0")
     client.xreadgroup = AsyncMock(return_value=[])
+    client.xautoclaim = AsyncMock(return_value=["0-0", [], []])
     client.xack = AsyncMock(return_value=1)
     client.xlen = AsyncMock(return_value=0)
     return client
@@ -97,6 +98,25 @@ async def test_consume_decodes_json_envelope_and_acknowledges():
 
     assert messages == [("1-0", {"sender": "+1"})]
     client.xack.assert_awaited_once_with("sms.inbound", "processors", "1-0")
+
+
+@pytest.mark.asyncio
+async def test_consume_recovers_stale_pending_message_before_new_messages():
+    client = _client()
+    client.xautoclaim.return_value = [
+        "0-0",
+        [("2-0", {"payload": '{"sender":"+2"}'})],
+        [],
+    ]
+    stream = RedisSMSEventStream(
+        "redis://redis:6379/0", enable_producer=False, enable_consumer=True
+    )
+    stream._redis = client
+
+    messages = await stream.consume("replacement-pod")
+
+    assert messages == [("2-0", {"sender": "+2"})]
+    client.xreadgroup.assert_not_awaited()
 
 
 @pytest.mark.asyncio

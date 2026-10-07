@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     stream_topic: str = "sms.inbound"
     stream_consumer_group: str = "processors"
     stream_max_len: int = 10000
+    stream_claim_idle_ms: int = 30000
 
     # Chat history
     chat_history_max_turns: int = 10

@@ -474,7 +474,7 @@ class MessageRouter:
     # ------------------------------------------------------------------
 
     async def _stream_consumer_loop(self) -> None:
-        """Continuously consume messages from the Redis Stream."""
+        """Continuously reconnect to and consume the durable event stream."""
         logger.info(
             "Stream consumer loop started (consumer=%s, stream=%s)",
             self.consumer_name,
@@ -482,6 +482,11 @@ class MessageRouter:
         )
         while True:
             try:
+                health = await self.event_stream.health()
+                if health.get("status") != "connected":
+                    await self.event_stream.close()
+                    await self.event_stream.connect()
+                    logger.info("Durable event stream consumer connected")
                 messages = await self.event_stream.consume(
                     consumer_name=self.consumer_name,
                     count=1,
@@ -544,7 +549,8 @@ class MessageRouter:
                 logger.info("Stream consumer loop cancelled")
                 raise
             except Exception:
-                logger.exception("Stream consumer loop error -- retrying in 1s")
+                logger.exception("Stream consumer loop error -- reconnecting in 1s")
+                await self.event_stream.close()
                 await asyncio.sleep(1.0)
 
     # ------------------------------------------------------------------
@@ -937,15 +943,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Chat history store unavailable -- continuing without history")
 
-    # Connect to Redis Streams and start the consumer loop
-    try:
-        await router_instance.event_stream.connect()
-        router_instance._stream_task = asyncio.create_task(
-            router_instance._stream_consumer_loop()
-        )
-        logger.info("Kafka consumer loop started")
-    except Exception:
-        logger.warning("Kafka unavailable -- HTTP-only intake active")
+    # The loop owns connection and reconnection across boot races and restarts.
+    router_instance._stream_task = asyncio.create_task(
+        router_instance._stream_consumer_loop()
+    )
+    logger.info("Durable event stream consumer supervisor started")
 
     yield
 

@@ -153,6 +153,7 @@ class SMSGateway:
 
         # Background worker handle
         self._forward_task: Optional[asyncio.Task[None]] = None
+        self._stream_task: Optional[asyncio.Task[None]] = None
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -160,11 +161,7 @@ class SMSGateway:
         ok = await self.active_driver.initialize()
         if not ok:
             raise RuntimeError("SMS driver failed to initialise")
-        try:
-            await self.event_stream.connect()
-            logger.info("Kafka event stream connected")
-        except Exception:
-            logger.warning("Kafka unavailable -- will use HTTP-only forwarding")
+        self._stream_task = asyncio.create_task(self._stream_reconnect_loop())
         self._forward_task = asyncio.create_task(self._forward_worker())
         logger.info("SMS Gateway started (driver=%s)", type(self.active_driver).__name__)
 
@@ -173,6 +170,12 @@ class SMSGateway:
             self._forward_task.cancel()
             try:
                 await self._forward_task
+            except asyncio.CancelledError:
+                pass
+        if self._stream_task and not self._stream_task.done():
+            self._stream_task.cancel()
+            try:
+                await self._stream_task
             except asyncio.CancelledError:
                 pass
         await self.event_stream.close()
@@ -244,6 +247,23 @@ class SMSGateway:
 
     # -- forwarding worker ---------------------------------------------------
 
+    async def _stream_reconnect_loop(self) -> None:
+        """Keep the producer connected across boot races and broker restarts."""
+        while True:
+            try:
+                health = await self.event_stream.health()
+                if health.get("status") != "connected":
+                    await self.event_stream.close()
+                    await self.event_stream.connect()
+                    logger.info("Durable event stream producer connected")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning(
+                    "Durable event stream unavailable -- HTTP fallback remains active"
+                )
+            await asyncio.sleep(2.0)
+
     async def _forward_worker(self) -> None:
         """Drain the inbound queue and POST each message to the router."""
         while True:
@@ -262,8 +282,8 @@ class SMSGateway:
                 self._inbound_queue.task_done()
 
     async def _forward_to_router(self, envelope: Dict[str, Any]) -> None:
-        """Forward a message via Kafka, falling back to HTTP POST."""
-        # --- Try Kafka first ---
+        """Forward via the durable stream, falling back to HTTP POST."""
+        # --- Try the configured durable stream first ---
         try:
             stream_fields = {
                 "sender": envelope.get("sender", ""),
@@ -283,7 +303,7 @@ class SMSGateway:
             return
         except Exception:
             logger.warning(
-                "Kafka publish failed for message from %s -- falling back to HTTP",
+                "Durable stream publish failed for message from %s -- falling back to HTTP",
                 envelope.get("sender"),
             )
 

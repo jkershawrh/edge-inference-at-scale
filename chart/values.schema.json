@@ -8,12 +8,13 @@
     },
     "stream": {
       "type": "object",
-      "required": ["backend", "name", "consumerGroup", "maxLen"],
+      "required": ["backend", "name", "consumerGroup", "maxLen", "claimIdleMs"],
       "properties": {
         "backend": {"enum": ["redis", "kafka"]},
         "name": {"type": "string", "minLength": 1},
         "consumerGroup": {"type": "string", "minLength": 1},
-        "maxLen": {"type": "integer", "minimum": 100, "maximum": 1000000}
+        "maxLen": {"type": "integer", "minimum": 100, "maximum": 1000000},
+        "claimIdleMs": {"type": "integer", "minimum": 1000, "maximum": 86400000}
       },
       "additionalProperties": false
     },

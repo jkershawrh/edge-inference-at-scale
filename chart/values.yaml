@@ -159,6 +159,7 @@ stream:
   name: sms.inbound
   consumerGroup: processors
   maxLen: 10000
+  claimIdleMs: 30000
 
 redis:
   managed: true
