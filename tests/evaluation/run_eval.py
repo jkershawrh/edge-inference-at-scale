@@ -10,8 +10,10 @@ Exit code:
     1  otherwise
 
 Environment variables:
-    EVAL_API_URL   Base URL for the SMS pipeline API.
-                   Default: http://localhost:8000
+    EVAL_API_URL       Base URL for the SMS pipeline API.
+                       Default: http://localhost:8000
+    EVAL_RESULTS_FILE  Output path for retained evidence.
+                       Default: tests/evaluation/results.json
 """
 
 import json
@@ -29,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 API_URL = os.environ.get("EVAL_API_URL", "http://localhost:8000")
 PASS_RATE_GATE = 0.8
-RESULTS_FILE = Path(__file__).parent / "results.json"
+RESULTS_FILE = Path(
+    os.environ.get(
+        "EVAL_RESULTS_FILE", str(Path(__file__).parent / "results.json")
+    )
+)
 
 
 _eval_sender_counter = 0

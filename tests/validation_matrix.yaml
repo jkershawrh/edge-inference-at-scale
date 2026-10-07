@@ -109,6 +109,8 @@ stages:
             env_from:
               RAG_EVAL_URL: EDGE_API_URL
           - argv: [python3, tests/evaluation/run_eval.py]
+            env:
+              EVAL_RESULTS_FILE: artifacts/response-eval-openshift.json
             env_from:
               EVAL_API_URL: EDGE_API_URL
           - argv: [python3, -m, pytest, "tests/benchmarks/test_capacity.py::TestLiveCapacity", -q, -rs]
