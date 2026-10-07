@@ -23,6 +23,26 @@ from tests.evaluation.evaluator import ResponseEvaluator
 from tests.evaluation.run_retrieval_eval import score_query
 
 
+HUNT_SENDER = "+15550010000"
+HUNT_HINT_SENDER = "+15550010001"
+HUNT_LOCKED_SENDER = "+15550010002"
+
+
+def experiment_sender(query_id: str, index: int) -> str:
+    """Keep stateful journeys isolated while retaining deterministic senders."""
+    if query_id == "hunt_hint":
+        return HUNT_HINT_SENDER
+    if query_id == "hunt_clue_locked":
+        return HUNT_LOCKED_SENDER
+    if query_id.startswith("hunt_"):
+        return HUNT_SENDER
+    return "+1556{0:07d}".format(index)
+
+
+def counter_delta(after: Dict[str, Any], before: Dict[str, Any], key: str) -> int:
+    return max(0, int(after.get(key, 0)) - int(before.get(key, 0)))
+
+
 def request_json(
     base_url: str,
     path: str,
@@ -80,7 +100,8 @@ def run(matrix_path: str, scenario_name: str, output_path: str) -> Dict[str, Any
     health, _ = request_json(api_url, "/services/health", timeout)
     llm_health, _ = request_json(api_url, "/llm/health", timeout)
     rag_stats, _ = request_json(api_url, "/rag/stats", timeout)
-    llm_stats, _ = request_json(api_url, "/llm/stats", timeout)
+    llm_stats_before, _ = request_json(api_url, "/llm/stats", timeout)
+    response_modes: Dict[str, int] = {}
 
     for index, (query_id, spec) in enumerate(evaluator.queries.items(), start=1):
         try:
@@ -93,18 +114,35 @@ def run(matrix_path: str, scenario_name: str, output_path: str) -> Dict[str, Any
             retrieval_latencies.append(rag_latency)
             retrieval_scores.append(score_query(spec, rag_body.get("documents", [])))
 
+            sender = experiment_sender(query_id, index)
+            if query_id in {"hunt_hint", "hunt_clue_locked"}:
+                request_json(
+                    api_url,
+                    "/router/route",
+                    timeout,
+                    {
+                        "sender": sender,
+                        "receiver": "+15559876543",
+                        "content": "HUNT",
+                        "channel": "simulator",
+                    },
+                )
             pipeline_body, pipeline_latency = request_json(
                 api_url,
                 "/router/route",
                 timeout,
                 {
-                    "sender": "+1555{0:07d}".format(index),
+                    "sender": sender,
                     "receiver": "+15559876543",
                     "content": spec["query"],
                     "channel": "simulator",
                 },
             )
             pipeline_latencies.append(pipeline_latency)
+            response_mode = (pipeline_body.get("attribution") or {}).get(
+                "response_mode", "unattributed"
+            )
+            response_modes[response_mode] = response_modes.get(response_mode, 0) + 1
             pipeline_responses.append(
                 {
                     "query_id": query_id,
@@ -137,6 +175,13 @@ def run(matrix_path: str, scenario_name: str, output_path: str) -> Dict[str, Any
         else 0.0
     )
     observed_llm = (llm_health.get("details") or {}).get("model_name")
+    llm_stats_after, _ = request_json(api_url, "/llm/stats", timeout)
+    llm_requests_delta = counter_delta(
+        llm_stats_after, llm_stats_before, "requests_total"
+    )
+    llm_successes_delta = counter_delta(
+        llm_stats_after, llm_stats_before, "requests_successful"
+    )
     report = {
         "schema_version": "1.0",
         "created_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
@@ -164,13 +209,20 @@ def run(matrix_path: str, scenario_name: str, output_path: str) -> Dict[str, Any
             "health_snapshot": health,
             "llm_health": llm_health,
             "rag_stats": rag_stats,
-            "llm_stats": llm_stats,
+            "llm_stats_before": llm_stats_before,
+            "llm_stats_after": llm_stats_after,
+            "model_contribution": {
+                "response_modes": response_modes,
+                "llm_requests_delta": llm_requests_delta,
+                "llm_successes_delta": llm_successes_delta,
+            },
         },
         "gates": {
             "quality_passed": quality["pass_rate"] >= float(scenario["quality_gate"]),
             "retrieval_passed": mean_recall >= float(scenario["retrieval_recall_gate"]),
             "requests_passed": not failures,
             "model_identity_passed": observed_llm == scenario["model"],
+            "model_exercised": llm_requests_delta > 0,
         },
     }
     output = Path(output_path)

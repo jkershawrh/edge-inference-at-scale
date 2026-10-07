@@ -1,0 +1,52 @@
+response_gate:
+  min_pass_rate: 0.80
+  min_fact_score: 0.50
+
+eval_queries:
+  - id: model_panel
+    query: "What is the panel discussion about?"
+    category: model
+    expected_keywords: ["panel", "edge"]
+    expected_entities: ["AI at the Edge", "Main Hall"]
+    forbidden_keywords: ["I don't know", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
+
+  - id: model_wifi
+    query: "Is there WiFi?"
+    category: model
+    expected_keywords: ["WiFi", "SummitConnect"]
+    expected_entities: ["SummitConnect-Guest", "no password"]
+    forbidden_keywords: ["I don't know", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
+
+  - id: model_builder
+    query: "Who built this?"
+    category: model
+    expected_keywords: ["Red Hat", "Intel"]
+    expected_entities: ["Red Hat"]
+    forbidden_keywords: ["I don't know", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
+
+  - id: model_architecture
+    query: "How does this system work?"
+    category: model
+    expected_keywords: ["SMS", "RAG"]
+    expected_entities: ["BitNet"]
+    forbidden_keywords: ["I don't know", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
+
+  - id: model_identity
+    query: "What model does this use?"
+    category: model
+    expected_keywords: ["BitNet"]
+    expected_entities: ["BitNet", "2.4 billion"]
+    forbidden_keywords: ["I don't know", "GPT", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
+
+  - id: model_dining
+    query: "Where can I eat?"
+    category: model
+    expected_keywords: ["cafeteria"]
+    expected_entities: ["Main Cafeteria"]
+    forbidden_keywords: ["I don't know", "CONTEXT:", "ANSWER:"]
+    max_acceptable_latency_ms: 20000
