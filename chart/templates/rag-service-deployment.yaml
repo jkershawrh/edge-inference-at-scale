@@ -91,8 +91,16 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
-          {{- if or .Values.rag.corpus.enabled .Values.rag.activation.enabled }}
           env:
+            - name: EMBEDDING_MODEL_DIR
+              value: {{ .Values.rag.embeddingModelDir | quote }}
+            - name: EMBEDDING_REQUIRE_LOCAL_MODEL
+              value: {{ .Values.rag.requireLocalEmbeddingModel | quote }}
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          {{- if or .Values.rag.corpus.enabled .Values.rag.activation.enabled }}
             {{- if .Values.rag.activation.enabled }}
             - name: CORPUS_ACTIVATION_ROOT
               value: {{ .Values.rag.activation.root | quote }}

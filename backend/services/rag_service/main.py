@@ -142,6 +142,8 @@ class RAGService:
 
             embedding_initialized = await self.embedding_service.initialize()
             if not embedding_initialized:
+                if settings.embedding_require_local_model:
+                    raise RuntimeError("required local embedding model is unavailable")
                 logger.warning("Local embedding service unavailable, trying simple fallback")
                 embedding_initialized = await self.simple_embedding_service.initialize()
                 if embedding_initialized:

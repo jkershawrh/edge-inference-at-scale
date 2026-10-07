@@ -48,7 +48,10 @@ def _snapshot():
                 "ready": True,
                 "active_digest": expected["corpus_digest"],
             },
-            "embedding_service": {"model_name": expected["embedding_model"]},
+            "embedding_service": {
+                "model_name": expected["embedding_model"],
+                "model_source": "baked",
+            },
         },
         "llm_health": {
             "details": {
@@ -93,6 +96,16 @@ def test_field_safety_must_be_enabled():
     assert status == "RED"
     assert "RAG_GROUNDING_REQUIRED is not true" in reasons
     assert "EMERGENCY_RAG_ENABLED is not true" in reasons
+
+
+def test_embedding_model_must_be_baked_for_disconnected_startup():
+    snapshot = deepcopy(_snapshot())
+    snapshot["rag_stats"]["embedding_service"]["model_source"] = "download"
+
+    status, reasons = evaluate_snapshot(snapshot, _expected())
+
+    assert status == "RED"
+    assert "embedding model is not baked into the deployed RAG image" in reasons
 
 
 def test_signed_packaged_corpus_can_qualify_lab_edd():

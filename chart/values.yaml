@@ -50,6 +50,8 @@ backend:
 rag:
   image: quay.io/rh-ai-quickstart/edge-inference-rag:latest
   embeddingModel: all-MiniLM-L6-v2
+  embeddingModelDir: /opt/models
+  requireLocalEmbeddingModel: true
   minSimilarity: 0.4
   candidatePoolMultiplier: 4
   candidatePoolMin: 10

@@ -149,6 +149,9 @@ def evaluate_snapshot(
     observed_embedding = (rag_stats.get("embedding_service") or {}).get("model_name")
     if observed_embedding != expected["embedding_model"]:
         reasons.append("live embedding model does not match EMBEDDING_MODEL")
+    embedding_source = (rag_stats.get("embedding_service") or {}).get("model_source")
+    if embedding_source != "baked":
+        reasons.append("embedding model is not baked into the deployed RAG image")
 
     llm_details = (snapshot.get("llm_health") or {}).get("details") or {}
     if llm_details.get("provider") != expected["llm_provider"]:

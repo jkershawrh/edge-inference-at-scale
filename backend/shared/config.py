@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     default_model: str = "bitnet-2b4t"
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_cache_dir: str = "/data/models/embedding_cache"
+    embedding_model_dir: str = "/opt/models"
+    embedding_require_local_model: bool = False
     rag_min_similarity: float = 0.4
     rag_candidate_pool_multiplier: int = 4
     rag_candidate_pool_min: int = 10
