@@ -258,6 +258,52 @@ def test_mission_coverage_requires_source_classification_alignment():
     assert schedule["qualifying_source_ids"] == []
 
 
+def test_mission_coverage_combines_only_qualifying_classified_evidence():
+    mission, registry, classification = _summit_inputs()
+    classification["coverage"]["supported_intents"] = ["session_time"]
+    supplement = copy.deepcopy(classification)
+    supplement["classification_id"] = "classification-summit-operations-r1"
+    supplement["document"] = {"document_id": "document-summit-operations", "revision": 1}
+    supplement["coverage"]["supported_intents"] = ["agenda_change"]
+
+    report = plan_mission_coverage(
+        mission,
+        registry,
+        [classification, supplement],
+        as_of="2026-07-02T12:00:00-05:00",
+    )
+
+    schedule = next(item for item in report["requirements"] if item["category_id"] == "schedule")
+    assert schedule["status"] == "COVERED"
+    assert schedule["qualifying_classification_ids"] == [
+        "classification-summit-operations-r1",
+        "classification-summit-schedule-r1",
+    ]
+
+    supplement["verification"] = {
+        "status": "pending",
+        "verified_at": None,
+        "reviewer_identity": None,
+    }
+    supplement["answer_policy"] = {
+        "direct_answer_eligible": False,
+        "reason": "Pending evidence cannot answer directly.",
+    }
+    incomplete = plan_mission_coverage(
+        mission,
+        registry,
+        [classification, supplement],
+        as_of="2026-07-02T12:00:00-05:00",
+    )
+    schedule = next(
+        item for item in incomplete["requirements"] if item["category_id"] == "schedule"
+    )
+    assert schedule["status"] == "GAP"
+    assert {gap["message"] for gap in schedule["gaps"]} >= {
+        "no classification supports intent: agenda_change"
+    }
+
+
 def test_coverage_report_digest_prevents_post_plan_mutation():
     mission, registry, classification = _summit_inputs()
     report = plan_mission_coverage(

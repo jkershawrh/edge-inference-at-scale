@@ -164,6 +164,59 @@ def build_city_docs(city: dict) -> list[dict]:
     return docs
 
 
+def build_operations_docs(operations: dict) -> list[dict]:
+    """Shape the explicitly synthetic operations fixture into bounded facts."""
+
+    fixture_notice = operations["fixture_notice"]
+    timezone = operations["event_timezone"]
+    changes = operations["agenda_changes"]
+    capacity = operations["session_capacity"]
+    accessibility = operations["accessibility"]
+    policy = operations["event_policy"]
+    desks = operations["information_desks"]
+    return [
+        {
+            "text": (
+                f"Event time zone: {timezone['iana_name']} "
+                f"({timezone['display_name']}, {timezone['utc_offset_during_event']})."
+            ),
+            "metadata": {"category": "operations", "intent": "event_timezone", "synthetic": True},
+            "doc_id": "operations_event_timezone",
+        },
+        {
+            "text": f"Agenda change authority: {changes['policy']}",
+            "metadata": {"category": "operations", "intent": "agenda_change", "synthetic": True},
+            "doc_id": "operations_agenda_changes",
+        },
+        {
+            "text": f"Session capacity policy: {capacity['policy']}",
+            "metadata": {"category": "operations", "intent": "session_capacity", "synthetic": True},
+            "doc_id": "operations_session_capacity",
+        },
+        {
+            "text": (
+                "Accessibility: "
+                f"{accessibility['accessible_entrance']} {accessibility['routes']} "
+                f"{accessibility['accommodations']}"
+            ),
+            "metadata": {"category": "operations", "intent": "accessibility", "synthetic": True},
+            "doc_id": "operations_accessibility",
+        },
+        {
+            "text": f"Event policy: {policy['badge']} {policy['conduct']}",
+            "metadata": {"category": "operations", "intent": "event_policy", "synthetic": True},
+            "doc_id": "operations_event_policy",
+        },
+        {
+            "text": "Information desks: " + "; ".join(
+                f"{desk['location']} ({desk['hours']})" for desk in desks
+            ) + f". Fixture notice: {fixture_notice}",
+            "metadata": {"category": "operations", "intent": "information_desk", "synthetic": True},
+            "doc_id": "operations_information_desks",
+        },
+    ]
+
+
 def build_architecture_docs(arch: dict) -> list[dict]:
     docs = []
     for entry in arch.get("architecture", []):
@@ -185,6 +238,7 @@ def main():
     all_docs.extend(build_speaker_docs(speakers))
     all_docs.extend(build_venue_docs(load_json("venues.json")))
     all_docs.extend(build_city_docs(load_json("city_guide.json")))
+    all_docs.extend(build_operations_docs(load_json("operations.json")))
     all_docs.extend(build_architecture_docs(load_json("architecture.json")))
 
     print(f"Generated {len(all_docs)} documents")

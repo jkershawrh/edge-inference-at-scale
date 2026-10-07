@@ -584,6 +584,11 @@ def plan_mission_coverage(
             for conflict in conflicts
         )
 
+        # A requirement may be supported by several independently classified
+        # documents.  Apply every trust/scope gate to each contributor, then
+        # evaluate required intent coverage across that qualifying evidence
+        # set.  Requiring one document to repeat an entire category would make
+        # authoritative supplements unusable and encourage duplicated facts.
         qualifying = []
         for item in related:
             provenance = item["provenance"]
@@ -605,8 +610,6 @@ def plan_mission_coverage(
             if not set(mission_scope["delivery_channels"]).issubset(
                 coverage["delivery_channels"]
             ):
-                continue
-            if not set(requirement["required_intents"]).issubset(coverage["supported_intents"]):
                 continue
             if not set(provenance["source_ids"]).issubset(usable_sources):
                 continue
@@ -641,7 +644,7 @@ def plan_mission_coverage(
         )
         gaps: List[Dict[str, str]] = []
         covered_intents = {
-            intent for item in related for intent in item["coverage"]["supported_intents"]
+            intent for item in qualifying for intent in item["coverage"]["supported_intents"]
         }
         for intent in sorted(set(requirement["required_intents"]) - covered_intents):
             gaps.append(_gap("MISSING_INTENT", "no classification supports intent: " + intent))
@@ -658,7 +661,7 @@ def plan_mission_coverage(
             gaps.append(
                 _gap(
                     "NO_QUALIFYING_CLASSIFICATION",
-                    "no verified, current, scoped classification covers every required intent",
+                    "no verified, current, scoped classification supports this requirement",
                 )
             )
 

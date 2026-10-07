@@ -2,6 +2,7 @@
 
 from scripts.build_summit_corpus import (
     build_city_docs,
+    build_operations_docs,
     build_schedule_docs,
     build_session_docs,
     build_venue_docs,
@@ -41,3 +42,24 @@ def test_venue_and_emergency_facts_are_retrieval_sized():
     assert "shuttle" in venue["transport_info"]["text"].lower()
     assert "CVS" in city["city_emergency_pharmacy"]["text"]
     assert "Summit Medical Center" in city["city_emergency_hospital"]["text"]
+
+
+def test_synthetic_operations_fill_required_retrieval_intents():
+    source = load_json("operations.json")
+    documents = build_operations_docs(source)
+    by_id = _by_id(documents)
+
+    assert source["fixture_notice"].startswith("SYNTHETIC TEST DATA")
+    assert len(documents) == 6
+    assert {item["metadata"]["intent"] for item in documents} == {
+        "event_timezone",
+        "agenda_change",
+        "session_capacity",
+        "accessibility",
+        "event_policy",
+        "information_desk",
+    }
+    assert all(item["metadata"]["synthetic"] is True for item in documents)
+    assert "America/Chicago" in by_id["operations_event_timezone"]["text"]
+    assert "not authoritative" in by_id["operations_agenda_changes"]["text"]
+    assert "Level 1 east entrance lobby" in by_id["operations_information_desks"]["text"]

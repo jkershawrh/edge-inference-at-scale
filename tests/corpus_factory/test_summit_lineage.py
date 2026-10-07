@@ -33,10 +33,10 @@ def _record(manifest, document_id):
 def test_checked_in_summit_files_have_complete_explicit_lineage():
     manifest = build_summit_lineage(DATA, REGISTRY, CLASSIFICATIONS)
 
-    assert len(manifest["records"]) == 7
+    assert len(manifest["records"]) == 8
     classified = [item for item in manifest["records"] if item["lifecycle"]["state"] == "classified"]
     excluded = [item for item in manifest["records"] if item["lifecycle"]["state"] == "excluded"]
-    assert len(classified) == 6
+    assert len(classified) == 7
     assert [item["document"]["document_id"] for item in excluded] == [
         "document-summit-architecture"
     ]
@@ -49,6 +49,12 @@ def test_checked_in_summit_files_have_complete_explicit_lineage():
     assert schedule["evidence"]["source_ids"] == ["source-summit-official-export"]
     assert schedule["evidence"]["path"] == "data/summit_connect/schedule.json"
     assert schedule["lifecycle"]["approval_state"] == "not_evaluated"
+
+    operations = _record(manifest, "document-summit-operations")
+    assert operations["classification"]["classification_id"] == (
+        "classification-summit-operations-r1"
+    )
+    assert operations["evidence"]["path"] == "data/summit_connect/operations.json"
 
 
 def test_build_is_byte_deterministic_and_verifiable():

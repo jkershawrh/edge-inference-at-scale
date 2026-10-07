@@ -18,7 +18,7 @@ def _load(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_summit_reference_set_reports_real_gaps_deterministically():
+def test_summit_reference_set_closes_all_required_coverage_deterministically():
     mission = _load(MISSION)
     registry = _load(EXAMPLE / "source-registry.json")
     classifications = _load(EXAMPLE / "document-classifications.json")[
@@ -33,29 +33,27 @@ def test_summit_reference_set_reports_real_gaps_deterministically():
     )
 
     assert first == second
-    assert first["decision"] == "GAPS"
+    assert first["decision"] == "COVERED"
     assert first["summary"] == {
         "requirements": 11,
-        "covered": 5,
-        "gaps": 6,
+        "covered": 11,
+        "gaps": 0,
         "conflicted": 0,
     }
-    missing = {
-        item["category_id"]: {
-            gap["message"].removeprefix("no classification supports intent: ")
-            for gap in item["gaps"]
-            if gap["code"] == "MISSING_INTENT"
-        }
+    assert all(item["status"] == "COVERED" for item in first["requirements"])
+    supplemental = {
+        item["category_id"]: item
         for item in first["requirements"]
-        if item["status"] == "GAP"
+        if "classification-summit-operations-r1"
+        in item["qualifying_classification_ids"]
     }
-    assert missing == {
-        "event_identity": {"event_timezone"},
-        "help_escalation": {"information_desk"},
-        "registration_policies": {"event_policy"},
-        "schedule": {"agenda_change"},
-        "sessions": {"session_capacity"},
-        "venue_accessibility": {"accessibility"},
+    assert set(supplemental) == {
+        "event_identity",
+        "help_escalation",
+        "registration_policies",
+        "schedule",
+        "sessions",
+        "venue_accessibility",
     }
     assert first["automation_boundary"] == {
         "advisory_only": True,
@@ -66,12 +64,12 @@ def test_summit_reference_set_reports_real_gaps_deterministically():
 
     work_plan = build_sourcing_work_items(mission, first)
     assert work_plan["summary"] == {
-        "available_gap_requirements": 6,
-        "work_items": 6,
+        "available_gap_requirements": 0,
+        "work_items": 0,
         "omitted": 0,
         "truncated": False,
     }
-    assert work_plan["work_items"][0]["category_id"] == "help_escalation"
+    assert work_plan["work_items"] == []
 
     lineage = build_summit_lineage(
         ROOT / "data" / "summit_connect",

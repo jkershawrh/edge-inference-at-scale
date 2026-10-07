@@ -12,9 +12,10 @@ Inputs:
   export. Its `.example.test` endpoint is a contract placeholder and is not
   fetched by this example.
 - `document-classifications.json` describes only what the checked-in Summit
-  documents actually support. Missing facts remain visible as gaps.
+  documents actually support. The supplemental `operations.json` fixture
+  closes the six initial gaps while identifying itself as synthetic test data.
 - `lineage-manifest.json` binds the exact bytes and canonical JSON identity of
-  all seven inputs. Six are classified; `architecture.json` is explicitly
+  all eight inputs. Seven are classified; `architecture.json` is explicitly
   excluded from attendee answers rather than silently entering the pack.
 
 Generate the deterministic report without network access:
@@ -28,9 +29,11 @@ python scripts/plan_corpus_coverage.py \
   --output corpus_factory/examples/summit_connect/coverage-report.json
 ```
 
-Exit code `1` is expected while required coverage is incomplete. That is the
-safe result: the planner recommends bounded source or classification work but
-cannot crawl, approve, sign, publish, or deploy anything.
+The completed synthetic reference returns `COVERED` with 11 of 11 requirements
+and exit code `0`. This proves the contract flow, not real-world content
+readiness. If a required fact or approval is removed, the planner fails closed
+and can only recommend bounded source or classification work; it cannot crawl,
+approve, sign, publish, or deploy anything.
 
 Turn that report into a ranked, non-executing sourcing queue:
 
