@@ -223,6 +223,9 @@ document classifications produce a deterministic coverage report with five
 covered categories and six explicit gaps. The planner has no network,
 approval, signing, publication, or deployment authority. See
 [corpus_factory/examples/summit_connect/README.md](corpus_factory/examples/summit_connect/README.md).
+Connected-side MCP clients can inspect that same evidence through four bounded,
+read-only advisory tools without adding MCP to the Lil EVY message path. See
+[docs/corpus-factory-mcp.md](docs/corpus-factory-mcp.md).
 
 ```bash
 make test-corpus-factory
@@ -230,6 +233,7 @@ make test-connected-acquisition
 make test-corpus-audit
 make test-corpus-suitability
 make test-corpus-sourcing
+make test-corpus-mcp
 python scripts/plan_corpus_coverage.py --help
 python scripts/plan_corpus_sourcing.py --help
 python scripts/build_summit_lineage.py --help

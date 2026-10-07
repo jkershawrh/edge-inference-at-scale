@@ -463,6 +463,9 @@ Already implemented:
   exact-byte/canonical-JSON lineage for the checked-in reference set
 - Optional promotion binding that rejects supplied coverage evidence with gaps,
   conflicts, tampering, or mission/event/registry identity drift
+- Constrained connected-side MCP server for mission status, deterministic
+  coverage planning, bounded sourcing work, and exact-byte lineage verification;
+  all tools are read-only and accept no paths, URLs, content, or release actions
 
 Still required before this is production-grade:
 
