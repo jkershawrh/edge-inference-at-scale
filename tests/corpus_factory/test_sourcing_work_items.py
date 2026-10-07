@@ -6,6 +6,7 @@ import pytest
 
 from corpus_factory.coverage import plan_mission_coverage
 from corpus_factory.sourcing import SourcingPlanError, build_sourcing_work_items
+from scripts.plan_corpus_sourcing import main
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -145,3 +146,35 @@ def test_work_item_limit_is_strict(maximum):
 
     with pytest.raises(SourcingPlanError, match="max_items"):
         build_sourcing_work_items(mission, report, max_items=maximum)
+
+
+def test_cli_writes_gap_work_plan_and_returns_zero(tmp_path):
+    mission, report = _mission_and_report()
+    mission_path = tmp_path / "mission-profile.json"
+    report_path = tmp_path / "coverage-report.json"
+    output_path = tmp_path / "sourcing-work-plan.json"
+    mission_path.write_text(json.dumps(mission), encoding="utf-8")
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = main(
+        [
+            "--mission-profile",
+            str(mission_path),
+            "--coverage-report",
+            str(report_path),
+            "--max-items",
+            "3",
+            "--output",
+            str(output_path),
+        ]
+    )
+
+    work_plan = json.loads(output_path.read_text(encoding="utf-8"))
+    assert result == 0
+    assert work_plan["record_type"] == "sourcing_work_plan"
+    assert work_plan["summary"] == {
+        "available_gap_requirements": 10,
+        "work_items": 3,
+        "omitted": 7,
+        "truncated": True,
+    }
