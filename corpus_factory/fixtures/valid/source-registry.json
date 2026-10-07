@@ -9,6 +9,25 @@
     {
       "source_id": "source-shelter-primary",
       "enabled": true,
+      "classification": {
+        "vertical": "disaster-response",
+        "information_classes": ["shelter-status"],
+        "risk_level": "critical"
+      },
+      "approval": {
+        "status": "approved",
+        "checks": {
+          "authority_verified": true,
+          "geography_verified": true,
+          "license_verified": true,
+          "validity_verified": true,
+          "language_verified": true,
+          "risk_classified": true
+        },
+        "reviewer_identity": "corpus.approver@example.test",
+        "reviewed_at": "2026-10-06T11:30:00Z",
+        "rationale": "Official regional shelter feed approved for the declared event scope."
+      },
       "publisher": {"id": "publisher-public-safety", "name": "Public Safety Authority"},
       "steward": {"identity": "urn:example:steward:region4", "role": "Emergency information steward"},
       "authority_class": "official",

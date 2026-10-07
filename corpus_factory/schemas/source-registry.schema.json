@@ -100,10 +100,49 @@
     "source": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source_id", "enabled", "publisher", "steward", "authority_class", "connector", "rights", "scope", "freshness", "sensitivity", "distribution"],
+      "required": ["source_id", "enabled", "classification", "approval", "publisher", "steward", "authority_class", "connector", "rights", "scope", "freshness", "sensitivity", "distribution"],
       "properties": {
         "source_id": {"$ref": "#/$defs/id"},
         "enabled": {"type": "boolean"},
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vertical", "information_classes", "risk_level"],
+          "properties": {
+            "vertical": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+            "information_classes": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"}
+            },
+            "risk_level": {"enum": ["advisory", "standard", "high", "critical"]}
+          }
+        },
+        "approval": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "checks", "reviewer_identity", "reviewed_at", "rationale"],
+          "properties": {
+            "status": {"enum": ["candidate", "approved", "rejected", "suspended"]},
+            "checks": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["authority_verified", "geography_verified", "license_verified", "validity_verified", "language_verified", "risk_classified"],
+              "properties": {
+                "authority_verified": {"type": "boolean"},
+                "geography_verified": {"type": "boolean"},
+                "license_verified": {"type": "boolean"},
+                "validity_verified": {"type": "boolean"},
+                "language_verified": {"type": "boolean"},
+                "risk_classified": {"type": "boolean"}
+              }
+            },
+            "reviewer_identity": {"type": ["string", "null"], "minLength": 3, "maxLength": 256},
+            "reviewed_at": {"type": ["string", "null"], "format": "date-time"},
+            "rationale": {"type": "string", "minLength": 1, "maxLength": 2048}
+          }
+        },
         "publisher": {"$ref": "#/$defs/party"},
         "steward": {"$ref": "#/$defs/steward"},
         "authority_class": {"enum": ["official", "delegated", "expert", "community", "advisory", "unverified"]},

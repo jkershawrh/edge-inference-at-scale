@@ -6,7 +6,9 @@ The connected Corpus Factory acquires evidence only from a versioned source
 registry. A URL discovered by an agent is a proposal; it cannot be fetched by
 the production pipeline until a human-controlled registry version identifies
 the publisher, steward, authority, rights, scope, freshness policy, connector,
-and network limits.
+and network limits. Candidate discovery and acquisition are separate trust
+boundaries: an agent may propose a candidate, but only an explicitly approved
+source can cross the network boundary.
 
 The first connector is deliberately narrow: unauthenticated HTTPS documents.
 API authentication, SFTP, browser automation, and live scraping remain disabled
@@ -26,6 +28,12 @@ connector IDs. Each enabled source declares:
 - geography, language, audience, and subject scope; and
 - effective, expiration, refresh, and stale-action policy.
 
+It also declares a vertical, information classes, and an advisory-to-critical
+risk classification. Its review state is one of `candidate`, `approved`,
+`rejected`, or `suspended`. Approval records a reviewer, review time, rationale,
+and explicit checks for authority, geography, licensing, validity, language,
+and risk. An approved record with any incomplete check is invalid.
+
 The registry digest is written into every acquisition report. Changing a URL,
 authority, scope, limit, or license therefore changes the evidence surrounding
 the acquisition even when the downloaded bytes are identical.
@@ -35,6 +43,12 @@ approved event policy. Event identity, source ID, publisher, authority class,
 authorized subjects and geographies, and deployment geography/language/audience
 scope must agree. This prevents a syntactically valid connector registry from
 quietly expanding who or what the event trusts.
+
+Acquisition eligibility is evaluated again for each run. The connector must be
+enabled, the source must be approved, all classification checks must pass, the
+authority cannot be unverified, redistribution cannot be prohibited, and the
+observation time must fall inside the source validity window. Failures produce
+stable reason codes for agent routing and happen before DNS or HTTP access.
 
 ## Acquisition behavior
 

@@ -10,6 +10,7 @@ from corpus_factory.acquisition import (
     AcquisitionError,
     FetchResponse,
     acquire_registry_source,
+    assess_source_acquisition_eligibility,
     source_registry_digest,
     validate_https_url,
 )
@@ -56,6 +57,84 @@ def test_registry_contract_and_digest_are_deterministic():
     registry = _registry()
     validate_instance(registry, "source_registry")
     assert source_registry_digest(registry) == source_registry_digest(copy.deepcopy(registry))
+
+
+def test_approved_source_is_acquisition_eligible():
+    decision = assess_source_acquisition_eligibility(
+        _registry(), _policy(), "source-shelter-primary", observed_at=OBSERVED_AT
+    )
+    assert decision.eligible is True
+    assert decision.reasons == ()
+
+
+def test_candidate_source_fails_closed_before_network(tmp_path):
+    registry = _registry()
+    registry["sources"][0]["approval"] = {
+        "status": "candidate",
+        "checks": {
+            "authority_verified": True,
+            "geography_verified": True,
+            "license_verified": False,
+            "validity_verified": True,
+            "language_verified": True,
+            "risk_classified": True,
+        },
+        "reviewer_identity": None,
+        "reviewed_at": None,
+        "rationale": "License evidence is still pending.",
+    }
+    called = False
+
+    def transport(*args):
+        nonlocal called
+        called = True
+        return _response()
+
+    decision = assess_source_acquisition_eligibility(
+        registry, _policy(), "source-shelter-primary", observed_at=OBSERVED_AT
+    )
+    assert decision.eligible is False
+    assert decision.reasons == ("source_not_approved", "license_check_incomplete")
+    with pytest.raises(AcquisitionError, match="source_not_approved"):
+        _acquire(
+            registry, "source-shelter-primary", evidence_store=tmp_path,
+            observed_at=OBSERVED_AT, transport=transport, resolver=_global_resolver,
+        )
+    assert called is False
+
+
+def test_approved_source_requires_every_classification_check():
+    registry = _registry()
+    registry["sources"][0]["approval"]["checks"]["geography_verified"] = False
+    with pytest.raises(ContractValidationError, match="every classification check"):
+        validate_instance(registry, "source_registry")
+
+
+@pytest.mark.parametrize(
+    "observed_at,reason",
+    [
+        ("2026-10-05T23:59:59Z", "source_not_yet_effective"),
+        ("2026-10-07T00:00:00Z", "source_validity_expired"),
+    ],
+)
+def test_source_validity_window_controls_acquisition(observed_at, reason):
+    decision = assess_source_acquisition_eligibility(
+        _registry(), _policy(), "source-shelter-primary", observed_at=observed_at
+    )
+    assert decision.eligible is False
+    assert decision.reasons == (reason,)
+
+
+def test_unverified_authority_and_prohibited_rights_cannot_be_approved():
+    registry = _registry()
+    registry["sources"][0]["authority_class"] = "unverified"
+    with pytest.raises(ContractValidationError, match="authority cannot be approved"):
+        validate_instance(registry, "source_registry")
+
+    registry = _registry()
+    registry["sources"][0]["rights"]["redistribution"] = "prohibited"
+    with pytest.raises(ContractValidationError, match="prohibited redistribution"):
+        validate_instance(registry, "source_registry")
 
 
 def test_registry_rejects_duplicate_sources_and_unapproved_host():
@@ -195,7 +274,7 @@ def test_redirects_are_revalidated_and_bounded(tmp_path):
 def test_disabled_and_authenticated_connectors_fail_closed(tmp_path):
     registry = _registry()
     registry["sources"][0]["enabled"] = False
-    with pytest.raises(AcquisitionError, match="disabled"):
+    with pytest.raises(AcquisitionError, match="connector_disabled"):
         _acquire(
             registry, "source-shelter-primary", evidence_store=tmp_path,
             observed_at=OBSERVED_AT, transport=lambda *args: _response(), resolver=_global_resolver,

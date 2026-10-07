@@ -46,6 +46,14 @@ class AcquisitionResult:
     report: Dict[str, Any]
 
 
+@dataclass(frozen=True)
+class SourceAcquisitionEligibility:
+    """Deterministic, explainable decision made before network access."""
+
+    eligible: bool
+    reasons: Tuple[str, ...]
+
+
 Resolver = Callable[[str, int], Sequence[str]]
 Transport = Callable[[str, int, int], FetchResponse]
 
@@ -94,6 +102,61 @@ def validate_registry_policy_alignment(
         for source_field, deployment_field in (("geographies", "geographies"), ("languages", "languages"), ("audiences", "audiences")):
             if not set(scope[source_field]).issubset(deployment[deployment_field]):
                 raise AcquisitionError("source scope exceeds event deployment scope")
+
+
+def assess_source_acquisition_eligibility(
+    registry: Mapping[str, Any],
+    event_policy: Mapping[str, Any],
+    source_id: str,
+    *,
+    observed_at: str,
+) -> SourceAcquisitionEligibility:
+    """Return an acquisition decision before DNS or HTTP access.
+
+    Stable reason codes let a sourcing agent route candidates back to the
+    correct review step without inferring or overriding trust policy.
+    """
+
+    validate_registry_policy_alignment(registry, event_policy)
+    try:
+        observed_time = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except (AttributeError, ValueError) as exc:
+        raise AcquisitionError("observed_at must be an ISO-8601 time") from exc
+    if observed_time.tzinfo is None:
+        raise AcquisitionError("observed_at must include a timezone")
+
+    matching = [item for item in registry["sources"] if item["source_id"] == source_id]
+    if len(matching) != 1:
+        raise AcquisitionError("source ID is not uniquely registered")
+    entry = matching[0]
+    reasons = []
+    if not entry["enabled"]:
+        reasons.append("connector_disabled")
+    approval = entry["approval"]
+    if approval["status"] != "approved":
+        reasons.append("source_not_approved")
+    for name, passed in approval["checks"].items():
+        if not passed:
+            reasons.append("{0}_check_incomplete".format(name.removesuffix("_verified")))
+    if entry["authority_class"] == "unverified":
+        reasons.append("authority_unverified")
+    if entry["rights"]["redistribution"] == "prohibited":
+        reasons.append("redistribution_prohibited")
+
+    freshness = entry["freshness"]
+    effective_from = datetime.fromisoformat(
+        freshness["effective_from"].replace("Z", "+00:00")
+    )
+    valid_until = (
+        datetime.fromisoformat(freshness["valid_until"].replace("Z", "+00:00"))
+        if freshness["valid_until"] is not None
+        else None
+    )
+    if observed_time < effective_from:
+        reasons.append("source_not_yet_effective")
+    if valid_until is not None and observed_time >= valid_until:
+        reasons.append("source_validity_expired")
+    return SourceAcquisitionEligibility(not reasons, tuple(reasons))
 
 
 def _default_resolver(host: str, port: int) -> Sequence[str]:
@@ -212,22 +275,20 @@ def acquire_registry_source(
 ) -> AcquisitionResult:
     """Fetch one enabled registry source and produce immutable evidence plus a change report."""
 
-    validate_registry_policy_alignment(registry, event_policy)
-    try:
-        observed_time = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
-    except (AttributeError, ValueError) as exc:
-        raise AcquisitionError("observed_at must be an ISO-8601 time") from exc
-    if observed_time.tzinfo is None:
-        raise AcquisitionError("observed_at must include a timezone")
+    eligibility = assess_source_acquisition_eligibility(
+        registry, event_policy, source_id, observed_at=observed_at
+    )
+    if not eligibility.eligible:
+        raise AcquisitionError(
+            "source is not acquisition eligible: {0}".format(
+                ", ".join(eligibility.reasons)
+            )
+        )
     if previous_digest is not None and not _DIGEST.fullmatch(previous_digest):
         raise AcquisitionError("previous_digest must be a sha256 digest")
     registry_digest = source_registry_digest(registry)
     matching = [item for item in registry["sources"] if item["source_id"] == source_id]
-    if len(matching) != 1:
-        raise AcquisitionError("source ID is not uniquely registered")
     entry = matching[0]
-    if not entry["enabled"]:
-        raise AcquisitionError("source connector is disabled")
     connector = entry["connector"]
     if connector.get("auth_secret_ref") is not None:
         raise AcquisitionError("authenticated connectors require an external secret provider")

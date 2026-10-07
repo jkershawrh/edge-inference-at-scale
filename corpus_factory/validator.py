@@ -265,6 +265,32 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         if len(connector_ids) != len(set(connector_ids)):
             raise ContractValidationError("source registry connector IDs must be unique")
         for item in instance["sources"]:
+            approval = item["approval"]
+            reviewed = (
+                approval["reviewer_identity"] is not None
+                and approval["reviewed_at"] is not None
+            )
+            if approval["status"] == "candidate" and reviewed:
+                raise ContractValidationError(
+                    "candidate source cannot carry a completed review"
+                )
+            if approval["status"] != "candidate" and not reviewed:
+                raise ContractValidationError(
+                    "decided source requires reviewer identity and review time"
+                )
+            if approval["status"] == "approved":
+                if not all(approval["checks"].values()):
+                    raise ContractValidationError(
+                        "approved source requires every classification check"
+                    )
+                if item["authority_class"] == "unverified":
+                    raise ContractValidationError(
+                        "unverified source authority cannot be approved"
+                    )
+                if item["rights"]["redistribution"] == "prohibited":
+                    raise ContractValidationError(
+                        "source with prohibited redistribution cannot be approved"
+                    )
             connector = item["connector"]
             parsed = urlparse(connector["url"])
             hostname = (parsed.hostname or "").lower()
