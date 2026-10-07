@@ -6,7 +6,7 @@
 
 ## What This Is
 
-A reference architecture and live demo showing how to deploy resource-constrained inference and **Retrieval-Augmented Generation** at the edge. BitNet remains the small CPU control model, while the inference boundary can target any local OpenAI-compatible runtime for model and hardware evaluation.
+A reference architecture and live demo showing how to deploy resource-constrained **LLM inference** and **Retrieval-Augmented Generation** at the edge. The generation layer is a model-neutral, OpenAI-compatible boundary: BitNet is included as the current low-memory CPU baseline, not as the selected production model. The field LLM will be chosen from controlled quality, latency, memory, and power evidence; a safety-first RAG-only deployment is also supported.
 
 The demo scenario is a conference assistant for **Summit Connect**, but the architecture works for any edge deployment: disaster relief coordination, community information hubs, agricultural advisories, health triage — anywhere information access matters and infrastructure is limited.
 
@@ -27,7 +27,7 @@ The demo scenario is a conference assistant for **Summit Connect**, but the arch
   │                                                               │
   │   Privacy Filter     Redis Streams     ChromaDB               │
   ├───────────────────────────────────────────────────────────────┤
-  │  Intel Xeon 6 — AVX-512 (BitNet) · OpenVINO (RAG) · AMX/TDX │
+  │ Intel Xeon 6 — AVX-512/VNNI/AMX (LLM) · OpenVINO (RAG) · TDX │
   └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,7 +48,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 | Technology | Role |
 |-----------|------|
-| **AVX-512 / VNNI** | BitNet ternary inference — integer add/subtract, no floating point needed |
+| **AVX-512 / VNNI** | CPU acceleration for quantized local LLM candidates, including the BitNet baseline |
 | **OpenVINO** | RAG embeddings — MiniLM INT8 quantized, 2-3x faster than PyTorch on Intel CPUs |
 | **AMX** | Heavier model inference — 2,048 INT8 ops/cycle per core on Xeon 6 |
 | **TDX** | Confidential AI — hardware-isolated VMs with encrypted memory for sensitive data |
@@ -57,7 +57,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **LLM** | OpenAI-compatible local provider | Compare BitNet, GGUF models, and accelerator runtimes without changing the pipeline |
+| **LLM** | OpenAI-compatible local provider | Swap local models and runtimes without changing routing, RAG, safety, or transport |
 | **RAG** | ChromaDB + MiniLM-L6-v2 (OpenVINO) | Lightweight vector search for domain knowledge |
 | **Services** | FastAPI (Python) on UBI9 | Microservice architecture |
 | **SMS** | Simulated (Twilio-ready) | GSM modem or Twilio webhook in production |
@@ -69,7 +69,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 # Clone and start the edge node
 git clone https://github.com/jkershawrh/edge-inference-at-scale.git
 cd edge-inference-at-scale
-docker compose up    # requires x86_64 (Intel/AMD) for BitNet
+docker compose up    # starts the current x86_64 BitNet development baseline
 
 # Send a simulated SMS
 ./scripts/send_sms.sh "What sessions are about edge computing?"
@@ -106,8 +106,10 @@ itself qualify hardware, GSM delivery, power, or representative field use.
 
 ### Provider and resource experiments
 
-BitNet remains the default control. Point the same application image at another
-OpenAI-compatible local server with environment variables:
+The project has **not selected a production field LLM**. BitNet is the default
+development control so every candidate can be measured against the same known
+baseline. Point the same application image at another OpenAI-compatible local
+server with environment variables:
 
 ```bash
 LLM_PROVIDER=llama-cpp \
@@ -141,13 +143,13 @@ For the smallest disconnected footprint, use
 profile removes both the model server and LLM adapter, lowers the direct-answer
 threshold to the approved evidence floor, and refuses anything the corpus
 cannot support. It also selects persistent Redis Streams as the lightweight
-at-least-once field transport. Generation remains enabled by default so BitNet and other
-candidate models can still be evaluated as controlled fallbacks.
+at-least-once field transport. Generation remains enabled in the general lab
+profile so local LLM candidates can be evaluated as controlled fallbacks.
 
 Use the controlled experiment runner in
-[docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare BitNet
-and candidate runtimes without accidentally changing the corpus, embeddings,
-evaluation set, retrieval depth, or resource envelope.
+[docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare the
+BitNet baseline and candidate runtimes without accidentally changing the corpus,
+embeddings, evaluation set, retrieval depth, or resource envelope.
 
 Use the evidence-labeled [hardware sizing pipeline](docs/hardware-sizing.md) to
 turn those OpenShift observations into preliminary CPU, memory, storage,
@@ -265,23 +267,26 @@ These are connected-lab building blocks, not permission to onboard live crisis
 data. Source authority, licensing, local-language review, production signing,
 and release approval remain human-controlled gates.
 
-## Micronode Footprint
+## Reference Micronode Footprint
 
-Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class):
+The default compose profile simulates an 8-core / 16 GB edge board (Orange Pi 5
+Plus, Rock 5B, Intel NUC Edge class). These figures describe the current BitNet
+development baseline; they are not the final hardware or production-LLM sizing:
 
 | Service | CPU | Memory | Role |
 |---------|-----|--------|------|
-| BitNet Server | 4.0 | 4 GB | LLM inference — `--threads 8 --ctx-size 512` |
+| Reference model server | 4.0 | 4 GB | Current BitNet control; replaced when testing another local LLM/runtime |
 | ChromaDB | 1.0 | 2 GB | Vector store + ONNX MiniLM embeddings |
 | RAG Service | 0.5 | 2 GB | Hybrid search, RAG-direct fallback |
 | Message Router | 0.5 | 512 MB | Classify → RAG-direct or LLM → respond |
 | SMS Gateway | 0.5 | 512 MB | SMS receive/send + Redis Streams |
-| LLM Inference | 0.5 | 512 MB | BitNet server wrapper |
+| LLM Inference | 0.5 | 512 MB | OpenAI-compatible provider adapter |
 | API Gateway | 0.25 | 256 MB | Service routing + metrics |
 | Redis | 0.25 | 256 MB | Event stream + message queue |
 | Privacy Filter | 0.25 | 256 MB | PII detection, rate limiting |
 
-**Total: ~7.75 CPU, ~10.5 GB RAM** — fits on an 8-core / 16 GB edge board with OS headroom.
+**Reference total: ~7.75 CPU, ~10.5 GB RAM.** Candidate-model sizing must be
+measured separately, and final power/solar claims require physical hardware.
 
 **RAG-direct fallback**: High-confidence corpus matches (score >= 0.8, under 160 chars) return instantly without calling the LLM. Queries like "WiFi password?", "where's lunch?", "emergency contact?" resolve in < 1 second.
 
