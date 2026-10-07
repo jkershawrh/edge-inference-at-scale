@@ -6,7 +6,11 @@ from pathlib import Path
 import pytest
 
 from corpus_factory.coverage import CoveragePlanError, plan_coverage, plan_mission_coverage
-from corpus_factory.validator import event_policy_subject_digest
+from corpus_factory.validator import (
+    ContractValidationError,
+    event_policy_subject_digest,
+    validate_instance,
+)
 from scripts.plan_corpus_coverage import main
 
 
@@ -89,6 +93,11 @@ def _summit_inputs():
     source["source_id"] = "source-summit-schedule"
     source["connector"]["connector_id"] = "connector-summit-schedule"
     source["connector"]["url"] = "https://alerts.example.gov/summit/schedule.json"
+    source["classification"] = {
+        "vertical": "conference_event",
+        "information_classes": ["event_identity", "schedule"],
+        "risk_level": "high",
+    }
     source["scope"] = {
         "geographies": ["summit-city", "convention-center"],
         "languages": ["en"],
@@ -210,6 +219,57 @@ def test_summit_mission_planner_exposes_bounded_initial_gaps():
     schedule = next(item for item in report["requirements"] if item["category_id"] == "schedule")
     assert schedule["status"] == "COVERED"
     assert report["automation_boundary"]["publishes_release"] is False
+
+
+def test_mission_coverage_requires_audience_and_delivery_channel_alignment():
+    mission, registry, classification = _summit_inputs()
+    classification["coverage"]["audiences"] = ["staff"]
+    classification["coverage"]["delivery_channels"] = ["web"]
+
+    report = plan_mission_coverage(
+        mission,
+        registry,
+        [classification],
+        as_of="2026-07-02T12:00:00-05:00",
+    )
+
+    schedule = next(item for item in report["requirements"] if item["category_id"] == "schedule")
+    assert schedule["status"] == "GAP"
+    assert schedule["qualifying_classification_ids"] == []
+
+
+def test_mission_coverage_requires_source_classification_alignment():
+    mission, registry, classification = _summit_inputs()
+    registry["sources"][0]["classification"] = {
+        "vertical": "disaster-response",
+        "information_classes": ["safety_emergency"],
+        "risk_level": "critical",
+    }
+
+    report = plan_mission_coverage(
+        mission,
+        registry,
+        [classification],
+        as_of="2026-07-02T12:00:00-05:00",
+    )
+
+    schedule = next(item for item in report["requirements"] if item["category_id"] == "schedule")
+    assert schedule["status"] == "GAP"
+    assert schedule["qualifying_source_ids"] == []
+
+
+def test_coverage_report_digest_prevents_post_plan_mutation():
+    mission, registry, classification = _summit_inputs()
+    report = plan_mission_coverage(
+        mission,
+        registry,
+        [classification],
+        as_of="2026-07-02T12:00:00-05:00",
+    )
+    report["summary"]["covered"] = 999
+
+    with pytest.raises(ContractValidationError, match="report_id"):
+        validate_instance(report, "coverage_report")
 
 
 def test_cli_writes_gap_report_and_returns_one(tmp_path):

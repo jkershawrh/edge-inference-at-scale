@@ -24,6 +24,7 @@ SCHEMA_DIR = Path(__file__).with_name("schemas")
 SCHEMA_BY_RECORD_TYPE = {
     "corpus_mission_profile": "corpus-mission-profile.schema.json",
     "document_classification": "document-classification.schema.json",
+    "coverage_report": "coverage-report.schema.json",
     "source_record": "source-record.schema.json",
     "canonical_document": "canonical-document.schema.json",
     "chunk_record": "chunk-record.schema.json",
@@ -143,6 +144,48 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         ):
             raise ContractValidationError(
                 "unverified authority cannot be direct-answer eligible"
+            )
+    elif record_type == "coverage_report":
+        body = {key: value for key, value in instance.items() if key != "report_id"}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(
+                body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        ).hexdigest()
+        if instance["report_id"] != expected:
+            raise ContractValidationError(
+                "coverage report_id does not match report body"
+            )
+        requirements = instance["requirements"]
+        requirement_ids = [item["requirement_id"] for item in requirements]
+        category_ids = [item["category_id"] for item in requirements]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ContractValidationError(
+                "coverage report requirement IDs must be unique"
+            )
+        if len(category_ids) != len(set(category_ids)):
+            raise ContractValidationError(
+                "coverage report category IDs must be unique"
+            )
+        statuses = [item["status"] for item in requirements]
+        expected_summary = {
+            "requirements": len(statuses),
+            "covered": statuses.count("COVERED"),
+            "gaps": statuses.count("GAP"),
+            "conflicted": statuses.count("CONFLICTED"),
+        }
+        if instance["summary"] != expected_summary:
+            raise ContractValidationError(
+                "coverage report summary does not match requirements"
+            )
+        expected_decision = (
+            "CONFLICTS"
+            if "CONFLICTED" in statuses
+            else ("GAPS" if "GAP" in statuses else "COVERED")
+        )
+        if instance["decision"] != expected_decision:
+            raise ContractValidationError(
+                "coverage report decision does not match requirements"
             )
     elif record_type == "source_record":
         acquired = _parse_time(instance["acquired_at"])

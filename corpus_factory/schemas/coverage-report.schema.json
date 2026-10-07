@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v1/coverage-report.schema.json",
+  "title": "CoverageReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "mission_profile_id", "event_id", "registry_id", "as_of", "decision", "summary", "requirements", "source_findings", "conflicts", "automation_boundary", "report_id"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "record_type": {"const": "coverage_report"},
+    "mission_profile_id": {"$ref": "#/$defs/id"},
+    "event_id": {"$ref": "#/$defs/id"},
+    "registry_id": {"$ref": "#/$defs/id"},
+    "as_of": {"type": "string", "format": "date-time"},
+    "decision": {"enum": ["COVERED", "GAPS", "CONFLICTS"]},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirements", "covered", "gaps", "conflicted"],
+      "properties": {
+        "requirements": {"type": "integer", "minimum": 1},
+        "covered": {"type": "integer", "minimum": 0},
+        "gaps": {"type": "integer", "minimum": 0},
+        "conflicted": {"type": "integer", "minimum": 0}
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/requirement"}
+    },
+    "source_findings": {"type": "array", "items": {"$ref": "#/$defs/sourceFinding"}},
+    "conflicts": {"type": "array", "items": {"$ref": "#/$defs/topConflict"}},
+    "automation_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["advisory_only", "network_access", "publishes_release", "human_approval_required"],
+      "properties": {
+        "advisory_only": {"const": true},
+        "network_access": {"const": false},
+        "publishes_release": {"const": false},
+        "human_approval_required": {"const": true}
+      }
+    },
+    "report_id": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "message": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {"code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}, "message": {"$ref": "#/$defs/message"}}
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "reason"],
+      "properties": {"action": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"}, "reason": {"$ref": "#/$defs/message"}}
+    },
+    "conflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "document_ids", "explanation"],
+      "properties": {
+        "kind": {"enum": ["DECLARED_CONTESTED", "FACT_VALUE_COLLISION"]},
+        "document_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "explanation": {"$ref": "#/$defs/message"},
+        "fact_id": {"$ref": "#/$defs/id"},
+        "value_digests": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}}
+      }
+    },
+    "topConflict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirement_id", "kind", "document_ids", "explanation"],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/id"},
+        "kind": {"enum": ["DECLARED_CONTESTED", "FACT_VALUE_COLLISION"]},
+        "document_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "explanation": {"$ref": "#/$defs/message"},
+        "fact_id": {"$ref": "#/$defs/id"},
+        "value_digests": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}}
+      }
+    },
+    "sourceFinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "code", "message"],
+      "properties": {
+        "source_id": {"$ref": "#/$defs/id"},
+        "code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]+$"},
+        "message": {"$ref": "#/$defs/message"}
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirement_id", "category_id", "safety_class", "status", "classification_ids", "qualifying_classification_ids", "qualifying_source_ids", "gaps", "conflicts", "recommended_actions"],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/id"},
+        "category_id": {"$ref": "#/$defs/id"},
+        "safety_class": {"enum": ["advisory", "standard", "high", "critical"]},
+        "status": {"enum": ["COVERED", "GAP", "CONFLICTED"]},
+        "classification_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "qualifying_classification_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "qualifying_source_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "gaps": {"type": "array", "items": {"$ref": "#/$defs/gap"}},
+        "conflicts": {"type": "array", "items": {"$ref": "#/$defs/conflict"}},
+        "recommended_actions": {"type": "array", "items": {"$ref": "#/$defs/action"}}
+      }
+    }
+  }
+}

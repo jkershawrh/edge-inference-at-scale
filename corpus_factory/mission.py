@@ -62,6 +62,8 @@ class DocumentClassificationSpec:
     supported_intents: Tuple[str, ...]
     geographies: Tuple[str, ...]
     languages: Tuple[str, ...]
+    audiences: Tuple[str, ...]
+    delivery_channels: Tuple[str, ...]
     authority_class: str
     safety_class: str
     consequence_of_error: str
@@ -149,6 +151,8 @@ def build_document_classification(spec: DocumentClassificationSpec) -> Dict[str,
             "supported_intents": _unique(spec.supported_intents),
             "geographies": _unique(spec.geographies),
             "languages": _unique(spec.languages),
+            "audiences": _unique(spec.audiences),
+            "delivery_channels": _unique(spec.delivery_channels),
         },
         "authority": {"class": spec.authority_class},
         "risk": {

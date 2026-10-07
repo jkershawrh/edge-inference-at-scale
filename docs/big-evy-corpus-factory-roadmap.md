@@ -48,6 +48,38 @@ The runtime must not import factory implementation code. This allows the factory
 to become a separate repository or managed service later without redesigning
 Lil EVY.
 
+## First reference onboarding: Summit Connect
+
+The first end-to-end onboarding target is one bounded, synthetic Summit Connect
+corpus. It proves the factory workflow without implying that conference data is
+safe enough for a disaster deployment. The event is intentionally small enough
+to inspect by hand and broad enough to exercise the real edge retrieval path.
+
+The onboarding artifacts are produced and reviewed in this order:
+
+1. `mission-profile.json` declares the event, geography, dates, time zone,
+   languages, audiences, delivery channels, risk, owners, and required
+   information categories.
+2. `source-registry.json` records candidate sources, authority, rights, scope,
+   acquisition policy, and human approval state. Agent discoveries remain
+   candidates until a human authorizes them.
+3. Document classifications bind acquired evidence to mission categories and
+   intents, validity, consequence of error, verification, provenance, and
+   direct-answer eligibility.
+4. `coverage-report.json` deterministically shows covered requirements, gaps,
+   conflicting facts, excluded sources, and the next bounded work items.
+
+Initial required information covers event identity and dates, schedule,
+sessions, speakers, venue/navigation/accessibility, facilities, transport and
+lodging, registration and policies, safety and emergency guidance, and human
+escalation. Demo and treasure-hunt content is isolated from operational facts.
+
+This reference onboarding is complete only when its three control artifacts
+validate together, every required category has approved evidence or an explicit
+gap, conflicts are visible, and the existing Lil EVY retrieval and SMS tests use
+the exact resulting release identity. No autonomous crawl, approval, signing,
+publication, or deployment is part of this milestone.
+
 ## Trust principles
 
 1. A valid signature proves who released bytes; it does not prove the facts are
@@ -331,34 +363,49 @@ recovery is safe; unauthorized downgrade is blocked; health exposes the active
 digest/sequence; reconnection reports active, rejected, expired, and recovered
 releases.
 
-## First three parallel waves
+## Parallel delivery waves
 
-### Wave 1 — Freeze the contract
+### Wave 1 — Freeze the trust contract (complete foundation)
 
 - Agent A: v2 schemas, lifecycle, and golden fixtures
 - Agent B: threat model, roles, trust roots, signing/encryption/key lifecycle
 - Agent C: evaluation and event ground-truth specification
 - Lead: reconcile decisions, publish ADRs, and freeze v2
 
-### Wave 2 — Build the factory core
+### Wave 2 — Build the factory core (complete foundation)
 
 - Agent A: source registry and acquisition adapter SDK
 - Agent B: evidence vault and provenance graph
 - Agent C: canonicalization, conflict detection, and review records
 - Lead: integrate and rehearse one synthetic event
 
-### Wave 3 — Complete the release path
+### Wave 3 — Complete the release path (in progress)
 
 - Agent A: deterministic chunks and embedding lineage
 - Agent B: retrieval, safety, freshness, and hardware gates
 - Agent C: signed OCI plus connected/intermittent/air-gap delivery
 - Lead: integrate Lil EVY activation and run the complete field drill
 
-The first milestone is not scraping a live event. It is a small synthetic
-disaster-response release containing conflicting sources, corrections,
-expiration, sensitive locations, a missing answer, signature failure, interrupted
-transfer, successful activation, rejection, and rollback. A real event is
-onboarded only after this drill passes end to end.
+### Wave 4 — Onboard one controlled reference corpus (current)
+
+- Mission lane: Summit Connect mission profile and document classification
+- Source lane: registry classifications, authority, rights, and approval gates
+- Planning lane: deterministic coverage, gap, and conflict recommendations
+- Lead: bind the artifacts, keep fixtures deterministic, and run the existing
+  CDD/TDD/EDD/BDD/CUT convergence matrix
+
+Acceptance: one command can validate the profile and registry, classify the
+bounded source set, emit a deterministic coverage report, and stop before
+acquisition or promotion when required human decisions are absent.
+
+### Wave 5 — Disaster safety drill
+
+After Summit proves the mechanics, the synthetic disaster-response release is
+the required safety milestone. It contains conflicting sources, corrections,
+expiration, sensitive locations, a missing answer, signature failure,
+interrupted transfer, successful activation, rejection, and rollback. No field
+readiness claim is made until this drill passes end to end; hardware, GSM, LoRa,
+and solar validation remain later CUT evidence rather than simulated proof.
 
 ## Current foundation and immediate gaps
 

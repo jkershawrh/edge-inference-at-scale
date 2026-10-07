@@ -600,9 +600,35 @@ def plan_mission_coverage(
                 continue
             if not set(mission_scope["languages"]).issubset(coverage["languages"]):
                 continue
+            if not set(mission_scope["audiences"]).issubset(coverage["audiences"]):
+                continue
+            if not set(mission_scope["delivery_channels"]).issubset(
+                coverage["delivery_channels"]
+            ):
+                continue
             if not set(requirement["required_intents"]).issubset(coverage["supported_intents"]):
                 continue
             if not set(provenance["source_ids"]).issubset(usable_sources):
+                continue
+            classified_sources = [source_index[source_id] for source_id in provenance["source_ids"]]
+            if any(
+                source["classification"]["vertical"] != mission["vertical"]
+                or requirement["category_id"]
+                not in source["classification"]["information_classes"]
+                or SAFETY_RANK[source["classification"]["risk_level"]]
+                < SAFETY_RANK[requirement["safety_class"]]
+                or not set(mission_scope["geographies"]).issubset(
+                    source["scope"]["geographies"]
+                )
+                or not set(mission_scope["languages"]).issubset(
+                    source["scope"]["languages"]
+                )
+                or not set(mission_scope["audiences"]).issubset(
+                    source["scope"]["audiences"]
+                )
+                or source["authority_class"] != item["authority"]["class"]
+                for source in classified_sources
+            ):
                 continue
             qualifying.append(item)
 
@@ -692,4 +718,5 @@ def plan_mission_coverage(
         },
     }
     report["report_id"] = _digest(report)
+    _validate(report, "coverage_report", "coverage report")
     return report

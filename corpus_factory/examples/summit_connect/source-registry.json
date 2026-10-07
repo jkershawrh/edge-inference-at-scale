@@ -1,0 +1,90 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "source_registry",
+  "registry_id": "registry-summit-connect-2026",
+  "event_id": "summit-connect-2026",
+  "version": "1.0.0",
+  "acquisition_policy_version": "2026.1",
+  "sources": [
+    {
+      "source_id": "source-summit-official-export",
+      "enabled": true,
+      "classification": {
+        "vertical": "conference_event",
+        "information_classes": [
+          "event_identity",
+          "schedule",
+          "sessions",
+          "speakers",
+          "venue_accessibility",
+          "amenities",
+          "travel_local",
+          "registration_policies",
+          "safety_emergency",
+          "help_escalation",
+          "demo_entertainment"
+        ],
+        "risk_level": "critical"
+      },
+      "approval": {
+        "status": "approved",
+        "checks": {
+          "authority_verified": true,
+          "geography_verified": true,
+          "license_verified": true,
+          "validity_verified": true,
+          "language_verified": true,
+          "risk_classified": true
+        },
+        "reviewer_identity": "fixture-owner@example.test",
+        "reviewed_at": "2026-07-01T12:00:00-05:00",
+        "rationale": "Approved synthetic Summit Connect fixture bundle for local testing only."
+      },
+      "publisher": {"id": "publisher-summit-connect", "name": "Summit Connect Operations"},
+      "steward": {"identity": "fixture-steward@example.test", "role": "Synthetic event data steward"},
+      "authority_class": "official",
+      "connector": {
+        "connector_id": "connector-summit-official-export",
+        "type": "https",
+        "url": "https://summit-connect.example.test/exports/2026.json",
+        "allowed_hosts": ["summit-connect.example.test"],
+        "allowed_media_types": ["application/json"],
+        "maximum_bytes": 10485760,
+        "timeout_seconds": 20,
+        "maximum_redirects": 0,
+        "auth_secret_ref": null
+      },
+      "rights": {
+        "license": "Project synthetic test data",
+        "redistribution": "permitted",
+        "restrictions": ["testing-only"]
+      },
+      "scope": {
+        "geographies": ["summit-city", "convention-center"],
+        "languages": ["en"],
+        "audiences": ["attendees", "speakers", "staff"],
+        "subjects": [
+          "event_identity",
+          "schedule",
+          "sessions",
+          "speakers",
+          "venue_accessibility",
+          "amenities",
+          "travel_local",
+          "registration_policies",
+          "safety_emergency",
+          "help_escalation",
+          "demo_entertainment"
+        ]
+      },
+      "freshness": {
+        "effective_from": "2026-07-01T00:00:00-05:00",
+        "valid_until": "2026-07-18T23:59:59-05:00",
+        "expected_refresh_seconds": 3600,
+        "stale_action": "block"
+      },
+      "sensitivity": "public",
+      "distribution": "public"
+    }
+  ]
+}

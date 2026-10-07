@@ -8,7 +8,9 @@
     "category_ids": ["event_identity", "schedule"],
     "supported_intents": ["event_dates", "event_location", "session_time"],
     "geographies": ["summit-city", "convention-center"],
-    "languages": ["en"]
+    "languages": ["en"],
+    "audiences": ["attendees", "speakers", "staff"],
+    "delivery_channels": ["sms", "web"]
   },
   "authority": {"class": "official"},
   "risk": {"safety_class": "high", "consequence_of_error": "An attendee may miss or travel to the wrong event session."},

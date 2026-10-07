@@ -217,11 +217,20 @@ input to release promotion, so packaging success cannot hide missing or stale
 field information. See
 [docs/corpus-suitability.md](docs/corpus-suitability.md).
 
+The first agentic sourcing reference is intentionally one bounded Summit
+Connect set. Its mission profile, approved synthetic source registry, and
+document classifications produce a deterministic coverage report with five
+covered categories and six explicit gaps. The planner has no network,
+approval, signing, publication, or deployment authority. See
+[corpus_factory/examples/summit_connect/README.md](corpus_factory/examples/summit_connect/README.md).
+
 ```bash
 make test-corpus-factory
 make test-connected-acquisition
 make test-corpus-audit
 make test-corpus-suitability
+make test-corpus-sourcing
+python scripts/plan_corpus_coverage.py --help
 python scripts/acquire_corpus_source.py --help
 python scripts/plan_corpus_refresh.py --help
 python scripts/corpus_audit.py --help
