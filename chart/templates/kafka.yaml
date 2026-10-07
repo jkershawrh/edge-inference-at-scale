@@ -1,3 +1,4 @@
+{{- if .Values.kafka.managed }}
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
 metadata:
@@ -59,3 +60,4 @@ spec:
   replicas: 1
   config:
     retention.ms: "86400000"
+{{- end }}

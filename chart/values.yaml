@@ -153,6 +153,11 @@ privacyFilter:
       memory: 256Mi
 
 kafka:
+  # Set managed=false when the release must use an existing Kafka/AMQ Streams
+  # broker (for example, when the operator is scoped to another namespace).
+  managed: true
+  # Required when managed=false. May be a comma-separated broker list.
+  bootstrapServers: ""
   version: "4.2.0"
   replicas: 1
   topic:

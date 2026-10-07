@@ -90,3 +90,19 @@ The OpenShift field preflight requires both the SMS gateway producer and message
 router consumer to report a connected `sms.inbound` stream. HTTP fallback keeps
 laboratory demos usable when Kafka is absent, but it does not provide the
 at-least-once delivery evidence required for field qualification.
+
+The default chart creates a release-local Kafka cluster and therefore requires
+an AMQ Streams/Strimzi operator that watches the release namespace. An installed
+operator in a different namespace is not sufficient. When an approved broker is
+provided by the platform instead, disable managed resources and declare its
+bootstrap endpoint explicitly:
+
+```bash
+helm upgrade --install lil-evy ./chart \
+  --set kafka.managed=false \
+  --set-string kafka.bootstrapServers=shared-kafka.messaging.svc:9092
+```
+
+External mode does not create or own a `KafkaTopic`; platform operators must
+provision `sms.inbound` with the required retention and access controls before
+field preflight can become GREEN.

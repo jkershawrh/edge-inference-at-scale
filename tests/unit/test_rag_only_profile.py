@@ -82,3 +82,66 @@ def test_field_rag_only_chart_omits_generation_workloads(tmp_path):
     assert topic["metadata"]["name"] == "lil-evy-sms-inbound"
     assert topic["spec"]["topicName"] == "sms.inbound"
     assert config["data"]["STREAM_TOPIC"] == "sms.inbound"
+
+
+def test_external_kafka_omits_managed_resources_and_sets_bootstrap(tmp_path):
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("helm is required for the chart rendering contract")
+
+    values = tmp_path / "external-kafka.yaml"
+    values.write_text(
+        yaml.safe_dump(
+            {
+                "kafka": {
+                    "managed": False,
+                    "bootstrapServers": "shared-kafka.messaging.svc:9092",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["helm", "template", "lil-evy", "chart", "-f", str(values)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    objects = [
+        item
+        for item in yaml.safe_load_all(result.stdout)
+        if isinstance(item, dict)
+    ]
+    kinds = {item.get("kind") for item in objects}
+    config = next(item for item in objects if item.get("kind") == "ConfigMap")
+
+    assert "Kafka" not in kinds
+    assert "KafkaNodePool" not in kinds
+    assert "KafkaTopic" not in kinds
+    assert (
+        config["data"]["KAFKA_BOOTSTRAP_SERVERS"]
+        == "shared-kafka.messaging.svc:9092"
+    )
+
+
+def test_external_kafka_requires_bootstrap_servers():
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("helm is required for the chart rendering contract")
+
+    result = subprocess.run(
+        [
+            helm,
+            "template",
+            "lil-evy",
+            "chart",
+            "--set",
+            "kafka.managed=false",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "kafka.bootstrapServers is required" in result.stderr
