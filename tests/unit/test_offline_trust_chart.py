@@ -58,7 +58,11 @@ def test_offline_trust_cannot_enable_without_activation():
         check=False, capture_output=True, text=True,
     )
     assert result.returncode != 0
-    assert "rag.activation.enabled" in result.stderr
+    assert (
+        "rag.activation.enabled" in result.stderr
+        or "/rag/activation/enabled" in result.stderr
+    )
+    assert "true" in result.stderr
 
 
 def test_default_lab_chart_does_not_mount_offline_trust_material():
