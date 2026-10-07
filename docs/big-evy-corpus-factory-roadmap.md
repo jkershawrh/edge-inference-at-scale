@@ -407,6 +407,15 @@ interrupted transfer, successful activation, rejection, and rollback. No field
 readiness claim is made until this drill passes end to end; hardware, GSM, LoRa,
 and solar validation remain later CUT evidence rather than simulated proof.
 
+The first software-only governed rehearsal is now repeatable with
+`python3 scripts/run_synthetic_disaster_rehearsal.py --output <new-directory>`.
+It joins the production-shaped coverage/suitability, exact packaging,
+evaluation-attestation and signing-authorization, encrypted site transfer,
+offline verification/decryption, activation/restart, and grounded/refusal paths
+into one evidence summary. Its evaluation inputs and transport endpoints remain
+synthetic, so the summary labels the run `SIMULATED_SOFTWARE` and the physical
+hardware CUT `NOT_RUN`.
+
 ## Current foundation and immediate gaps
 
 Already implemented:
@@ -479,6 +488,10 @@ Already implemented:
 - Strict external audit checkpoints and Ed25519 witness receipts with exact
   ledger-prefix and predecessor binding, offline rollback/replay/tamper/fork
   detection, monotonic sequences, and no witness private key in the application
+- Repeatable synthetic disaster governed-release rehearsal covering exact
+  packaging, attested signing authorization, encrypted offline transfer,
+  activation/restart persistence, and grounded/refusal behavior, with an
+  explicit software-versus-hardware evidence boundary
 
 Still required before this is production-grade:
 
@@ -492,7 +505,10 @@ Still required before this is production-grade:
 - Encrypted transfer envelopes, production key integration, and media custody
 - GitOps policy for fleet identity enrollment and a disconnected trusted-time
   mechanism
-- Complete synthetic disaster drill followed by hardware and solar-power tests
+- Expand the disaster fixture with signature-failure, interrupted-transfer,
+  rejection, and authorized-rollback scenarios
+- Run physical target-hardware CUT for GSM/SMS, LoRa, antenna/range, thermal,
+  power-loss, battery endurance, and solar recharge behavior
 
 ## Decisions to make during Wave 1
 
