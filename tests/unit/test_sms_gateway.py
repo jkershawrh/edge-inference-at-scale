@@ -10,6 +10,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from backend.services.sms_gateway.sim_driver import SimDriver
 from backend.services.sms_gateway.message_parser import (
@@ -17,7 +18,12 @@ from backend.services.sms_gateway.message_parser import (
     MessageIntent,
     MessageParser,
 )
-from backend.services.sms_gateway.main import _RateLimiter
+from backend.services.sms_gateway.main import (
+    SMSGateway,
+    _RateLimiter,
+    _validate_twilio_signature,
+)
+from backend.shared.config import settings
 
 
 # ===================================================================
@@ -136,6 +142,19 @@ class TestRateLimiting:
         assert limiter.allow() is True
 
 
+@pytest.mark.asyncio
+async def test_twilio_mode_requires_webhook_verification_secret(monkeypatch):
+    request = MagicMock()
+    monkeypatch.setattr(settings, "sms_mode", "twilio")
+    monkeypatch.setattr(settings, "twilio_auth_token", None)
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN", raising=False)
+
+    with pytest.raises(HTTPException) as raised:
+        await _validate_twilio_signature(request)
+
+    assert raised.value.status_code == 503
+
+
 # ===================================================================
 # Message receive and forward tests
 # ===================================================================
@@ -161,6 +180,16 @@ class TestMessageReceiveAndForward:
         inbox = await driver.get_inbox()
         assert len(inbox) == 1
         assert inbox[0]["content"] == "Test query"
+
+    @pytest.mark.asyncio
+    async def test_gateway_rejects_whitespace_before_queueing(self):
+        gateway = SMSGateway()
+
+        with pytest.raises(HTTPException) as raised:
+            await gateway.receive_message("+15551234567", "   ")
+
+        assert getattr(raised.value, "status_code", None) == 422
+        assert gateway._inbound_queue.empty()
 
 
 # ===================================================================

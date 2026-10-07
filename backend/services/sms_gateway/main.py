@@ -1,8 +1,8 @@
 """Edge Inference at Scale -- SMS Gateway service.
 
 Forked from the EVY SMS gateway but stripped of all hardware drivers
-(GSM, serial, gammu).  Uses either an in-memory SimDriver for local /
-demo work or a TwilioDriver stub for future Phase 4 integration.
+(GSM, serial, gammu). Uses either an in-memory SimDriver for local/demo
+work or the authenticated Twilio REST/webhook driver for connected SMS tests.
 """
 
 import asyncio
@@ -188,6 +188,14 @@ class SMSGateway:
         """Accept an inbound SMS, record it, enqueue for forwarding."""
         if not self.rate_limiter.allow():
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+        if self.message_parser:
+            validation = self.message_parser.validate_message(content)
+            if not validation["valid"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"message": "Invalid SMS content", "errors": validation["errors"]},
+                )
 
         msg = await self.active_driver.receive_sms(sender, content)
         self._total_received += 1
@@ -426,6 +434,33 @@ async def sms_history():
 
 # -- Twilio webhooks --------------------------------------------------------
 
+async def _validate_twilio_signature(request: Request) -> None:
+    """Validate every Twilio callback before processing its form payload."""
+
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", settings.twilio_auth_token)
+    if not auth_token:
+        if settings.sms_mode == "twilio":
+            raise HTTPException(
+                status_code=503,
+                detail="Twilio webhook verification is not configured",
+            )
+        return
+    try:
+        from twilio.request_validator import RequestValidator
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="twilio package required for signature validation",
+        ) from exc
+
+    validator = RequestValidator(auth_token)
+    signature = request.headers.get("X-Twilio-Signature", "")
+    form_data = dict(await request.form())
+    url = str(request.url).replace("http://", "https://", 1)
+    if not validator.validate(url, form_data, signature):
+        logger.warning("Twilio signature validation FAILED — rejecting request")
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
 @app.post("/twilio/webhook")
 async def twilio_webhook(
     request: Request,
@@ -440,22 +475,7 @@ async def twilio_webhook(
     Twilio POSTs form-encoded data with fields ``From``, ``To``, ``Body``,
     ``MessageSid``, etc.
     """
-    # Validate Twilio signature to prevent spoofed webhooks
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN", settings.twilio_auth_token)
-    if auth_token:
-        try:
-            from twilio.request_validator import RequestValidator
-            validator = RequestValidator(auth_token)
-            signature = request.headers.get("X-Twilio-Signature", "")
-            form_data = dict(await request.form())
-            url = str(request.url).replace("http://", "https://")
-            if not validator.validate(url, form_data, signature):
-                logger.warning("Twilio signature validation FAILED — rejecting request")
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-        except ImportError:
-            if settings.sms_mode == "twilio":
-                raise HTTPException(status_code=500, detail="twilio package required for signature validation in twilio mode")
-            logger.warning("twilio package not installed — skipping signature validation")
+    await _validate_twilio_signature(request)
     logger.info(
         "Twilio webhook: from=%s to=%s sid=%s body=%s",
         From, To, MessageSid, Body[:40],
@@ -481,6 +501,7 @@ async def twilio_status(request: Request):
 
     These are informational — we log them and return 200.
     """
+    await _validate_twilio_signature(request)
     form = await request.form()
     logger.info(
         "Twilio status callback: sid=%s status=%s",

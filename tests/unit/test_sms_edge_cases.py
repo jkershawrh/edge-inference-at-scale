@@ -52,18 +52,15 @@ class TestSpecialCharInputs:
 
 
 class TestWhitespaceInputs:
-    """FINDING: MessageParser.validate_message does NOT reject whitespace-only
-    messages. This is a known gap — whitespace passes validation but produces
-    UNKNOWN intent with low confidence. For the demo, this is acceptable since
-    the LLM will handle it, but it should be fixed for production."""
+    """Whitespace-only messages are rejected before entering the pipeline."""
 
     def setup_method(self):
         self.parser = MessageParser()
 
-    def test_whitespace_only_passes_validation(self):
+    def test_whitespace_only_fails_validation(self):
         validation = self.parser.validate_message("   ")
-        # Currently passes — parser doesn't strip/check whitespace
-        assert validation["valid"] is True
+        assert validation["valid"] is False
+        assert "Message is empty" in validation["errors"]
 
     def test_whitespace_only_gets_unknown_intent(self):
         result = self.parser.parse_message("   ", "+1234567890")
