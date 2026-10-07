@@ -412,9 +412,13 @@ The first software-only governed rehearsal is now repeatable with
 It joins the production-shaped coverage/suitability, exact packaging,
 evaluation-attestation and signing-authorization, encrypted site transfer,
 offline verification/decryption, activation/restart, and grounded/refusal paths
-into one evidence summary. Its evaluation inputs and transport endpoints remain
-synthetic, so the summary labels the run `SIMULATED_SOFTWARE` and the physical
-hardware CUT `NOT_RUN`.
+into one evidence summary. Executable negative scenarios reject a modified
+release signature, changed ciphertext, an interrupted transfer, and an invalid
+activation; an independently approved, signed exceptional authorization moves
+the node to an exact older signed candidate without lowering the sequence floor
+and survives restart. Its evaluation inputs and transport endpoints remain
+synthetic, so the summary labels the run
+`SIMULATED_SOFTWARE` and the physical hardware CUT `NOT_RUN`.
 
 ## Current foundation and immediate gaps
 
@@ -502,8 +506,9 @@ Already implemented:
   enforcement for active release, signing key, and contributing source identities
 - Repeatable synthetic disaster governed-release rehearsal covering exact
   packaging, attested signing authorization, encrypted offline transfer,
-  activation/restart persistence, and grounded/refusal behavior, with an
-  explicit software-versus-hardware evidence boundary
+  fail-closed signature/ciphertext/interruption/activation scenarios,
+  authorized recovery and restart persistence, and grounded/refusal behavior,
+  with an explicit software-versus-hardware evidence boundary
 
 Still required before this is production-grade:
 
@@ -519,8 +524,6 @@ Still required before this is production-grade:
 - Production site-key provisioning, rotation, device custody, and physical-media
   chain of custody for encrypted transfers
 - GitOps policy for fleet identity enrollment
-- Expand the disaster fixture with signature-failure, interrupted-transfer,
-  rejection, and authorized-rollback scenarios
 - Run physical target-hardware CUT for GSM/SMS, LoRa, antenna/range, thermal,
   power-loss, battery endurance, and solar recharge behavior
 

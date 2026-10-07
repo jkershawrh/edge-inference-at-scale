@@ -46,7 +46,17 @@ It exercises the production-shaped contracts and implementations in order:
    decryption;
 5. Lil EVY verification, activation receipt, anti-rollback state, and restart
    persistence; and
-6. an emergency RAG-direct answer plus an emergency no-answer refusal.
+6. modified-signature, changed-ciphertext, interrupted-transfer, and
+   same-sequence/different-digest rejection checks;
+7. independently approved, signed exceptional recovery to an older signed
+   candidate without lowering the sequence floor, including recovery-state
+   persistence after restart; and
+8. an emergency RAG-direct answer plus an emergency no-answer refusal.
+
+The negative checks run against disposable copies. Deliberately damaged release
+or transfer bytes are never retained as deployable artifacts. The final active
+pointer is the signed authorization's exact recovery target, while the
+anti-rollback floor remains at the newer release sequence.
 
 This is deterministic, synthetic **software evidence**. Retrieval, answer, and
 edge-profile measurements are controlled rehearsal inputs, and the runtime

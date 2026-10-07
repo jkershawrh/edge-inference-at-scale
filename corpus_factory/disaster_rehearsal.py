@@ -6,8 +6,11 @@ import asyncio
 import base64
 import hashlib
 import json
+import shutil
 import tarfile
+import tempfile
 from argparse import Namespace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Mapping
 from unittest.mock import AsyncMock, MagicMock
@@ -17,11 +20,23 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from backend.services.message_router.main import MessageRouter
-from backend.services.rag_service.activation import CorpusActivationManager, ReleaseCandidate
+from backend.services.rag_service.activation import (
+    CorpusActivationManager,
+    ReleaseCandidate,
+    RollbackRejected,
+)
+from backend.services.rag_service.corpus_package import (
+    CorpusValidationError,
+    validate_corpus_package,
+)
 from backend.services.rag_service.receipt_signing import Ed25519ReceiptSigner
+from backend.services.rag_service.recovery_authorization import (
+    verify_recovery_authorization,
+)
 from backend.shared.config import settings
 from backend.shared.models import ChannelMessage, MessageChannel
 from corpus_factory.distribution import (
+    DistributionError,
     EncryptionRecipient,
     decrypt_transfer_set,
     export_encrypted_transfer_set,
@@ -339,6 +354,104 @@ def _extract_package(archive_path: Path, destination: Path) -> None:
         archive.extractall(destination)
 
 
+def _exercise_signature_failure(package: Path, public_key: Path) -> Dict[str, Any]:
+    """Prove a modified release signature is rejected by the runtime verifier."""
+
+    with tempfile.TemporaryDirectory(prefix="evy-signature-negative-") as directory:
+        damaged = Path(directory) / "package"
+        shutil.copytree(package, damaged)
+        (damaged / "manifest.sig").write_text(
+            base64.b64encode(b"\x00" * 64).decode("ascii") + "\n",
+            encoding="ascii",
+        )
+        try:
+            validate_corpus_package(
+                str(damaged / "manifest.json"),
+                expected_event_id=EVENT_ID,
+                expected_version=VERSION,
+                public_key_path=str(public_key),
+                require_signature=True,
+            )
+        except CorpusValidationError as exc:
+            return {"passed": True, "rejected": True, "reason": str(exc)}
+    raise RehearsalError("modified release signature was accepted")
+
+
+def _exercise_transfer_failures(
+    transfer: Path,
+    transfer_public_key: Any,
+) -> Dict[str, Any]:
+    """Prove both changed ciphertext and an interrupted transfer fail closed."""
+
+    def verify(root: Path) -> None:
+        verify_transfer_set(
+            root,
+            expected_event_id=EVENT_ID,
+            expected_site_id=SITE_ID,
+            allowed_classifications={"restricted"},
+            sequence_floor=0,
+            signature_verifier=lambda payload, signature: _verify_signature(
+                transfer_public_key, payload, signature
+            ),
+        )
+
+    results: Dict[str, Any] = {}
+    with tempfile.TemporaryDirectory(prefix="evy-transfer-negative-") as directory:
+        root = Path(directory)
+        ciphertext = root / "ciphertext"
+        interrupted = root / "interrupted"
+        shutil.copytree(transfer, ciphertext)
+        shutil.copytree(transfer, interrupted)
+        index = json.loads((ciphertext / "index.json").read_text(encoding="utf-8"))
+        manifest_digest = index["manifests"][0]["digest"].removeprefix("sha256:")
+        manifest = json.loads(
+            (ciphertext / "blobs" / "sha256" / manifest_digest).read_text(encoding="utf-8")
+        )
+        artifact_path = Path(manifest["artifacts"][0]["path"])
+
+        changed = ciphertext / artifact_path
+        payload = changed.read_bytes()
+        changed.write_bytes(bytes([payload[0] ^ 1]) + payload[1:])
+        try:
+            verify(ciphertext)
+        except DistributionError as exc:
+            results["ciphertext_tamper"] = {
+                "passed": True, "rejected": True, "reason": str(exc)
+            }
+        else:
+            raise RehearsalError("modified encrypted-transfer ciphertext was accepted")
+
+        (interrupted / artifact_path).unlink()
+        try:
+            verify(interrupted)
+        except DistributionError as exc:
+            results["interrupted_transfer"] = {
+                "passed": True, "rejected": True, "reason": str(exc)
+            }
+        else:
+            raise RehearsalError("incomplete encrypted transfer was accepted")
+    return results
+
+
+def _exercise_activation_rejection(
+    manager: CorpusActivationManager,
+    package: Path,
+) -> Dict[str, Any]:
+    """Prove a different digest cannot replace the release at the sequence floor."""
+
+    candidate = ReleaseCandidate("sha256:" + "f" * 64, SEQUENCE, package)
+    try:
+        manager.activate(candidate)
+    except RollbackRejected as exc:
+        return {
+            "passed": True,
+            "rejected": True,
+            "reason_code": exc.receipt.reason_code,
+            "active_digest_unchanged": manager.current()["active_digest"],
+        }
+    raise RehearsalError("same-sequence different-digest activation was accepted")
+
+
 async def _exercise_answers(guidance: str) -> Dict[str, Any]:
     original_grounding = settings.rag_grounding_required
     original_emergency = settings.emergency_rag_enabled
@@ -484,6 +597,25 @@ def run_rehearsal(output: Path) -> Dict[str, Any]:
         "authorization": authorization,
         "evaluation_attestation": attestation,
     })
+    signature_failure = _exercise_signature_failure(package, release_public_key)
+
+    recovery_package = build_package(Namespace(
+        contract_profile="governed-v1", event_id=EVENT_ID,
+        event_name="Synthetic Region 4 Flood Response", version=VERSION,
+        output_dir=str(output / "recovery-candidate"),
+        created_at="2026-10-06T17:00:00Z", signing_key=None,
+        input_documents=str(input_documents), mission_profile=str(evidence / "mission-profile.json"),
+        source_registry=str(evidence / "source-registry.json"),
+        coverage_report=str(evidence / "coverage-report.json"),
+        lineage_manifest=str(evidence / "lineage-manifest.json"),
+    ))
+    recovery_manifest_path = recovery_package / "manifest.json"
+    recovery_digest = _sha256_bytes(recovery_manifest_path.read_bytes())
+    recovery_signature = release_key.sign(recovery_manifest_path.read_bytes())
+    (recovery_package / "manifest.sig").write_text(
+        base64.b64encode(recovery_signature).decode("ascii") + "\n",
+        encoding="ascii",
+    )
 
     corpus_tar = output / "corpus-release.tar"
     _tar_package(package, corpus_tar)
@@ -515,6 +647,9 @@ def run_rehearsal(output: Path) -> Dict[str, Any]:
         signature_verifier=lambda payload, signature: _verify_signature(
             transfer_key.public_key(), payload, signature
         ),
+    )
+    transfer_failures = _exercise_transfer_failures(
+        transfer, transfer_key.public_key()
     )
     decrypted = decrypt_transfer_set(
         verified, output / "offline-staging", site_id=SITE_ID,
@@ -557,6 +692,103 @@ def run_rehearsal(output: Path) -> Dict[str, Any]:
     active_after_restart = restarted.current()
     _write_json(evidence / "activation-receipt.json", receipt.to_dict())
 
+    activation_rejection = _exercise_activation_rejection(restarted, intake_package)
+    recovery_key = Ed25519PrivateKey.generate()
+    recovery_public_key = output / "recovery-public-key.pem"
+    recovery_public_key.write_bytes(recovery_key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ))
+    recovery_authorization = {
+        "schema_version": "1.0.0",
+        "record_type": "recovery_authorization",
+        "authorization_id": "00000000-0000-4000-8000-000000000006",
+        "nonce": "c3ludGhldGljLXJlY292ZXJ5LTAwMDY",
+        "event_id": EVENT_ID,
+        "site_id": SITE_ID,
+        "target": {"digest": recovery_digest, "sequence": SEQUENCE - 1},
+        "current": {"digest": release_digest, "sequence_floor": SEQUENCE},
+        "reason_code": "synthetic-drill-recovery",
+        "incident_reference": "SYNTHETIC-DRILL-RECOVERY-0006",
+        "issuer": {"issuer_id": "synthetic-recovery-authority", "trust_generation": 1},
+        "approvers": [
+            {
+                "approver_id": "synthetic-incident-commander",
+                "role": "incident-commander",
+                "independence_group": "field-operations",
+            },
+            {
+                "approver_id": "synthetic-safety-reviewer",
+                "role": "safety-reviewer",
+                "independence_group": "safety-office",
+            },
+        ],
+        "validity": {
+            "not_before": "2026-10-06T18:00:00Z",
+            "expires_at": "2026-10-06T20:00:00Z",
+            "maximum_offline_seconds": 7200,
+            "allow_anchored_time": True,
+        },
+        "policy": {"serving_allowed": True, "blocked_safety_classes": []},
+    }
+    authorization_payload = json.dumps(
+        recovery_authorization, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    recovery_authorization["signature"] = {
+        "key_id": "synthetic-recovery-key-2026",
+        "algorithm": "Ed25519",
+        "value": base64.b64encode(recovery_key.sign(authorization_payload)).decode("ascii"),
+    }
+    _write_json(evidence / "recovery-authorization.json", recovery_authorization)
+    verified_recovery = verify_recovery_authorization(
+        recovery_authorization,
+        expected_event_id=EVENT_ID,
+        expected_site_id=SITE_ID,
+        expected_target_digest=recovery_digest,
+        expected_target_sequence=SEQUENCE - 1,
+        current_digest=release_digest,
+        sequence_floor=SEQUENCE,
+        trusted_key_id="synthetic-recovery-key-2026",
+        trusted_public_key_path=recovery_public_key,
+        trust_generation=1,
+        used_replay_markers=restarted.current()["used_recovery_authorizations"],
+        time_confidence="trusted",
+        now=datetime(2026, 10, 6, 18, 10, tzinfo=timezone.utc),
+    )
+    recovery_receipt = restarted.recover_exceptionally(
+        ReleaseCandidate(recovery_digest, SEQUENCE - 1, recovery_package),
+        verified_recovery,
+    )
+    _write_json(evidence / "recovery-activation-receipt.json", recovery_receipt.to_dict())
+    recovery_restart = CorpusActivationManager(
+        output / "activation", node_id="lil-evy-synthetic-001",
+        cluster_id="synthetic-cluster-001", site_id=SITE_ID,
+        trusted_public_key_path=release_public_key, expected_event_id=EVENT_ID,
+        expected_version=VERSION, policy_digest=event_policy_subject_digest(policy),
+        runtime_identity=manager.runtime_identity, time_confidence="trusted",
+        receipt_signer=manager.receipt_signer,
+    ).current()
+    authorized_recovery = {
+        "passed": (
+            recovery_receipt.result == "recovered"
+            and recovery_restart["active_digest"] == recovery_digest
+            and recovery_restart["active_sequence"] == SEQUENCE - 1
+            and recovery_restart["sequence_floor"] == SEQUENCE
+            and recovery_restart["mode"] == "recovery"
+        ),
+        "result": recovery_receipt.result,
+        "authorization_id": verified_recovery.authorization_id,
+        "authorization_time_basis": verified_recovery.time_basis,
+        "target_digest": recovery_digest,
+        "active_sequence": recovery_restart["active_sequence"],
+        "sequence_floor": recovery_restart["sequence_floor"],
+        "mode": recovery_restart["mode"],
+        "restart_persistence": (
+            "PASS" if recovery_restart["active_digest"] == recovery_digest else "FAIL"
+        ),
+    }
+    if not authorized_recovery["passed"]:
+        raise RehearsalError("authorized recovery did not persist its exact target")
+
     current_document = next(
         document for document in documents if document["document_id"] == "doc-evacuation-r4-current"
     )
@@ -582,6 +814,12 @@ def run_rehearsal(output: Path) -> Dict[str, Any]:
                 "PASS" if active_after_restart["active_digest"] == release_digest else "FAIL"
             ),
             "answer_behavior": answer_behavior,
+            "negative_scenarios": {
+                "release_signature_failure": signature_failure,
+                **transfer_failures,
+                "activation_rejection": activation_rejection,
+                "authorized_recovery": authorized_recovery,
+            },
         },
         "hardware_cut": {
             "status": "NOT_RUN",
@@ -593,6 +831,7 @@ def run_rehearsal(output: Path) -> Dict[str, Any]:
         },
         "artifacts": {
             "candidate_package": str(package.relative_to(output)),
+            "recovery_candidate_package": str(recovery_package.relative_to(output)),
             "evidence": str(evidence.relative_to(output)),
             "encrypted_transfer": str(transfer.relative_to(output)),
             "offline_staging": str(decrypted.relative_to(output)),

@@ -45,6 +45,23 @@ def test_one_command_rehearses_governed_release_without_claiming_hardware_cut(tm
     assert software["answer_behavior"]["no_answer_refusal"] == {
         "passed": True, "mode": "refused_emergency_grounding"
     }
+    negative = software["negative_scenarios"]
+    assert negative["release_signature_failure"]["passed"] is True
+    assert negative["release_signature_failure"]["rejected"] is True
+    assert negative["ciphertext_tamper"]["passed"] is True
+    assert negative["ciphertext_tamper"]["rejected"] is True
+    assert negative["interrupted_transfer"]["passed"] is True
+    assert negative["interrupted_transfer"]["rejected"] is True
+    assert negative["activation_rejection"] == {
+        "passed": True,
+        "rejected": True,
+        "reason_code": "SEQUENCE_ROLLBACK",
+        "active_digest_unchanged": software["candidate_release_digest"],
+    }
+    assert negative["authorized_recovery"]["passed"] is True
+    assert negative["authorized_recovery"]["result"] == "recovered"
+    assert negative["authorized_recovery"]["authorization_time_basis"] == "trusted"
+    assert negative["authorized_recovery"]["restart_persistence"] == "PASS"
     assert summary["hardware_cut"]["status"] == "NOT_RUN"
     assert summary["hardware_cut"]["evidence_class"] == "NO_HARDWARE_EVIDENCE"
     assert {"physical GSM/SMS modem", "physical LoRa radio", "battery/solar runtime"}.issubset(
@@ -65,6 +82,7 @@ def test_rehearsal_uses_exact_contracts_package_and_offline_activation_state(tmp
         ("evaluation-attestation.json", "evaluation_attestation"),
         ("release-signing-authorization.json", "release_signing_authorization"),
         ("activation-receipt.json", "activation_receipt"),
+        ("recovery-activation-receipt.json", "activation_receipt"),
     ):
         validate_instance(json.loads((evidence / filename).read_text()), record_type)
 
@@ -81,10 +99,22 @@ def test_rehearsal_uses_exact_contracts_package_and_offline_activation_state(tmp
     assert "doc-shelter-r5-distractor" not in packaged_documents
 
     active = json.loads((output / "activation" / "current.json").read_text())
-    assert active["active_digest"] == summary["software_evidence"]["candidate_release_digest"]
-    assert active["active_sequence"] == 7
+    recovery = summary["software_evidence"]["negative_scenarios"]["authorized_recovery"]
+    assert active["active_digest"] == recovery["target_digest"]
+    assert active["active_sequence"] == 6
     assert active["sequence_floor"] == 7
-    assert active["mode"] == "production"
+    assert active["mode"] == "recovery"
+    assert active["used_recovery_authorizations"] == [
+        "authorization:00000000-0000-4000-8000-000000000006",
+        "nonce:c3ludGhldGljLXJlY292ZXJ5LTAwMDY",
+    ]
+    assert active["recovery_serving_policy"]["blocked_safety_classes"] == []
+
+    recovery_package = output / summary["artifacts"]["recovery_candidate_package"]
+    assert (recovery_package / "manifest.sig").is_file()
+    assert recovery["target_digest"] == (
+        "sha256:" + hashlib.sha256((recovery_package / "manifest.json").read_bytes()).hexdigest()
+    )
 
 
 def test_rehearsal_output_is_immutable_and_exact_candidate_is_reproducible(tmp_path):
