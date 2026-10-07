@@ -51,8 +51,11 @@ For a confidential release, Big EVY:
 1. generates a new random 256-bit content-encryption key for that release;
 2. encrypts each confidential OCI payload layer independently with AES-256-GCM
    and a fresh random 96-bit nonce that is never reused with the key;
-3. binds the release UUID, layer media type, plaintext digest, ciphertext
-   digest, and layer ordinal as authenticated additional data;
+3. binds the release UUID, layer media type, plaintext digest, and layer
+   ordinal as authenticated additional data; the signed outer manifest binds
+   the complete ciphertext digest (putting that digest inside its own AEAD AAD
+   would be circular because the authentication tag is part of the
+   ciphertext);
 4. wraps the content-encryption key separately for every authorized site using
    HPKE RFC 9180 with X25519, HKDF-SHA256, and AES-256-GCM; and
 5. signs the ciphertext OCI artifact digest and envelope metadata.
