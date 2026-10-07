@@ -1,6 +1,12 @@
 """Tests for the LLM-independent retrieval evaluation metrics."""
 
-from tests.evaluation.run_retrieval_eval import _percentile, score_query
+import yaml
+
+from tests.evaluation.run_retrieval_eval import (
+    _percentile,
+    load_retrieval_specs,
+    score_query,
+)
 
 
 def test_score_query_measures_evidence_recall_and_rank():
@@ -33,3 +39,21 @@ def test_score_query_reports_missing_evidence():
 def test_percentile_uses_nearest_rank():
     assert _percentile([40.0, 10.0, 30.0, 20.0], 0.50) == 20.0
     assert _percentile([40.0, 10.0, 30.0, 20.0], 0.95) == 40.0
+
+
+def test_retrieval_scope_excludes_stateful_application_commands(tmp_path):
+    path = tmp_path / "queries.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "retrieval_categories": ["venue"],
+                "eval_queries": [
+                    {"id": "venue", "category": "venue"},
+                    {"id": "command", "category": "treasure_hunt"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert [item["id"] for item in load_retrieval_specs(path)] == ["venue"]

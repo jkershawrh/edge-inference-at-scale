@@ -11,6 +11,7 @@ def _expected():
         "llm_provider": "bitnet",
         "llm_model": "bitnet-2b4t",
         "corpus_digest": "sha256:" + "a" * 64,
+        "corpus_manifest_digest": "sha256:" + "c" * 64,
         "corpus_mode": "activation",
         "event_id": "summit-connect",
         "version": "2026.1",
@@ -104,6 +105,10 @@ def test_signed_packaged_corpus_can_qualify_lab_edd():
         "event": {"id": expected["event_id"]},
         "corpus": {"version": expected["version"]},
     }
+    snapshot["rag_stats"]["corpus_identity"] = {
+        "digest": expected["corpus_manifest_digest"],
+        "sequence": None,
+    }
     snapshot["resolved_images"] = [
         {
             "name": "install-corpus",
@@ -112,3 +117,29 @@ def test_signed_packaged_corpus_can_qualify_lab_edd():
     ]
 
     assert evaluate_snapshot(snapshot, expected) == ("GREEN", [])
+
+
+def test_packaged_corpus_manifest_drift_is_red():
+    expected = _expected()
+    expected["corpus_mode"] = "packaged"
+    snapshot = _snapshot()
+    snapshot["config"]["CORPUS_MODE"] = "packaged"
+    snapshot["rag_stats"]["corpus"] = {
+        "event": {"id": expected["event_id"]},
+        "corpus": {"version": expected["version"]},
+    }
+    snapshot["rag_stats"]["corpus_identity"] = {
+        "digest": "sha256:" + "d" * 64,
+        "sequence": None,
+    }
+    snapshot["resolved_images"] = [
+        {
+            "name": "install-corpus",
+            "image_id": "quay.io/example/corpus@{0}".format(expected["corpus_digest"]),
+        }
+    ]
+
+    status, reasons = evaluate_snapshot(snapshot, expected)
+
+    assert status == "RED"
+    assert "live corpus manifest does not match CORPUS_MANIFEST_DIGEST" in reasons

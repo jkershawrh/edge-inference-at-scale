@@ -73,6 +73,7 @@ def test_matrix_has_ordered_gates_and_executable_profiles():
         "EDGE_RELEASE",
         "EDGE_API_URL",
         "CORPUS_DIGEST",
+        "CORPUS_MANIFEST_DIGEST",
         "CORPUS_MODE",
         "CORPUS_EVENT_ID",
         "CORPUS_VERSION",

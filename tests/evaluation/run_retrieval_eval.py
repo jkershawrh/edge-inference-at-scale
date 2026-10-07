@@ -81,9 +81,22 @@ def score_query(spec: Dict[str, Any], documents: List[str]) -> Dict[str, Any]:
     }
 
 
+def load_retrieval_specs(path: Path = QUERY_FILE) -> List[Dict[str, Any]]:
+    """Select only queries whose answers are owned by the corpus retriever."""
+    with open(path, "r", encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    categories = set(config.get("retrieval_categories") or [])
+    if not categories:
+        raise ValueError("retrieval_categories must explicitly define retrieval scope")
+    return [
+        spec
+        for spec in config.get("eval_queries", [])
+        if spec.get("category") in categories
+    ]
+
+
 def main() -> int:
-    with open(QUERY_FILE, "r", encoding="utf-8") as handle:
-        specs = yaml.safe_load(handle).get("eval_queries", [])
+    specs = load_retrieval_specs()
 
     results = []
     try:

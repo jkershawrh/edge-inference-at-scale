@@ -127,12 +127,17 @@ def evaluate_snapshot(
             reasons.append("active corpus digest does not match CORPUS_DIGEST")
     elif expected["corpus_mode"] == "packaged":
         corpus = rag_stats.get("corpus") or {}
+        corpus_identity = rag_stats.get("corpus_identity") or {}
         if config.get("CORPUS_REQUIRE_SIGNATURE", "").lower() != "true":
             reasons.append("packaged corpus signature enforcement is not enabled")
         if (corpus.get("event") or {}).get("id") != expected["event_id"]:
             reasons.append("live corpus event does not match CORPUS_EVENT_ID")
         if (corpus.get("corpus") or {}).get("version") != expected["version"]:
             reasons.append("live corpus version does not match CORPUS_VERSION")
+        if corpus_identity.get("digest") != expected["corpus_manifest_digest"]:
+            reasons.append(
+                "live corpus manifest does not match CORPUS_MANIFEST_DIGEST"
+            )
         resolved = snapshot.get("resolved_images") or []
         corpus_image = next(
             (item for item in resolved if item.get("name") == "install-corpus"), None
@@ -230,6 +235,7 @@ def main() -> int:
         "api_url": os.environ.get("EDGE_API_URL", ""),
         "profile": os.environ.get("EDGE_RESOURCE_PROFILE", ""),
         "corpus_digest": os.environ.get("CORPUS_DIGEST", ""),
+        "corpus_manifest_digest": os.environ.get("CORPUS_MANIFEST_DIGEST", ""),
         "corpus_mode": os.environ.get("CORPUS_MODE", ""),
         "event_id": os.environ.get("CORPUS_EVENT_ID", ""),
         "version": os.environ.get("CORPUS_VERSION", ""),

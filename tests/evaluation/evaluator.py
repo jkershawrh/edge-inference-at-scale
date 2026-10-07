@@ -29,6 +29,7 @@ DEFAULT_WEIGHTS = {
 }
 
 PASS_THRESHOLD = 0.5
+FACT_THRESHOLD = 0.5
 SMS_MAX_CHARS = 160
 
 
@@ -46,6 +47,8 @@ class ResponseEvaluator:
             )
         with open(queries_file, "r") as fh:
             data = yaml.safe_load(fh)
+
+        self.gate = data.get("response_gate") or {}
 
         self.queries: Dict[str, Dict[str, Any]] = {}
         for q in data.get("eval_queries", []):
@@ -89,6 +92,7 @@ class ResponseEvaluator:
         ent_hits = [e for e in expected_ent if e.lower() in response_lower]
         ent_misses = [e for e in expected_ent if e.lower() not in response_lower]
         entity_score = len(ent_hits) / len(expected_ent) if expected_ent else 1.0
+        fact_score = (keyword_score + entity_score) / 2.0
 
         # --- forbidden score ---
         forbidden = spec.get("forbidden_keywords", [])
@@ -134,7 +138,12 @@ class ResponseEvaluator:
             "latency_score": round(latency_score, 4),
             "repetition_score": round(repetition_score, 4),
             "composite_score": round(composite, 4),
-            "pass": composite >= PASS_THRESHOLD,
+            "fact_score": round(fact_score, 4),
+            "pass": (
+                composite >= PASS_THRESHOLD
+                and fact_score >= float(self.gate.get("min_fact_score", FACT_THRESHOLD))
+                and forbidden_score == 1.0
+            ),
             "details": {
                 "keyword_hits": kw_hits,
                 "keyword_misses": kw_misses,
@@ -232,6 +241,18 @@ class ResponseEvaluator:
             cat: round(sum(scores) / len(scores), 4)
             for cat, scores in category_scores.items()
         }
+        category_pass_rates = {}
+        for category in category_scores:
+            category_results = [
+                result
+                for item, result in zip(responses, results)
+                if self.queries[item["query_id"]].get("category", "unknown") == category
+            ]
+            category_pass_rates[category] = round(
+                sum(1 for result in category_results if result["pass"])
+                / len(category_results),
+                4,
+            )
 
         return {
             "total_queries": len(results),
@@ -242,5 +263,6 @@ class ResponseEvaluator:
             "avg_keyword_score": round(avg_keyword, 4),
             "avg_latency_ms": round(avg_latency, 2),
             "category_scores": cat_avg,
+            "category_pass_rates": category_pass_rates,
             "results": results,
         }
