@@ -36,6 +36,7 @@ def _export(tmp_path: Path, name="transfer", sequence=7, signer=None):
         sequence=sequence,
         classification="restricted",
         manifest_signer=signer,
+        allow_unencrypted_lab=True,
     )
 
 

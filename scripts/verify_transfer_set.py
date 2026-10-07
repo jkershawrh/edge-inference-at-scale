@@ -9,7 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from corpus_factory.distribution import DistributionError, verify_transfer_set
+from corpus_factory.distribution import (
+    DistributionError,
+    decrypt_transfer_set,
+    verify_transfer_set,
+)
 
 
 def _ed25519_verifier(public_key_path: Path):
@@ -30,6 +34,16 @@ def _ed25519_verifier(public_key_path: Path):
     return verify
 
 
+def _x25519_private_key(private_key_path: Path):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
+    key = serialization.load_pem_private_key(private_key_path.read_bytes(), password=None)
+    if not isinstance(key, X25519PrivateKey):
+        raise ValueError("transfer decryption key must be X25519")
+    return key
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("transfer_set", type=Path)
@@ -45,7 +59,16 @@ def main() -> int:
         action="store_true",
         help="lab-only integrity check without authenticity verification",
     )
+    parser.add_argument(
+        "--decrypt-to", type=Path,
+        help="decrypt a verified encrypted transfer into a new restrictive staging directory",
+    )
+    parser.add_argument("--decryption-key", type=Path, help="site X25519 private key in PEM")
+    parser.add_argument("--recipient-key-id", help="expected site encryption key ID")
     args = parser.parse_args()
+    decryption_options = (args.decrypt_to, args.decryption_key, args.recipient_key_id)
+    if any(decryption_options) and not all(decryption_options):
+        parser.error("--decrypt-to, --decryption-key, and --recipient-key-id must be used together")
     try:
         verifier = _ed25519_verifier(args.public_key) if args.public_key else None
         verified = verify_transfer_set(
@@ -58,6 +81,14 @@ def main() -> int:
             signature_verifier=verifier,
             require_signature=not args.allow_unsigned,
         )
+        if args.decrypt_to:
+            decrypt_transfer_set(
+                verified,
+                args.decrypt_to,
+                site_id=args.site_id,
+                recipient_key_id=args.recipient_key_id,
+                private_key=_x25519_private_key(args.decryption_key),
+            )
     except (DistributionError, OSError, ValueError) as exc:
         print("transfer verification failed: {0}".format(exc), file=sys.stderr)
         return 1
@@ -66,6 +97,7 @@ def main() -> int:
         "manifest_digest": verified.manifest_digest,
         "media_id": verified.manifest["media_id"],
         "sequence": verified.manifest["sequence"],
+        "decrypted_to": str(args.decrypt_to.resolve()) if args.decrypt_to else None,
     }, sort_keys=True))
     return 0
 
