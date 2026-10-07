@@ -92,6 +92,13 @@ lint: ## Lint Python and Helm
 		--set rag.corpus.image=registry.example/corpus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
 		--set rag.corpus.requireSignature=true \
 		--set rag.corpus.publicKeySecretName=corpus-signing-key >/dev/null
+	@$(HELM) template field-rag-only chart/ \
+		-f chart/profiles/values-field-rag-only.yaml \
+		--set rag.corpus.enabled=true \
+		--set rag.corpus.image=registry.example/corpus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+		--set rag.corpus.requireSignature=true \
+		--set rag.corpus.publicKeySecretName=corpus-signing-key \
+		| grep -q 'GENERATION_ENABLED: "false"'
 	@echo "Lint complete"
 
 # ── Build ─────────────────────────────────────────────────────────────

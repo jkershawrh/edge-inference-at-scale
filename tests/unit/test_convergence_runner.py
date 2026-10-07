@@ -78,6 +78,7 @@ def test_matrix_has_ordered_gates_and_executable_profiles():
         "CORPUS_EVENT_ID",
         "CORPUS_VERSION",
         "EMBEDDING_MODEL",
+        "GENERATION_ENABLED",
         "LLM_PROVIDER",
         "LLM_MODEL",
         "EDGE_RESOURCE_PROFILE",

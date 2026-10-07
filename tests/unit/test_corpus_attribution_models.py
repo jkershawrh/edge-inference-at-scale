@@ -42,3 +42,16 @@ def test_answer_attribution_accepts_packaged_corpus_digest() -> None:
 
     assert attribution.active_corpus_digest == _DIGEST
     assert attribution.active_corpus_sequence is None
+
+
+def test_answer_attribution_accepts_generation_disabled_refusal() -> None:
+    attribution = AnswerAttribution(
+        channel=MessageChannel.SMS,
+        retrieval_status="grounded",
+        response_mode="refused_generation_disabled",
+        grounded=False,
+        active_corpus_digest=_DIGEST,
+        evidence=[{"document_id": "shelter-1", "score": 0.39}],
+    )
+
+    assert attribution.grounded is False

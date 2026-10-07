@@ -33,10 +33,13 @@ class APIGateway:
         self.services = {
             "sms-gateway": os.getenv("SMS_GATEWAY_URL", settings.sms_gateway_url),
             "message-router": os.getenv("MESSAGE_ROUTER_URL", settings.message_router_url),
-            "llm-inference": os.getenv("LLM_INFERENCE_URL", settings.llm_inference_url),
             "rag-service": os.getenv("RAG_SERVICE_URL", settings.rag_service_url),
             "privacy-filter": os.getenv("PRIVACY_FILTER_URL", settings.privacy_filter_url),
         }
+        if settings.generation_enabled:
+            self.services["llm-inference"] = os.getenv(
+                "LLM_INFERENCE_URL", settings.llm_inference_url
+            )
         self.client: httpx.AsyncClient | None = None
 
     async def initialize(self):
@@ -64,6 +67,11 @@ class APIGateway:
         return results
 
     async def proxy(self, service: str, path: str, method: str = "GET", body: dict = None) -> dict:
+        if service not in self.services:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Service {service} is disabled by the deployment profile",
+            )
         url = f"{self.services[service]}/{path.lstrip('/')}"
         try:
             if method == "GET":
@@ -154,7 +162,11 @@ async def health_check():
         service_name="api-gateway",
         status="healthy",
         version="1.0.0",
-        details={"node_id": settings.node_id, "sms_mode": settings.sms_mode},
+        details={
+            "node_id": settings.node_id,
+            "sms_mode": settings.sms_mode,
+            "generation_enabled": settings.generation_enabled,
+        },
     )
 
 

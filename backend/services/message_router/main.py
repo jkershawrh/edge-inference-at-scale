@@ -772,6 +772,14 @@ class MessageRouter:
                 self._set_answer_mode("refused_grounding")
                 self.stats.setdefault("grounding_refusals", 0)
                 self.stats["grounding_refusals"] += 1
+            elif not settings.generation_enabled:
+                # A RAG-only field deployment has no inference service to
+                # fall through to. Weak, oversized, or otherwise ineligible
+                # evidence must fail closed instead of fabricating an answer.
+                response_text = settings.grounding_failure_message
+                self._set_answer_mode("refused_generation_disabled")
+                self.stats.setdefault("generation_disabled_refusals", 0)
+                self.stats["generation_disabled_refusals"] += 1
             elif processed.requires_llm:
                 llm_result = await self.route_to_llm(
                     message.content, context, chat_history=history

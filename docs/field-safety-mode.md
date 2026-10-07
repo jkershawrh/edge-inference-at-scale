@@ -51,3 +51,30 @@ sample conference data operationally appropriate. Before deployment, verify:
 
 The legacy defaults remain available for conference demonstrations and model
 experiments. They must not be used as a field safety profile.
+
+## Retrieval-only field node
+
+When the approved corpus contains complete, response-ready guidance, the
+model-less profile removes the idle generation footprint entirely:
+
+```bash
+helm upgrade --install edge-inference ./chart \
+  -f chart/profiles/values-lab-small.yaml \
+  -f chart/profiles/values-field-rag-only.yaml \
+  --set rag.corpus.enabled=true \
+  --set rag.corpus.image=registry.example/event-corpus@sha256:REPLACE_ME \
+  --set rag.corpus.requireSignature=true \
+  --set rag.corpus.publicKeySecretName=corpus-signing-key
+```
+
+This sets `GENERATION_ENABLED=false`; the chart does not create the BitNet or
+LLM-inference Deployments or Services. Eligible evidence is returned verbatim
+and delivery performs SMS chunking. Weak, missing, or oversized evidence gets a
+bounded grounding refusal. The OpenShift preflight verifies both that the flag
+is false and that generation workloads are absent, so “RAG-only” cannot mean an
+idle model consuming memory in the background.
+
+This profile is appropriate only when corpus authors produce response-ready
+documents and the event evaluation demonstrates adequate coverage. It is not a
+substitute for corpus-quality, stale-data, geography, language, or field-user
+testing.

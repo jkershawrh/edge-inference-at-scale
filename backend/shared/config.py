@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     model_name: str = "bitnet-2b4t"
 
     # Model / LLM
+    generation_enabled: bool = True
     llm_provider: str = "bitnet"
     default_model: str = "bitnet-2b4t"
     embedding_model: str = "all-MiniLM-L6-v2"

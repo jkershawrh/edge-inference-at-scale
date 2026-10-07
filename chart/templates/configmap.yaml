@@ -13,6 +13,7 @@ data:
   CORPUS_EVENT_ID: {{ .Values.rag.corpus.eventId | quote }}
   CORPUS_VERSION: {{ .Values.rag.corpus.version | quote }}
   CORPUS_REQUIRE_SIGNATURE: {{ .Values.rag.corpus.requireSignature | quote }}
+  GENERATION_ENABLED: {{ .Values.generation.enabled | quote }}
   LLM_PROVIDER: {{ .Values.llm.provider | default "bitnet" | quote }}
   LLM_BASE_URL: {{ .Values.llm.baseUrl | default (printf "http://%s-bitnet:8080" .Release.Name) | quote }}
   LLM_MODEL: {{ .Values.llm.model | default .Values.bitnet.model | quote }}

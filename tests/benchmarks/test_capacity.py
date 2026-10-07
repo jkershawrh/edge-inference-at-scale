@@ -177,7 +177,10 @@ def _instrumented_router(rag_delay_ms=50, llm_delay_ms=5000):
             resp.raise_for_status = MagicMock()
             resp.json = MagicMock(return_value={
                 "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-                "scores": [0.65],
+                # Keep the generic capacity fixture LLM-bound regardless of
+                # the selected deployment's RAG-direct threshold. The
+                # dedicated RAG-direct test below supplies high confidence.
+                "scores": [0.0],
             })
             return resp
         elif "/inference" in url:

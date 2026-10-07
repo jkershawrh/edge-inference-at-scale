@@ -1,6 +1,10 @@
 from copy import deepcopy
 
-from scripts.openshift_edd_preflight import EXPECTED_COMPONENTS, evaluate_snapshot
+from scripts.openshift_edd_preflight import (
+    CORE_COMPONENTS,
+    EXPECTED_COMPONENTS,
+    evaluate_snapshot,
+)
 
 
 def _expected():
@@ -8,6 +12,7 @@ def _expected():
         "release": "lil-evy",
         "profile": "lab-small",
         "embedding_model": "all-MiniLM-L6-v2",
+        "generation_enabled": "true",
         "llm_provider": "bitnet",
         "llm_model": "bitnet-2b4t",
         "corpus_digest": "sha256:" + "a" * 64,
@@ -33,6 +38,7 @@ def _snapshot():
         "config": {
             "EDGE_RESOURCE_PROFILE": expected["profile"],
             "EMBEDDING_MODEL": expected["embedding_model"],
+            "GENERATION_ENABLED": expected["generation_enabled"],
             "LLM_PROVIDER": expected["llm_provider"],
             "LLM_MODEL": expected["llm_model"],
             "RAG_GROUNDING_REQUIRED": "true",
@@ -96,6 +102,58 @@ def test_field_safety_must_be_enabled():
     assert status == "RED"
     assert "RAG_GROUNDING_REQUIRED is not true" in reasons
     assert "EMERGENCY_RAG_ENABLED is not true" in reasons
+
+
+def test_rag_only_snapshot_is_green_without_generation_workloads():
+    expected = _expected()
+    expected.update(
+        {
+            "profile": "field-rag-only",
+            "generation_enabled": "false",
+            "llm_provider": "",
+            "llm_model": "",
+        }
+    )
+    snapshot = _snapshot()
+    snapshot["deployments"] = [
+        item
+        for item in snapshot["deployments"]
+        if not item["name"].endswith(("-bitnet", "-llm-inference"))
+    ]
+    assert len(snapshot["deployments"]) == len(CORE_COMPONENTS)
+    snapshot["config"].update(
+        {
+            "EDGE_RESOURCE_PROFILE": "field-rag-only",
+            "GENERATION_ENABLED": "false",
+        }
+    )
+    snapshot.pop("llm_health")
+    snapshot["service_health"].pop("llm-inference")
+
+    assert evaluate_snapshot(snapshot, expected) == ("GREEN", [])
+
+
+def test_rag_only_snapshot_rejects_idle_generation_workloads():
+    expected = _expected()
+    expected["generation_enabled"] = "false"
+    snapshot = _snapshot()
+    snapshot["config"]["GENERATION_ENABLED"] = "false"
+    snapshot["service_health"].pop("llm-inference")
+
+    status, reasons = evaluate_snapshot(snapshot, expected)
+
+    assert status == "RED"
+    assert any("still deploys" in reason for reason in reasons)
+
+
+def test_generation_identity_must_be_boolean():
+    expected = _expected()
+    expected["generation_enabled"] = "sometimes"
+
+    status, reasons = evaluate_snapshot(_snapshot(), expected)
+
+    assert status == "RED"
+    assert "GENERATION_ENABLED declaration must be true or false" in reasons
 
 
 def test_embedding_model_must_be_baked_for_disconnected_startup():

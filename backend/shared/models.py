@@ -120,6 +120,7 @@ class AnswerAttribution(BaseModel):
         "llm_grounded",
         "llm_ungrounded",
         "refused_grounding",
+        "refused_generation_disabled",
         "refused_emergency_grounding",
         "error",
     ]

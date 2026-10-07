@@ -585,3 +585,32 @@ class TestRAGDirectFallback:
         llm_calls = [c for c in call_log if "/inference" in c["url"]]
         assert len(llm_calls) == 1, "LLM should be called when RAG has no docs"
         assert response == "No docs, LLM handles it"
+
+    @pytest.mark.asyncio
+    async def test_rag_only_profile_refuses_weak_evidence_without_calling_llm(self):
+        call_log = self._mock_http_client(
+            rag_docs=["Possibly related but below the deployment threshold"],
+            rag_scores=[0.39],
+        )
+
+        with patch.object(settings, "generation_enabled", False):
+            response = await self.router.process_message(
+                _make_sms("Where is the nearest verified shelter?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == settings.grounding_failure_message
+        assert self.router.stats["generation_disabled_refusals"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rag_only_profile_still_returns_eligible_evidence(self):
+        doc = "Verified shelter: North School, 12 River Road."
+        call_log = self._mock_http_client(rag_docs=[doc], rag_scores=[0.9])
+
+        with patch.object(settings, "generation_enabled", False):
+            response = await self.router.process_message(
+                _make_sms("Where is the verified shelter?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == doc

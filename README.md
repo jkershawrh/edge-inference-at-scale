@@ -136,6 +136,13 @@ For disaster, rural, or conflict-zone behavior, also apply
 and routes emergency questions through approved local RAG evidence. See
 [docs/field-safety-mode.md](docs/field-safety-mode.md).
 
+For the smallest disconnected footprint, use
+`chart/profiles/values-field-rag-only.yaml` with a signed event corpus. This
+profile removes both the model server and LLM adapter, lowers the direct-answer
+threshold to the approved evidence floor, and refuses anything the corpus
+cannot support. Generation remains enabled by default so BitNet and other
+candidate models can still be evaluated as controlled fallbacks.
+
 Use the controlled experiment runner in
 [docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare BitNet
 and candidate runtimes without accidentally changing the corpus, embeddings,

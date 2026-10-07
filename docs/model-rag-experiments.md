@@ -86,6 +86,7 @@ export CORPUS_MODE=packaged # use activation for an activated Lil EVY release
 export CORPUS_EVENT_ID=summit-connect
 export CORPUS_VERSION=2026.1
 export EMBEDDING_MODEL=all-MiniLM-L6-v2
+export GENERATION_ENABLED=true
 export LLM_PROVIDER=bitnet
 export LLM_MODEL=bitnet-2b4t
 export CHANNEL_DRIVER=simulator
@@ -99,6 +100,11 @@ or copied to the release record. A missing workload, identity mismatch,
 unhealthy service, unavailable model, inactive corpus, or disabled field-safety
 setting is RED. OpenShift results remain AMBER for physical GSM, radio, power,
 thermal, and human field qualification.
+
+For `field-rag-only`, set `GENERATION_ENABLED=false`. The convergence record
+still declares `LLM_PROVIDER` and `LLM_MODEL` as the controlled comparison
+candidate, but preflight requires the live generation Deployments to be absent
+and does not probe `/llm/health`.
 
 `CORPUS_MODE=packaged` accepts only a signature-enforced package whose resolved
 init-container image digest, event, and version match the declaration.

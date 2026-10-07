@@ -4,6 +4,11 @@
 
 deploymentProfile: default
 
+# Disable this for a retrieval-only field node. The chart then omits both the
+# model server and its inference adapter rather than leaving idle resources.
+generation:
+  enabled: true
+
 bitnet:
   image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
   model: bitnet-2b4t

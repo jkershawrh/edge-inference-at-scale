@@ -1,3 +1,4 @@
+{{- if .Values.generation.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,3 +63,4 @@ spec:
             limits:
               cpu: {{ .Values.bitnet.resources.limits.cpu | quote }}
               memory: {{ .Values.bitnet.resources.limits.memory }}
+{{- end }}
