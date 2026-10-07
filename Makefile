@@ -8,7 +8,7 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-corpus-mcp test-evaluation-attestation test-audit-anchor test-connected-acquisition test-corpus-audit test-corpus-suitability test-corpus-sourcing test-unit test-integration test-benchmarks \
+.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-corpus-mcp test-evaluation-attestation test-audit-anchor test-connected-acquisition test-corpus-audit test-corpus-suitability test-corpus-sourcing test-hardware-sizing hardware-plan test-unit test-integration test-benchmarks \
         test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
@@ -43,6 +43,14 @@ test-corpus-suitability: ## Prove the synthetic event is incomplete-then-correct
 
 test-corpus-sourcing: ## Plan the bounded Summit source set and expose explicit gaps
 	$(PYTEST) tests/integration/test_summit_sourcing_reference.py -v --tb=short
+
+test-hardware-sizing: ## Validate resource, storage, battery, and solar sizing
+	$(PYTEST) tests/unit/test_hardware_sizing.py -v --tb=short
+
+hardware-plan: ## Build the pre-hardware estimate from declared observations
+	$(PYTHON) scripts/plan_hardware.py \
+		--input hardware/examples/openshift-estimate.json \
+		--output artifacts/hardware-sizing-estimate.json
 
 # ── Stage 1: Unit (TDD) ──────────────────────────────────────────────
 test-unit: ## Stage 1 — Unit tests (no external services)

@@ -149,6 +149,11 @@ Use the controlled experiment runner in
 and candidate runtimes without accidentally changing the corpus, embeddings,
 evaluation set, retrieval depth, or resource envelope.
 
+Use the evidence-labeled [hardware sizing pipeline](docs/hardware-sizing.md) to
+turn those OpenShift observations into preliminary CPU, memory, storage,
+battery, solar, and DC-supply envelopes. Quota-derived results remain
+`ESTIMATED_ONLY` until exact-board measurements are collected.
+
 For two-way conversational testing before GSM hardware is available, use the
 signed Discord `/ask` adapter described in
 [docs/discord-testing.md](docs/discord-testing.md). Discord is only a development
@@ -244,6 +249,8 @@ make test-corpus-sourcing
 make test-corpus-mcp
 make test-evaluation-attestation
 make test-audit-anchor
+make test-hardware-sizing
+make hardware-plan
 python scripts/plan_corpus_coverage.py --help
 python scripts/plan_corpus_sourcing.py --help
 python scripts/build_summit_lineage.py --help

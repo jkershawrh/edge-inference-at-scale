@@ -157,7 +157,7 @@ Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edg
 | RAM | 16 GB total | BitNet model (~400MB) + ChromaDB ONNX (~200MB) + services + OS |
 | Storage | 20 GB | OS + containers + RAG corpus + Redis AOF |
 | Network | 2G cellular (GSM) or ethernet | SMS in/out |
-| Power | 25-45W | Solar viable for field deployment |
+| Power | 25-45W planning range | Estimate only; measure the complete node before battery or solar sizing |
 
 **Service allocation within the micronode:**
 
@@ -187,7 +187,7 @@ Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edg
 | RAM | 4-6 GB | BitNet model (~400MB) + embeddings (~200MB) + services + OS |
 | Storage | 32 GB | OS image + container images + RAG corpus + Redis AOF |
 | Network | 2G cellular (GSM) or ethernet | SMS in/out; management plane sync when available |
-| Power | 15-50W | Solar viable for field deployment |
+| Power | 15-50W planning range | Estimate only; solar suitability requires exact-device CUT evidence |
 
 ### bigEVY (Central Node) — Optional
 
