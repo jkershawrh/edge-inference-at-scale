@@ -235,6 +235,8 @@ def export_transfer_set(
     site_id: str, sequence: int, classification: str,
     manifest_signer: Optional[ManifestSigner] = None,
     allow_unencrypted_lab: bool = False,
+    require_governed_release: bool = False,
+    governed_release_verifier: Any = None,
 ) -> Path:
     """Create a plaintext transfer set only under an explicit public/lab policy."""
     if classification != "public" and not allow_unencrypted_lab:
@@ -244,6 +246,13 @@ def export_transfer_set(
     output = Path(output)
     if output.exists():
         raise FileExistsError("immutable transfer set already exists: %s" % output)
+    if require_governed_release:
+        if governed_release_verifier is None:
+            raise DistributionError("governed transfer requires a trusted release verifier")
+        try:
+            governed_release_verifier.verify(artifacts["corpus"], artifacts["signature_bundle"])
+        except Exception as exc:
+            raise DistributionError("governed release evidence verification failed") from exc
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest = build_transfer_manifest(
         artifacts, media_id=media_id, event_id=event_id, site_id=site_id,
@@ -288,6 +297,8 @@ def export_encrypted_transfer_set(
     site_id: str, sequence: int, classification: str,
     recipient: EncryptionRecipient,
     manifest_signer: Optional[ManifestSigner] = None,
+    require_governed_release: bool = False,
+    governed_release_verifier: Any = None,
 ) -> Path:
     """Create a signed-ready, site-bound AES-256-GCM/HPKE transfer set.
 
@@ -308,6 +319,13 @@ def export_encrypted_transfer_set(
         raise DistributionError("sequence must be a positive integer")
     if set(artifacts) != set(REQUIRED_ARTIFACTS):
         raise DistributionError("transfer set must declare exactly the required artifacts")
+    if require_governed_release:
+        if governed_release_verifier is None:
+            raise DistributionError("governed transfer requires a trusted release verifier")
+        try:
+            governed_release_verifier.verify(artifacts["corpus"], artifacts["signature_bundle"])
+        except Exception as exc:
+            raise DistributionError("governed release evidence verification failed") from exc
     output = Path(output)
     if output.exists():
         raise FileExistsError("immutable transfer set already exists: %s" % output)
@@ -414,6 +432,8 @@ def verify_transfer_set(
     used_media_ids: Sequence[str] = (),
     signature_verifier: Optional[ManifestSignatureVerifier] = None,
     require_signature: bool = True,
+    governed_release_verifier: Any = None,
+    require_governed_release: bool = False,
 ) -> VerifiedTransferSet:
     """Verify closed-world contents, integrity, scope, replay, and optional signature."""
     root = Path(root)
@@ -478,6 +498,15 @@ def verify_transfer_set(
         if path.stat().st_size != record["size"] or _sha256(path) != hexdigest:
             raise DistributionError("artifact integrity check failed: %s" % record["name"])
         expected_blobs.add(hexdigest)
+    if require_governed_release:
+        if governed_release_verifier is None:
+            raise DistributionError("governed transfer requires a trusted release verifier")
+        if manifest["schema_version"] == SCHEMA_VERSION:
+            records = {item["name"]: root / item["path"] for item in manifest["artifacts"]}
+            try:
+                governed_release_verifier.verify(records["corpus"], records["signature_bundle"])
+            except Exception as exc:
+                raise DistributionError("governed release evidence verification failed") from exc
     signature_path = root / "transfer-manifest.sig"
     if require_signature and signature_verifier is None:
         raise DistributionError("a trusted transfer signature verifier is required")
@@ -604,6 +633,8 @@ def import_transfer_set(
     allowed_classifications: Set[str],
     signature_verifier: Optional[ManifestSignatureVerifier] = None,
     require_signature: bool = True,
+    governed_release_verifier: Any = None,
+    require_governed_release: bool = False,
 ) -> Path:
     """Verify then atomically copy a transfer set into a site content-addressed inbox."""
     _validate_id("expected event ID", expected_event_id)
@@ -623,6 +654,8 @@ def import_transfer_set(
         sequence_floor=state["sequence_floor"], used_media_ids=state["used_media_ids"],
         signature_verifier=signature_verifier,
         require_signature=require_signature,
+        governed_release_verifier=governed_release_verifier,
+        require_governed_release=require_governed_release,
     )
     target = site_root / "transfers" / verified.manifest_digest.split(":", 1)[1]
     if target.exists():
@@ -635,6 +668,8 @@ def import_transfer_set(
             used_media_ids=state["used_media_ids"],
             signature_verifier=signature_verifier,
             require_signature=require_signature,
+            governed_release_verifier=governed_release_verifier,
+            require_governed_release=require_governed_release,
         )
         if stored.manifest_digest != verified.manifest_digest:
             raise DistributionError("stored transfer does not match verified media")
@@ -655,6 +690,8 @@ def import_transfer_set(
 def decrypt_transfer_set(
     verified: VerifiedTransferSet, output: Path, *, site_id: str,
     recipient_key_id: str, private_key: Any,
+    governed_release_verifier: Any = None,
+    require_governed_release: bool = False,
 ) -> Path:
     """Decrypt a previously verified v2 transfer into an atomic staging directory."""
     manifest = verified.manifest
@@ -710,14 +747,37 @@ def decrypt_transfer_set(
                 "size": len(plaintext),
                 "path": "artifacts/" + item["name"],
             })
+        from corpus_factory.governed_distribution import (
+            GOVERNED_PROFILE,
+            candidate_contract_profile,
+            read_candidate_manifest,
+        )
+        artifact_paths = {item["name"]: staging / item["path"] for item in inventory}
+        contract_profile = "legacy-v1"
+        if require_governed_release:
+            contract_profile = candidate_contract_profile(
+                read_candidate_manifest(artifact_paths["corpus"])
+            )
+            if contract_profile != GOVERNED_PROFILE:
+                raise DistributionError("deployment policy requires a governed-v1 corpus")
         record = {
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "record_type": "decrypted_transfer_staging",
             "source_manifest_digest": verified.manifest_digest,
             "scope": manifest["scope"],
             "sequence": manifest["sequence"],
+            "contract_profile": contract_profile,
             "artifacts": inventory,
         }
+        if require_governed_release:
+            if governed_release_verifier is None:
+                raise DistributionError("governed decryption requires a trusted release verifier")
+            try:
+                governed_release_verifier.verify(
+                    artifact_paths["corpus"], artifact_paths["signature_bundle"]
+                )
+            except Exception as exc:
+                raise DistributionError("governed release evidence verification failed") from exc
         record_path = staging / "decryption-record.json"
         record_path.write_bytes(_canonical(record))
         record_path.chmod(0o600)
