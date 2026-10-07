@@ -8,7 +8,7 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-corpus-mcp test-connected-acquisition test-corpus-audit test-corpus-suitability test-corpus-sourcing test-unit test-integration test-benchmarks \
+.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-corpus-mcp test-evaluation-attestation test-connected-acquisition test-corpus-audit test-corpus-suitability test-corpus-sourcing test-unit test-integration test-benchmarks \
         test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
@@ -25,6 +25,9 @@ test-corpus-factory: ## Validate Big EVY contracts, factory core, and promotion 
 
 test-corpus-mcp: ## Validate the constrained Big EVY MCP tools and protocol surface
 	$(PYTEST) tests/corpus_factory/test_mcp_server.py -v --tb=short
+
+test-evaluation-attestation: ## Validate independent evaluation approval and signing handoff
+	$(PYTEST) tests/corpus_factory/test_evaluation_attestation.py -v --tb=short
 
 test-connected-acquisition: ## Validate source registry and bounded HTTPS acquisition
 	$(PYTEST) tests/corpus_factory/test_connected_acquisition.py -v --tb=short

@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/evaluation-attestation.schema.json",
+  "title": "EvaluationAttestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "attestation_id", "subject", "evaluation_executor_identity", "approvals", "lifecycle", "revocation_snapshot", "signer", "signing_key", "signature"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "record_type": {"const": "evaluation_attestation"},
+    "attestation_id": {"$ref": "#/$defs/digest"},
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promotion_report_id", "promotion_report_digest", "release_digest", "contract_profile", "decision", "spec_version"],
+      "properties": {
+        "promotion_report_id": {"$ref": "#/$defs/digest"},
+        "promotion_report_digest": {"$ref": "#/$defs/digest"},
+        "release_digest": {"$ref": "#/$defs/digest"},
+        "contract_profile": {"const": "governed-v1"},
+        "decision": {"const": "PASS"},
+        "spec_version": {"type": "string", "minLength": 1, "maxLength": 32}
+      }
+    },
+    "evaluation_executor_identity": {"type": "string", "minLength": 3, "maxLength": 256},
+    "approvals": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["identity", "role", "organization", "independence_group", "decision", "approved_at", "approval_digest"],
+        "properties": {
+          "identity": {"type": "string", "minLength": 3, "maxLength": 256},
+          "role": {"enum": ["evaluation_owner", "release_approver"]},
+          "organization": {"type": "string", "minLength": 1, "maxLength": 256},
+          "independence_group": {"type": "string", "minLength": 1, "maxLength": 128},
+          "decision": {"const": "approve"},
+          "approved_at": {"type": "string", "format": "date-time"},
+          "approval_digest": {"$ref": "#/$defs/digest"}
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["valid_from", "expires_at"],
+      "properties": {
+        "valid_from": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "revocation_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generation", "checked_at", "attestation_revoked_at", "attestation_revocation_reason", "key_revoked_at", "key_revocation_reason"],
+      "properties": {
+        "generation": {"type": "integer", "minimum": 1},
+        "checked_at": {"type": "string", "format": "date-time"},
+        "attestation_revoked_at": {"type": ["string", "null"], "format": "date-time"},
+        "attestation_revocation_reason": {"type": ["string", "null"], "minLength": 1, "maxLength": 512},
+        "key_revoked_at": {"type": ["string", "null"], "format": "date-time"},
+        "key_revocation_reason": {"type": ["string", "null"], "minLength": 1, "maxLength": 512}
+      }
+    },
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identity", "role", "signed_at"],
+      "properties": {
+        "identity": {"type": "string", "minLength": 3, "maxLength": 256},
+        "role": {"const": "signing_service"},
+        "signed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "signing_key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_id", "role", "algorithm", "valid_from", "expires_at"],
+      "properties": {
+        "key_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "role": {"const": "evaluation-attestation"},
+        "algorithm": {"const": "Ed25519"},
+        "valid_from": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {"type": "string", "pattern": "^[A-Za-z0-9+/]{86}==$"}
+      }
+    }
+  },
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

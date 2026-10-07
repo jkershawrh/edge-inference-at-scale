@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v1/release-signing-authorization.schema.json",
+  "title": "ReleaseSigningAuthorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "candidate_release_digest", "promotion_report", "evaluation_attestation", "release_signature_bindings", "authorization", "authorization_id"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "record_type": {"const": "release_signing_authorization"},
+    "candidate_release_digest": {"$ref": "#/$defs/digest"},
+    "promotion_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["report_id", "digest"],
+      "properties": {"report_id": {"$ref": "#/$defs/digest"}, "digest": {"$ref": "#/$defs/digest"}}
+    },
+    "evaluation_attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attestation_id", "digest", "key_id", "revocation_generation"],
+      "properties": {
+        "attestation_id": {"$ref": "#/$defs/digest"},
+        "digest": {"$ref": "#/$defs/digest"},
+        "key_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "revocation_generation": {"type": "integer", "minimum": 1}
+      }
+    },
+    "release_signature_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evaluation_report_digest", "approval_attestation_digests"],
+      "properties": {
+        "evaluation_report_digest": {"$ref": "#/$defs/digest"},
+        "approval_attestation_digests": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}}
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "required_key_role", "authorized_at", "private_key_available"],
+      "properties": {
+        "action": {"const": "sign_exact_candidate_digest"},
+        "required_key_role": {"const": "corpus-release"},
+        "authorized_at": {"type": "string", "format": "date-time"},
+        "private_key_available": {"const": false}
+      }
+    },
+    "authorization_id": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}}
+}

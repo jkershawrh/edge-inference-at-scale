@@ -242,6 +242,11 @@ def build_package(args: argparse.Namespace) -> Path:
         manifest_path = staging / "manifest.json"
         _write_json(manifest_path, manifest)
 
+        if contract_profile == GOVERNED_PROFILE and args.signing_key:
+            raise ValueError(
+                "governed-v1 candidates must remain unsigned until an independently "
+                "approved evaluation attestation authorizes protected release signing"
+            )
         if args.signing_key:
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey

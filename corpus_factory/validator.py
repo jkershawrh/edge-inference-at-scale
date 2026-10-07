@@ -29,6 +29,8 @@ SCHEMA_BY_RECORD_TYPE = {
     "canonical_document": "canonical-document.schema.json",
     "chunk_record": "chunk-record.schema.json",
     "review_attestation": "review-attestation.schema.json",
+    "evaluation_attestation": "evaluation-attestation.schema.json",
+    "release_signing_authorization": "release-signing-authorization.schema.json",
     "release_manifest": "release-manifest.schema.json",
     "activation_receipt": "activation-receipt.schema.json",
     "event_policy": "event-policy.schema.json",
@@ -228,6 +230,71 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         local = instance["local_validation"]
         if local["required"] and not local["completed"]:
             raise ContractValidationError("required local validation is incomplete")
+    elif record_type == "evaluation_attestation":
+        lifecycle = instance["lifecycle"]
+        _ordered_time_window(lifecycle, "valid_from", "expires_at", "attestation lifecycle")
+        key = instance["signing_key"]
+        _ordered_time_window(key, "valid_from", "expires_at", "attestation key")
+        signed_at = _parse_time(instance["signer"]["signed_at"])
+        valid_from = _parse_time(lifecycle["valid_from"])
+        expires_at = _parse_time(lifecycle["expires_at"])
+        key_valid_from = _parse_time(key["valid_from"])
+        key_expires_at = _parse_time(key["expires_at"])
+        if not valid_from <= signed_at < expires_at:
+            raise ContractValidationError("signing time must be inside attestation validity")
+        if not key_valid_from <= signed_at < key_expires_at:
+            raise ContractValidationError("signing time must be inside attestation key validity")
+        snapshot = instance["revocation_snapshot"]
+        if _parse_time(snapshot["checked_at"]) > signed_at:
+            raise ContractValidationError("revocation snapshot cannot postdate signing")
+        for prefix in ("attestation", "key"):
+            revoked = snapshot[f"{prefix}_revoked_at"]
+            reason = snapshot[f"{prefix}_revocation_reason"]
+            if (revoked is None) != (reason is None):
+                raise ContractValidationError(
+                    f"{prefix} revocation time and reason must be set together"
+                )
+        identities = [item["identity"] for item in instance["approvals"]]
+        groups = [item["independence_group"] for item in instance["approvals"]]
+        roles = {item["role"] for item in instance["approvals"]}
+        if len(identities) != len(set(identities)) or len(groups) != len(set(groups)):
+            raise ContractValidationError("evaluation approvals must be independent")
+        if roles != {"evaluation_owner", "release_approver"}:
+            raise ContractValidationError(
+                "evaluation_owner and release_approver approvals are required"
+            )
+        protected = set(identities)
+        protected.add(instance["evaluation_executor_identity"])
+        if instance["signer"]["identity"] in protected:
+            raise ContractValidationError("signer, executor, and approvers must be distinct")
+        if instance["evaluation_executor_identity"] in identities:
+            raise ContractValidationError("evaluation executor cannot approve its own report")
+        for approval in instance["approvals"]:
+            approved_at = _parse_time(approval["approved_at"])
+            if not valid_from <= approved_at <= signed_at:
+                raise ContractValidationError(
+                    "evaluation approval must occur during validity and before signing"
+                )
+            body = {key: value for key, value in approval.items() if key != "approval_digest"}
+            expected = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                ).encode("utf-8")
+            ).hexdigest()
+            if approval["approval_digest"] != expected:
+                raise ContractValidationError("evaluation approval digest does not match body")
+        body = {
+            key: value
+            for key, value in instance.items()
+            if key not in {"attestation_id", "signature"}
+        }
+        expected_id = "sha256:" + hashlib.sha256(
+            json.dumps(
+                body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        ).hexdigest()
+        if instance["attestation_id"] != expected_id:
+            raise ContractValidationError("attestation_id does not match statement body")
     elif record_type == "release_manifest":
         lifecycle = instance["lifecycle"]
         _ordered_time_window(lifecycle, "created_at", "effective_at", "release lifecycle")
@@ -243,6 +310,15 @@ def _semantic_validate(instance: Mapping[str, Any]) -> None:
         layer_names = [layer["name"] for layer in instance["layers"]]
         if len(layer_names) != len(set(layer_names)):
             raise ContractValidationError("release layer names must be unique")
+    elif record_type == "release_signing_authorization":
+        body = {key: value for key, value in instance.items() if key != "authorization_id"}
+        expected = "sha256:" + hashlib.sha256(
+            json.dumps(
+                body, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode("utf-8")
+        ).hexdigest()
+        if instance["authorization_id"] != expected:
+            raise ContractValidationError("authorization_id does not match authorization body")
     elif record_type == "activation_receipt" and instance["result"] == "success":
         if instance["activated"] != instance["desired"]:
             raise ContractValidationError("successful activation must activate the desired release")

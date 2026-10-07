@@ -226,6 +226,10 @@ approval, signing, publication, or deployment authority. See
 Connected-side MCP clients can inspect that same evidence through four bounded,
 read-only advisory tools without adding MCP to the Lil EVY message path. See
 [docs/corpus-factory-mcp.md](docs/corpus-factory-mcp.md).
+Governed candidates now remain unsigned until an independently approved,
+externally signed evaluation attestation authorizes a protected signer for the
+exact evaluated digest. The repository holds no production private key; see
+[docs/evaluation-attestation.md](docs/evaluation-attestation.md).
 
 ```bash
 make test-corpus-factory
@@ -234,6 +238,7 @@ make test-corpus-audit
 make test-corpus-suitability
 make test-corpus-sourcing
 make test-corpus-mcp
+make test-evaluation-attestation
 python scripts/plan_corpus_coverage.py --help
 python scripts/plan_corpus_sourcing.py --help
 python scripts/build_summit_lineage.py --help

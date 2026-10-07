@@ -168,3 +168,11 @@ def test_legacy_packaging_requires_explicit_profile(tmp_path):
     )
     with pytest.raises(ValueError, match="explicitly select"):
         build_package(args)
+
+
+def test_governed_candidate_rejects_pre_evaluation_private_key_signing(tmp_path):
+    args = _args(tmp_path, _governance_evidence(tmp_path))
+    args.signing_key = str(tmp_path / "production-key.pem")
+
+    with pytest.raises(ValueError, match="must remain unsigned"):
+        build_package(args)
