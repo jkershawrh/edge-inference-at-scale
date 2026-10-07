@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.shared.config import settings
 from backend.shared.models import (
     MessagePriority,
     MessageType,
@@ -78,6 +79,13 @@ class TestClassifyEmergency:
     def test_emergency_does_not_require_llm(self):
         msg = _make_sms("emergency help fire")
         result = self.router.classify_message(msg)
+        assert result.requires_llm is False
+
+    def test_field_emergency_requires_rag_but_never_llm(self):
+        msg = _make_sms("emergency evacuation now")
+        with patch.object(settings, "emergency_rag_enabled", True):
+            result = self.router.classify_message(msg)
+        assert result.requires_rag is True
         assert result.requires_llm is False
 
     def test_emergency_response_text(self):
@@ -282,13 +290,13 @@ class TestRAGContextIncludedInLLMRequest:
         """When RAG returns context below direct threshold, it is included in the LLM request."""
         self.router.http_client = MagicMock()
 
-        # Mock RAG response — score below RAG_DIRECT_THRESHOLD (0.7) so LLM is called
+        # Mock RAG response — score below RAG_DIRECT_THRESHOLD so LLM is called
         rag_response = MagicMock()
         rag_response.status_code = 200
         rag_response.raise_for_status = MagicMock()
         rag_response.json = MagicMock(return_value={
             "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-            "scores": [0.65],
+            "scores": [0.54],
         })
 
         # Mock LLM response
@@ -441,7 +449,13 @@ class TestRAGDirectFallback:
     def setup_method(self):
         self.router = MessageRouter()
 
-    def _mock_http_client(self, rag_docs, rag_scores, llm_response_text="LLM fallback"):
+    def _mock_http_client(
+        self,
+        rag_docs,
+        rag_scores,
+        llm_response_text="LLM fallback",
+        rag_metadata=None,
+    ):
         """Wire up http_client.post to return canned RAG, LLM, and SMS responses.
 
         Returns a call_log list so callers can inspect which URLs were hit.
@@ -455,6 +469,7 @@ class TestRAGDirectFallback:
         rag_response.json = MagicMock(return_value={
             "documents": rag_docs,
             "scores": rag_scores,
+            "metadata": rag_metadata or [{} for _ in rag_docs],
         })
 
         llm_response = MagicMock()
@@ -520,8 +535,8 @@ class TestRAGDirectFallback:
         assert response == doc
 
     @pytest.mark.asyncio
-    async def test_rag_direct_long_doc_calls_llm(self):
-        """Score=0.9 but doc is 200 chars -> too long for SMS, LLM IS called."""
+    async def test_rag_direct_multi_part_doc_skips_llm(self):
+        """Bounded evidence may span SMS parts without involving the LLM."""
         long_doc = "A" * 200
         assert len(long_doc) > 160
         call_log = self._mock_http_client(
@@ -534,7 +549,21 @@ class TestRAGDirectFallback:
         response = await self.router.process_message(msg)
 
         llm_calls = [c for c in call_log if "/inference" in c["url"]]
-        assert len(llm_calls) == 1, "LLM should be called when doc exceeds 160 chars"
+        assert len(llm_calls) == 0
+        assert response == long_doc
+
+    @pytest.mark.asyncio
+    async def test_rag_direct_oversized_doc_calls_llm(self):
+        oversized_doc = "A" * 401
+        call_log = self._mock_http_client(
+            rag_docs=[oversized_doc],
+            rag_scores=[0.9],
+            llm_response_text="Summarised by LLM",
+        )
+
+        response = await self.router.process_message(_make_sms("Tell me everything"))
+
+        assert len([c for c in call_log if "/inference" in c["url"]]) == 1
         assert response == "Summarised by LLM"
 
     @pytest.mark.asyncio
@@ -563,3 +592,67 @@ class TestRAGDirectFallback:
         llm_calls = [c for c in call_log if "/inference" in c["url"]]
         assert len(llm_calls) == 1, "LLM should be called when RAG has no docs"
         assert response == "No docs, LLM handles it"
+
+    @pytest.mark.asyncio
+    async def test_rag_only_profile_refuses_weak_evidence_without_calling_llm(self):
+        call_log = self._mock_http_client(
+            rag_docs=["Possibly related but below the deployment threshold"],
+            rag_scores=[0.39],
+        )
+
+        with patch.object(settings, "generation_enabled", False):
+            response = await self.router.process_message(
+                _make_sms("Where is the nearest verified shelter?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == settings.grounding_failure_message
+        assert self.router.stats["generation_disabled_refusals"] == 1
+
+    @pytest.mark.asyncio
+    async def test_rag_only_profile_still_returns_eligible_evidence(self):
+        doc = "Verified shelter: North School, 12 River Road."
+        call_log = self._mock_http_client(
+            rag_docs=[doc],
+            rag_scores=[0.9],
+            rag_metadata=[
+                {"retrieval_source_scores": {"vector": 0.72, "text": 0.8}}
+            ],
+        )
+
+        with (
+            patch.object(settings, "generation_enabled", False),
+            patch.object(settings, "rag_min_vector_confidence", 0.25),
+        ):
+            response = await self.router.process_message(
+                _make_sms("Where is the verified shelter?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == doc
+
+    @pytest.mark.asyncio
+    async def test_field_profile_rejects_lexical_overlap_without_vector_support(self):
+        misleading = (
+            "This system uses SMS to LLM to SMS architecture. "
+            "You text a phone number and receive an answer."
+        )
+        call_log = self._mock_http_client(
+            rag_docs=[misleading],
+            rag_scores=[0.5667],
+            rag_metadata=[
+                {"retrieval_source_scores": {"vector": 0.18, "text": 0.4667}}
+            ],
+        )
+
+        with (
+            patch.object(settings, "rag_grounding_required", True),
+            patch.object(settings, "rag_min_vector_confidence", 0.25),
+        ):
+            response = await self.router.process_message(
+                _make_sms("What is the winning lottery number on Mars?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == settings.grounding_failure_message
+        assert self.router.stats["grounding_refusals"] == 1

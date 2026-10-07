@@ -1,3 +1,4 @@
+{{- if .Values.generation.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -51,3 +52,4 @@ spec:
             limits:
               cpu: {{ .Values.backend.resources.limits.cpu }}
               memory: {{ .Values.backend.resources.limits.memory }}
+{{- end }}

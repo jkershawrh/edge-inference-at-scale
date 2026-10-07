@@ -1,0 +1,22 @@
+# Retrieval-only field profile for the smallest disconnected footprint.
+# Apply together with an immutable signed corpus configuration. It deliberately
+# removes the model server and LLM adapter, returns eligible corpus evidence
+# directly, and refuses questions that the active corpus cannot support.
+deploymentProfile: field-rag-only
+
+generation:
+  enabled: false
+
+stream:
+  backend: redis
+
+safety:
+  groundingRequired: true
+  emergencyRagEnabled: true
+
+rag:
+  # Direct answers require both fused confidence and independent semantic
+  # support. Documents remain bounded and SMS chunking happens at delivery.
+  directThreshold: 0.55
+  directMaxChars: 1000
+  minVectorConfidence: 0.25

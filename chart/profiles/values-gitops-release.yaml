@@ -1,0 +1,41 @@
+# Declarative, reviewable release identity. Change this file only after the
+# exact release has passed promotion. The rollout controller remains the only
+# writer of the three lilevy.edge/* runtime pod-template annotations.
+deploymentProfile: field-gitops
+
+generation:
+  enabled: false
+
+safety:
+  groundingRequired: true
+  emergencyRagEnabled: true
+
+rag:
+  corpus:
+    enabled: false
+    eventId: region4-flood-2026
+    version: "2.1.0"
+    publicKeySecretName: corpus-release-public-key
+  activation:
+    enabled: true
+    root: /data/activation
+    operator:
+      enabled: true
+      intakeRoot: /data/activation-intake
+      clusterId: cluster-region4-alpha
+      siteId: site-region4-alpha
+      bearerSecretName: activation-operator-token
+      receiptSecretName: activation-receipt-key
+      receiptKeyId: site-region4-alpha-receipt-2026q4
+      policyDigest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      runtimeVersion: "1.0.0"
+      chunkerDigest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+      modelDigest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      embeddingModelDigest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    rollout:
+      enabled: true
+      candidatePath: /data/activation-intake/sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      targetDigest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      targetSequence: 7
+      statePath: /data/rollout/state.json
+      apiBearerSecretName: rollout-controller-token

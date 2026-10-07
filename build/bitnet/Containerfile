@@ -31,7 +31,7 @@ RUN cd 3rdparty/llama.cpp && \
     -DLLAMA_FATAL_WARNINGS=OFF \
     -DGGML_BITNET=ON \
     -DCMAKE_PREFIX_PATH=/build/BitNet 2>&1 && \
-    cmake --build build --config Release -j4 2>&1 && \
+    cmake --build build --target llama-server --config Release -j4 2>&1 && \
     echo "=== bin contents ===" && \
     ls build/bin/ 2>/dev/null && \
     find build -name "llama-server" -type f 2>/dev/null

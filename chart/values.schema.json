@@ -1,0 +1,336 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "deploymentProfile": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
+    },
+    "stream": {
+      "type": "object",
+      "required": ["backend", "name", "consumerGroup", "maxLen", "claimIdleMs"],
+      "properties": {
+        "backend": {"enum": ["redis", "kafka"]},
+        "name": {"type": "string", "minLength": 1},
+        "consumerGroup": {"type": "string", "minLength": 1},
+        "maxLen": {"type": "integer", "minimum": 100, "maximum": 1000000},
+        "claimIdleMs": {"type": "integer", "minimum": 1000, "maximum": 86400000}
+      },
+      "additionalProperties": false
+    },
+    "redis": {
+      "type": "object",
+      "required": ["managed", "url", "image", "maxmemory", "storageSize", "storageClassName", "resources"],
+      "properties": {
+        "managed": {"type": "boolean"},
+        "url": {"type": "string"},
+        "image": {"type": "string", "minLength": 1},
+        "maxmemory": {"type": "string", "minLength": 2},
+        "storageSize": {"type": "string", "minLength": 2},
+        "storageClassName": {"type": "string"},
+        "resources": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "chromadb": {
+      "type": "object",
+      "properties": {
+        "image": {"type": "string"},
+        "storageSize": {"type": "string"},
+        "storageClassName": {"type": "string"},
+        "resources": {"type": "object"}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": ["groundingRequired", "emergencyRagEnabled"],
+      "properties": {
+        "groundingRequired": {"type": "boolean"},
+        "emergencyRagEnabled": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "rag": {
+      "type": "object",
+      "properties": {
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "storageClassName": {"type": "string"},
+            "accessModes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {"enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany", "ReadWriteOncePod"]}
+            }
+          }
+        },
+        "corpus": {
+          "type": "object",
+          "required": ["enabled", "eventId", "version", "requireSignature"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "image": {"type": "string"},
+            "imagePullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]},
+            "eventId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"},
+            "version": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"},
+            "requireSignature": {"type": "boolean"},
+            "publicKeySecretName": {"type": "string"}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"enabled": {"const": true}}},
+              "then": {"properties": {"image": {"minLength": 1}}}
+            },
+            {
+              "if": {"properties": {"requireSignature": {"const": true}}},
+              "then": {"properties": {"publicKeySecretName": {"minLength": 1}}}
+            }
+          ]
+        },
+        "activation": {
+          "type": "object",
+          "required": ["enabled", "root"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "root": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+            "operator": {
+              "type": "object",
+              "required": [
+                "enabled", "port", "intakeRoot", "clusterId", "siteId",
+                "bearerSecretName", "bearerSecretKey", "receiptSecretName",
+                "receiptPrivateKeyKey", "receiptKeyId", "policyDigest",
+                "runtimeVersion", "chunkerDigest", "modelDigest",
+                "embeddingModelDigest", "timeConfidence", "maxRequestBytes",
+                "resources"
+              ],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                "intakeRoot": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+                "clusterId": {"type": "string"},
+                "siteId": {"type": "string"},
+                "bearerSecretName": {"type": "string"},
+                "bearerSecretKey": {"type": "string", "minLength": 1},
+                "receiptSecretName": {"type": "string"},
+                "receiptPrivateKeyKey": {"type": "string", "minLength": 1},
+                "receiptKeyId": {"type": "string"},
+                "policyDigest": {"type": "string"},
+                "runtimeVersion": {"type": "string"},
+                "chunkerDigest": {"type": "string"},
+                "modelDigest": {"type": "string"},
+                "embeddingModelDigest": {"type": "string"},
+                "timeConfidence": {"enum": ["trusted", "degraded", "unknown"]},
+                "maxRequestBytes": {"type": "integer", "minimum": 256, "maximum": 65536},
+                "resources": {"type": "object"}
+              },
+              "allOf": [
+                {
+                  "if": {"properties": {"enabled": {"const": true}}},
+                  "then": {
+                    "properties": {
+                      "clusterId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "siteId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "bearerSecretName": {"minLength": 1},
+                      "receiptSecretName": {"minLength": 1},
+                      "receiptKeyId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                      "policyDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "runtimeVersion": {"pattern": "^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$"},
+                      "chunkerDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "modelDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "embeddingModelDigest": {"pattern": "^sha256:[a-f0-9]{64}$"}
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            },
+            "rollout": {
+              "type": "object",
+              "required": [
+                "enabled", "port", "candidatePath", "targetDigest",
+                "targetSequence", "statePath", "apiBearerSecretName",
+                "apiBearerSecretKey", "maxActivationAttempts",
+                "maxRestartAttempts", "maxStatusPolls", "timeoutSeconds",
+                "dependencyTimeoutSeconds", "workerPollSeconds", "resources"
+              ],
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "port": {"type": "integer", "minimum": 1024, "maximum": 65535},
+                "candidatePath": {"type": "string"},
+                "targetDigest": {"type": "string"},
+                "targetSequence": {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+                "statePath": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+                "apiBearerSecretName": {"type": "string"},
+                "apiBearerSecretKey": {"type": "string", "minLength": 1},
+                "maxActivationAttempts": {"type": "integer", "minimum": 1, "maximum": 100},
+                "maxRestartAttempts": {"type": "integer", "minimum": 1, "maximum": 100},
+                "maxStatusPolls": {"type": "integer", "minimum": 1, "maximum": 10000},
+                "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+                "dependencyTimeoutSeconds": {"type": "number", "minimum": 0.1, "maximum": 60},
+                "workerPollSeconds": {"type": "number", "minimum": 1, "maximum": 60},
+                "resources": {"type": "object"}
+              },
+              "allOf": [
+                {
+                  "if": {"properties": {"enabled": {"const": true}}},
+                  "then": {
+                    "properties": {
+                      "candidatePath": {"pattern": "^/.*$", "minLength": 2},
+                      "targetDigest": {"pattern": "^sha256:[a-f0-9]{64}$"},
+                      "targetSequence": {"minimum": 1},
+                      "apiBearerSecretName": {"minLength": 1}
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "offlineTrust": {
+          "type": "object",
+          "required": [
+            "enabled", "statePath", "bootIdPath", "siteId", "trustGeneration",
+            "maxSnapshotAgeSeconds", "timeKeyId", "revocationKeyId",
+            "releaseSigningKeyId", "authoritySecretName", "timePublicKeyKey",
+            "revocationPublicKeyKey", "timePublicKeyPath",
+            "revocationPublicKeyPath", "evidenceConfigMapName", "anchorKey",
+            "snapshotKey", "anchorPath", "snapshotPath"
+          ],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "statePath": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+            "bootIdPath": {"type": "string", "pattern": "^/.*$", "minLength": 2},
+            "siteId": {"type": "string"},
+            "trustGeneration": {"type": "integer", "minimum": 0},
+            "maxSnapshotAgeSeconds": {"type": "integer", "minimum": 0},
+            "timeKeyId": {"type": "string"},
+            "revocationKeyId": {"type": "string"},
+            "releaseSigningKeyId": {"type": "string"},
+            "authoritySecretName": {"type": "string"},
+            "timePublicKeyKey": {"type": "string", "minLength": 1},
+            "revocationPublicKeyKey": {"type": "string", "minLength": 1},
+            "timePublicKeyPath": {"type": "string", "pattern": "^/var/run/offline-trust/keys/[A-Za-z0-9._-]+$"},
+            "revocationPublicKeyPath": {"type": "string", "pattern": "^/var/run/offline-trust/keys/[A-Za-z0-9._-]+$"},
+            "evidenceConfigMapName": {"type": "string"},
+            "anchorKey": {"type": "string", "minLength": 1},
+            "snapshotKey": {"type": "string", "minLength": 1},
+            "anchorPath": {"type": "string", "pattern": "^/var/run/offline-trust/evidence/[A-Za-z0-9._-]+$"},
+            "snapshotPath": {"type": "string", "pattern": "^/var/run/offline-trust/evidence/[A-Za-z0-9._-]+$"}
+          },
+          "allOf": [
+            {
+              "if": {"properties": {"enabled": {"const": true}}},
+              "then": {
+                "properties": {
+                  "siteId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                  "trustGeneration": {"minimum": 1},
+                  "maxSnapshotAgeSeconds": {"minimum": 1},
+                  "timeKeyId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                  "revocationKeyId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                  "releaseSigningKeyId": {"pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+                  "authoritySecretName": {"minLength": 1},
+                  "evidenceConfigMapName": {"minLength": 1}
+                }
+              }
+            }
+          ],
+          "additionalProperties": false
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "offlineTrust": {
+                "properties": {"enabled": {"const": true}},
+                "required": ["enabled"]
+              }
+            },
+            "required": ["offlineTrust"]
+          },
+          "then": {
+            "properties": {
+              "activation": {"properties": {"enabled": {"const": true}}},
+              "persistence": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        },
+        {
+          "if": {
+            "required": ["activation"],
+            "properties": {
+              "activation": {
+                "properties": {"enabled": {"const": true}},
+                "required": ["enabled"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "corpus": {
+                "properties": {
+                  "enabled": {"const": false},
+                  "publicKeySecretName": {"minLength": 1}
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "operator": {
+                    "properties": {"enabled": {"const": true}},
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["operator"]
+              }
+            },
+            "required": ["activation"]
+          },
+          "then": {
+            "properties": {
+              "activation": {"properties": {"enabled": {"const": true}}},
+              "persistence": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "rollout": {
+                    "properties": {"enabled": {"const": true}},
+                    "required": ["enabled"]
+                  }
+                },
+                "required": ["rollout"]
+              }
+            },
+            "required": ["activation"]
+          },
+          "then": {
+            "properties": {
+              "activation": {
+                "properties": {
+                  "enabled": {"const": true},
+                  "operator": {
+                    "properties": {"enabled": {"const": true}}
+                  }
+                }
+              },
+              "persistence": {"properties": {"enabled": {"const": true}}}
+            }
+          }
+        }
+      ]
+    }
+  }
+}

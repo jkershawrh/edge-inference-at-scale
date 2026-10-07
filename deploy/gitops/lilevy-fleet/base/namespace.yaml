@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lil-evy-fleet
+  labels:
+    lilevy.edge/fleet-control: "true"

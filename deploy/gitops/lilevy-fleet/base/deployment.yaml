@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lil-evy-node-manager
+  namespace: lil-evy-fleet
+  annotations:
+    lilevy.edge/image-material: immutable-placeholder-replace-before-deploy
+  labels:
+    app.kubernetes.io/name: lil-evy-node-manager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: lil-evy-node-manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: lil-evy-node-manager
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: node-manager
+          # Intentional non-runnable immutable placeholder. A reviewed overlay
+          # must replace this exact digest before deployment.
+          image: quay.io/rh-ai-quickstart/edge-inference-at-scale@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          command: [python3, -m, uvicorn]
+          args:
+            - backend.services.node_manager.main:app
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8006"
+          env:
+            - name: FLEET_AUTH_MODE
+              value: required
+            - name: FLEET_NODE_REGISTRY_PATH
+              value: /etc/lil-evy/fleet/nodes.json
+            - name: FLEET_REPLAY_STATE_PATH
+              value: /var/lib/lil-evy/fleet/replay.sqlite3
+            - name: FLEET_MAX_CLOCK_SKEW_SECONDS
+              value: "300"
+          ports:
+            - name: http
+              containerPort: 8006
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: node-registry
+              mountPath: /etc/lil-evy/fleet
+              readOnly: true
+            - name: replay-state
+              mountPath: /var/lib/lil-evy/fleet
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 256Mi}
+      volumes:
+        - name: node-registry
+          configMap:
+            name: lil-evy-node-registry
+            items:
+              - key: nodes.json
+                path: nodes.json
+        - name: replay-state
+          persistentVolumeClaim:
+            claimName: lil-evy-fleet-replay

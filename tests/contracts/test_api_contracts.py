@@ -113,6 +113,9 @@ class TestRAGServiceContract:
     def test_has_stats_endpoint(self):
         assert "GET /stats" in self.routes
 
+    def test_has_activation_status_endpoint(self):
+        assert "GET /activation/status" in self.routes
+
     def test_has_bulk_add_endpoint(self):
         assert "POST /documents/bulk-add" in self.routes
 
@@ -152,14 +155,23 @@ class TestAPIGatewayContract:
     def test_has_services_health(self):
         assert "GET /services/health" in self.routes
 
+    def test_has_discord_interactions(self):
+        assert "POST /discord/interactions" in self.routes
+
     def test_has_sms_receive_proxy(self):
         assert "POST /sms/receive" in self.routes
 
     def test_has_sms_history_proxy(self):
         assert "GET /sms/history" in self.routes
 
+    def test_has_sms_stream_health_proxy(self):
+        assert "GET /sms/stream/health" in self.routes
+
     def test_has_router_statistics_proxy(self):
         assert "GET /router/statistics" in self.routes
+
+    def test_has_router_stream_health_proxy(self):
+        assert "GET /router/stream/health" in self.routes
 
     def test_has_llm_stats_proxy(self):
         assert "GET /llm/stats" in self.routes

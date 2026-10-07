@@ -1,0 +1,63 @@
+schema_version: "1.0"
+
+# Each comparison group holds corpus, embeddings, prompts, and resource limits
+# constant so differences can be attributed to the model/runtime candidate.
+defaults:
+  eval_queries: tests/evaluation/eval_queries.yaml
+  top_k: 3
+  request_timeout_seconds: 90
+  quality_gate: 0.60
+  retrieval_recall_gate: 0.70
+
+scenarios:
+  bitnet-small-control:
+    comparison_group: small-edge
+    api_url_env: EDGE_API_URL
+    provider: bitnet
+    model: bitnet-2b4t
+    runtime: llama.cpp-compatible
+    profile: lab-small
+    corpus_digest_env: CORPUS_DIGEST
+    embedding_model: all-MiniLM-L6-v2
+
+  bitnet-generation-control:
+    comparison_group: small-edge-generation
+    api_url_env: EDGE_API_URL
+    provider: bitnet
+    model: bitnet-2b4t
+    runtime: llama.cpp-compatible
+    profile: lab-small
+    corpus_digest_env: CORPUS_DIGEST
+    embedding_model: all-MiniLM-L6-v2
+    eval_queries: tests/evaluation/model_eval_queries.yaml
+    quality_gate: 0.80
+
+  candidate-small:
+    comparison_group: small-edge
+    api_url_env: EDGE_API_URL
+    provider: openai-compatible
+    model: SET_MODEL_ARTIFACT_AND_QUANTIZATION
+    runtime: SET_RUNTIME
+    profile: lab-small
+    corpus_digest_env: CORPUS_DIGEST
+    embedding_model: all-MiniLM-L6-v2
+
+  bitnet-balanced-control:
+    comparison_group: balanced-edge
+    api_url_env: EDGE_API_URL
+    provider: bitnet
+    model: bitnet-2b4t
+    runtime: llama.cpp-compatible
+    profile: lab-balanced
+    corpus_digest_env: CORPUS_DIGEST
+    embedding_model: all-MiniLM-L6-v2
+
+  candidate-balanced:
+    comparison_group: balanced-edge
+    api_url_env: EDGE_API_URL
+    provider: openai-compatible
+    model: SET_MODEL_ARTIFACT_AND_QUANTIZATION
+    runtime: SET_RUNTIME
+    profile: lab-balanced
+    corpus_digest_env: CORPUS_DIGEST
+    embedding_model: all-MiniLM-L6-v2

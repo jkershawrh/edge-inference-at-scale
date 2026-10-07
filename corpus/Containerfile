@@ -1,0 +1,9 @@
+# Immutable event-corpus carrier image. Build from the repository root:
+# podman build --build-arg CORPUS_PATH=dist/corpora/EVENT/VERSION \
+#   -f corpus/Containerfile -t registry.example/EVENT-corpus:VERSION .
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+ARG CORPUS_PATH
+COPY ${CORPUS_PATH}/ /corpus/
+
+USER 1001

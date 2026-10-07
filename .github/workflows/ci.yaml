@@ -16,24 +16,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: Python syntax check
-        run: |
-          python -c "
-          import ast, os, sys
-          errors = 0
-          for root, dirs, files in os.walk('backend'):
-              dirs[:] = [d for d in dirs if d != '__pycache__']
-              for f in files:
-                  if f.endswith('.py'):
-                      path = os.path.join(root, f)
-                      try:
-                          with open(path) as fh:
-                              ast.parse(fh.read())
-                      except SyntaxError as e:
-                          print(f'FAIL: {path}: {e}')
-                          errors += 1
-          print(f'{\"PASS\" if not errors else \"FAIL\"}: {errors} errors')
-          sys.exit(errors)
-          "
+        run: python -m compileall -q backend corpus_factory scripts tests
       - name: Helm lint
         run: |
           curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -48,13 +31,16 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt pytest pytest-asyncio
-      - name: Run unit tests
-        run: python -m pytest tests/unit/ -v --tb=short
-      - name: Run contract tests
-        run: python -m pytest tests/contracts/ -v --tb=short
-      - name: Run integration tests
-        run: python -m pytest tests/integration/ -v --tb=short || true
+        run: pip install -r requirements-test.txt
+      - name: Run convergence matrix
+        run: make test-all PYTHON=python
+      - name: Retain convergence evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: convergence-local
+          path: artifacts/convergence-local.json
+          if-no-files-found: warn
 
   container:
     name: Container Build

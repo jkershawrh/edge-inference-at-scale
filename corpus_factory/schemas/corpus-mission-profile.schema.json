@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/corpus-mission-profile.schema.json",
+  "title": "CorpusMissionProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "mission_profile_id", "version", "vertical", "mission", "event", "scope", "governance", "validity", "required_information"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"},
+    "record_type": {"const": "corpus_mission_profile"},
+    "mission_profile_id": {"$ref": "#/$defs/id"},
+    "version": {"$ref": "#/$defs/semver"},
+    "vertical": {"$ref": "#/$defs/id"},
+    "mission": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "event": {"$ref": "#/$defs/event"},
+    "scope": {"$ref": "#/$defs/scope"},
+    "governance": {"$ref": "#/$defs/governance"},
+    "validity": {"$ref": "#/$defs/validity"},
+    "required_information": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {"$ref": "#/$defs/coverageRequirement"}
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "semver": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"},
+    "language": {"type": "string", "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"},
+    "nonEmptyUniqueStrings": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_id", "name", "starts_at", "ends_at", "timezone"],
+      "properties": {
+        "event_id": {"$ref": "#/$defs/id"}, "name": {"type": "string", "minLength": 1, "maxLength": 256},
+        "starts_at": {"type": "string", "format": "date-time"}, "ends_at": {"type": "string", "format": "date-time"},
+        "timezone": {"type": "string", "pattern": "^[A-Za-z_]+(?:/[A-Za-z0-9_+.-]+)+$"}
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["geographies", "languages", "audiences", "accessibility_needs", "delivery_channels"],
+      "properties": {
+        "geographies": {"$ref": "#/$defs/nonEmptyUniqueStrings"},
+        "languages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/language"}},
+        "audiences": {"$ref": "#/$defs/nonEmptyUniqueStrings"},
+        "accessibility_needs": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "delivery_channels": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["sms", "lora", "discord", "web", "voice"]}}
+      }
+    },
+    "governance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["risk_level", "owner_organization", "required_approver_roles"],
+      "properties": {
+        "risk_level": {"enum": ["advisory", "standard", "high", "critical"]},
+        "owner_organization": {"type": "string", "minLength": 1, "maxLength": 256},
+        "required_approver_roles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}}
+      }
+    },
+    "validity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["valid_from", "valid_until", "expected_refresh_seconds"],
+      "properties": {
+        "valid_from": {"type": "string", "format": "date-time"},
+        "valid_until": {"type": "string", "format": "date-time"},
+        "expected_refresh_seconds": {"type": "integer", "minimum": 60}
+      }
+    },
+    "coverageRequirement": {
+      "type": "object", "additionalProperties": false,
+      "required": ["requirement_id", "category_id", "description", "required_intents", "safety_class", "minimum_sources"],
+      "properties": {
+        "requirement_id": {"$ref": "#/$defs/id"}, "category_id": {"$ref": "#/$defs/id"},
+        "description": {"type": "string", "minLength": 1, "maxLength": 512},
+        "required_intents": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+        "safety_class": {"enum": ["advisory", "standard", "high", "critical"]},
+        "minimum_sources": {"type": "integer", "minimum": 1}
+      }
+    }
+  }
+}

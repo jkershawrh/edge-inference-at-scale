@@ -10,8 +10,8 @@ Two modes:
   - Live (compose): hits the real stack, produces actual latency data.
     Requires: docker compose up.  Run with: CAPACITY_LIVE=1 pytest ...
 
-All timing and throughput numbers are written to
-tests/benchmarks/capacity_results.json for the validation matrix.
+Timing and throughput numbers default to tests/benchmarks/capacity_results.json.
+Set CAPACITY_RESULTS_FILE to retain run-specific evidence elsewhere.
 """
 
 import asyncio
@@ -35,9 +35,25 @@ from backend.services.message_router.main import MessageRouter
 
 logger = logging.getLogger("capacity-bench")
 
-RESULTS_FILE = Path(__file__).parent / "capacity_results.json"
+RESULTS_FILE = Path(
+    os.environ.get(
+        "CAPACITY_RESULTS_FILE",
+        str(Path(__file__).parent / "capacity_results.json"),
+    )
+)
 
 LIVE_MODE = os.environ.get("CAPACITY_LIVE", "0") == "1"
+LIVE_ROUTE_PATH = "/router/route"
+
+
+def _live_message_payload(query: str, index: int = 0) -> Dict[str, str]:
+    """Build the channel-neutral API contract used by live capacity runs."""
+    return {
+        "sender": "simulator:capacity-{0}".format(index),
+        "receiver": "simulator:lil-evy",
+        "content": query,
+        "channel": "simulator",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +177,10 @@ def _instrumented_router(rag_delay_ms=50, llm_delay_ms=5000):
             resp.raise_for_status = MagicMock()
             resp.json = MagicMock(return_value={
                 "documents": ["Edge Computing Workshop - Room 301, 2:00 PM"],
-                "scores": [0.65],
+                # Keep the generic capacity fixture LLM-bound regardless of
+                # the selected deployment's RAG-direct threshold. The
+                # dedicated RAG-direct test below supplies high confidence.
+                "scores": [0.0],
             })
             return resp
         elif "/inference" in url:
@@ -508,8 +527,8 @@ class TestLiveCapacity:
         async with httpx.AsyncClient() as client:
             start = time.monotonic()
             resp = await client.post(
-                f"{api_url}/api/v1/sms/receive",
-                json={"message": "What time is the keynote?"},
+                f"{api_url}{LIVE_ROUTE_PATH}",
+                json=_live_message_payload("What time is the keynote?"),
                 timeout=60,
             )
             latency = (time.monotonic() - start) * 1000
@@ -526,11 +545,11 @@ class TestLiveCapacity:
             for i in range(10):
                 query = SAMPLE_QUERIES[i % len(SAMPLE_QUERIES)]
 
-                async def send(q=query):
+                async def send(q=query, sender_index=i):
                     start = time.monotonic()
                     resp = await client.post(
-                        f"{api_url}/api/v1/sms/receive",
-                        json={"message": q},
+                        f"{api_url}{LIVE_ROUTE_PATH}",
+                        json=_live_message_payload(q, sender_index),
                         timeout=120,
                     )
                     return (time.monotonic() - start) * 1000, resp.status_code
@@ -561,11 +580,11 @@ class TestLiveCapacity:
                 for i in range(burst_size):
                     query = SAMPLE_QUERIES[i % len(SAMPLE_QUERIES)]
 
-                    async def send(q=query):
+                    async def send(q=query, sender_index=i):
                         start = time.monotonic()
                         resp = await client.post(
-                            f"{api_url}/api/v1/sms/receive",
-                            json={"message": q},
+                            f"{api_url}{LIVE_ROUTE_PATH}",
+                            json=_live_message_payload(q, sender_index),
                             timeout=120,
                         )
                         return (time.monotonic() - start) * 1000, resp.status_code

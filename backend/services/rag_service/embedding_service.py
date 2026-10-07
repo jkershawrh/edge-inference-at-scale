@@ -49,10 +49,19 @@ class LocalEmbeddingService:
         cache_root = os.getenv("EMBEDDING_CACHE_DIR", settings.embedding_cache_dir)
         self.model_cache_dir = Path(cache_root)
         self.model_cache_dir.mkdir(parents=True, exist_ok=True)
+        model_root = os.getenv("EMBEDDING_MODEL_DIR", settings.embedding_model_dir)
+        self.model_dir = Path(model_root)
+        self.require_local_model = settings.embedding_require_local_model
+        self.model_source = "uninitialized"
         
         # Embedding cache
         self.embedding_cache = {}
-        self.cache_file = self.model_cache_dir / "embedding_cache.json"
+        # Embeddings from different models and dimensions are incompatible. Keep
+        # caches model-scoped so a configuration change cannot poison a new index.
+        model_fingerprint = hashlib.sha256(model_name.encode("utf-8")).hexdigest()[:10]
+        self.cache_file = self.model_cache_dir / (
+            "embedding_cache_{0}.json".format(model_fingerprint)
+        )
         self._load_cache()
         
         # Model configuration
@@ -74,20 +83,38 @@ class LocalEmbeddingService:
             self.backend = "pytorch"
 
             model_path = self.model_cache_dir / self.model_name
+            baked_openvino_path = self.model_dir / f"{self.model_name}_openvino"
+            cached_openvino_path = self.model_cache_dir / f"{self.model_name}_openvino"
 
             if OPENVINO_AVAILABLE:
                 try:
-                    openvino_path = self.model_cache_dir / f"{self.model_name}_openvino"
-                    if openvino_path.exists():
-                        logger.info(f"Loading cached OpenVINO model from {openvino_path}")
-                        self.model = SentenceTransformer(str(openvino_path), backend="openvino")
+                    if baked_openvino_path.exists():
+                        logger.info(
+                            f"Loading image-baked OpenVINO model from {baked_openvino_path}"
+                        )
+                        self.model = SentenceTransformer(
+                            str(baked_openvino_path), backend="openvino"
+                        )
+                        self.model_source = "baked"
+                    elif cached_openvino_path.exists():
+                        logger.info(
+                            f"Loading cached OpenVINO model from {cached_openvino_path}"
+                        )
+                        self.model = SentenceTransformer(
+                            str(cached_openvino_path), backend="openvino"
+                        )
+                        self.model_source = "cache"
+                    elif self.require_local_model:
+                        logger.error("Required local OpenVINO embedding model is absent")
                     else:
                         logger.info("Loading model with OpenVINO backend (will convert on first run)")
                         self.model = SentenceTransformer(self.model_name, backend="openvino")
-                        self.model.save(str(openvino_path))
-                        logger.info(f"OpenVINO model cached to {openvino_path}")
-                    self.backend = "openvino"
-                    logger.info("Using OpenVINO backend for Intel-optimized embedding inference")
+                        self.model.save(str(cached_openvino_path))
+                        self.model_source = "download"
+                        logger.info(f"OpenVINO model cached to {cached_openvino_path}")
+                    if self.model is not None:
+                        self.backend = "openvino"
+                        logger.info("Using OpenVINO backend for Intel-optimized embedding inference")
                 except Exception as e:
                     logger.warning(f"OpenVINO backend failed ({e}), falling back to PyTorch")
                     self.model = None
@@ -96,10 +123,15 @@ class LocalEmbeddingService:
                 if model_path.exists():
                     logger.info(f"Loading cached PyTorch model from {model_path}")
                     self.model = SentenceTransformer(str(model_path))
+                    self.model_source = "cache"
+                elif self.require_local_model:
+                    logger.error("Required local embedding model is unavailable")
+                    return False
                 else:
                     logger.info("Downloading model from Hugging Face")
                     self.model = SentenceTransformer(self.model_name)
                     self.model.save(str(model_path))
+                    self.model_source = "download"
                     logger.info(f"Model cached to {model_path}")
 
             if self.model:
@@ -268,6 +300,7 @@ class LocalEmbeddingService:
             "cache_size": len(self.embedding_cache),
             "model_loaded": self.model is not None,
             "backend": getattr(self, "backend", "unknown"),
+            "model_source": self.model_source,
             "sentence_transformers_available": SENTENCE_TRANSFORMERS_AVAILABLE,
             "openvino_available": OPENVINO_AVAILABLE,
             "torch_available": TORCH_AVAILABLE,

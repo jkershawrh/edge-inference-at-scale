@@ -1,0 +1,135 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: lil-evy-governed-rollout
+  namespace: open-cluster-management-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: lil-evy-desired-release
+        spec:
+          remediationAction: enforce
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: lil-evy-field
+                  labels:
+                    lilevy.edge/rollout-protected: "true"
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: lil-evy-desired-release
+                  namespace: lil-evy-field
+                  labels:
+                    lilevy.edge/managed-release: "true"
+                data:
+                  event-id: region4-flood-2026
+                  release-digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                  release-sequence: "7"
+                  policy-digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+                  rollout-ring: canary
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: lil-evy-rollout-annotation-ownership
+        spec:
+          remediationAction: enforce
+          severity: critical
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: admissionregistration.k8s.io/v1
+                kind: ValidatingAdmissionPolicy
+                metadata:
+                  name: lilevy-rollout-annotation-ownership
+                spec:
+                  failurePolicy: Fail
+                  matchConstraints:
+                    resourceRules:
+                      - apiGroups: ["apps"]
+                        apiVersions: ["v1"]
+                        operations: ["UPDATE"]
+                        resources: ["deployments"]
+                  variables:
+                    - name: oldAnnotations
+                      expression: "has(oldObject.spec.template.metadata.annotations) ? oldObject.spec.template.metadata.annotations : {}"
+                    - name: newAnnotations
+                      expression: "has(object.spec.template.metadata.annotations) ? object.spec.template.metadata.annotations : {}"
+                  validations:
+                    - expression: >-
+                        object.metadata.name != 'lil-evy-rag-service' ||
+                        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+                        ((!('lilevy.edge/restart-operation-id' in variables.oldAnnotations) && !('lilevy.edge/restart-operation-id' in variables.newAnnotations)) ||
+                         (('lilevy.edge/restart-operation-id' in variables.oldAnnotations) && ('lilevy.edge/restart-operation-id' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/restart-operation-id'] == variables.newAnnotations['lilevy.edge/restart-operation-id']))
+                      message: Only the Lil EVY rollout controller may change restart-operation-id.
+                    - expression: >-
+                        object.metadata.name != 'lil-evy-rag-service' ||
+                        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+                        ((!('lilevy.edge/target-digest' in variables.oldAnnotations) && !('lilevy.edge/target-digest' in variables.newAnnotations)) ||
+                         (('lilevy.edge/target-digest' in variables.oldAnnotations) && ('lilevy.edge/target-digest' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/target-digest'] == variables.newAnnotations['lilevy.edge/target-digest']))
+                      message: Only the Lil EVY rollout controller may change target-digest.
+                    - expression: >-
+                        object.metadata.name != 'lil-evy-rag-service' ||
+                        request.userInfo.username == 'system:serviceaccount:lil-evy-field:lil-evy-rollout-controller' ||
+                        ((!('lilevy.edge/target-sequence' in variables.oldAnnotations) && !('lilevy.edge/target-sequence' in variables.newAnnotations)) ||
+                         (('lilevy.edge/target-sequence' in variables.oldAnnotations) && ('lilevy.edge/target-sequence' in variables.newAnnotations) && variables.oldAnnotations['lilevy.edge/target-sequence'] == variables.newAnnotations['lilevy.edge/target-sequence']))
+                      message: Only the Lil EVY rollout controller may change target-sequence.
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: admissionregistration.k8s.io/v1
+                kind: ValidatingAdmissionPolicyBinding
+                metadata:
+                  name: lilevy-rollout-annotation-ownership
+                spec:
+                  policyName: lilevy-rollout-annotation-ownership
+                  validationActions: ["Deny"]
+                  matchResources:
+                    namespaceSelector:
+                      matchLabels:
+                        lilevy.edge/rollout-protected: "true"
+---
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: lil-evy-canary
+  namespace: open-cluster-management-policies
+spec:
+  predicates:
+    - requiredClusterSelector:
+        labelSelector:
+          matchExpressions:
+            - key: lilevy.edge/managed
+              operator: In
+              values: ["true"]
+            - key: lilevy.edge/event
+              operator: In
+              values: ["region4-flood-2026"]
+            - key: lilevy.edge/rollout-ring
+              operator: In
+              values: ["canary"]
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: lil-evy-canary
+  namespace: open-cluster-management-policies
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: lil-evy-canary
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: lil-evy-governed-rollout

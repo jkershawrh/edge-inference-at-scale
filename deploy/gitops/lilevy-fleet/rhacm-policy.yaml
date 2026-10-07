@@ -1,0 +1,138 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: lil-evy-fleet-identity
+  namespace: open-cluster-management-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: lil-evy-node-enrollment
+        spec:
+          remediationAction: enforce
+          severity: critical
+          object-templates:
+            - complianceType: mustonlyhave
+              objectDefinition:
+                apiVersion: v1
+                kind: ConfigMap
+                metadata:
+                  name: lil-evy-node-registry
+                  namespace: lil-evy-fleet
+                  labels:
+                    app.kubernetes.io/name: lil-evy-node-manager
+                    lilevy.edge/identity-registry: "true"
+                  annotations:
+                    lilevy.edge/change-control: pull-request-required
+                    lilevy.edge/key-material: synthetic-public-placeholders-replace-before-field-use
+                data:
+                  nodes.json: |
+                    {
+                      "schema_version": 1,
+                      "nodes": {
+                        "field-001": {
+                          "key_id": "field-001-2026q4",
+                          "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAHcbWEZk4gU/5IN23cr8TjI9Re0Wq48r3NaD36TIGb1U=\n-----END PUBLIC KEY-----\n",
+                          "enabled": true
+                        },
+                        "field-002": {
+                          "key_id": "field-002-retired-2026q4",
+                          "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAFyLy7NjBHv54vL0RWH3DirN13kPOVa2ifcrf9vOc94Y=\n-----END PUBLIC KEY-----\n",
+                          "enabled": false
+                        }
+                      }
+                    }
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: PersistentVolumeClaim
+                metadata:
+                  name: lil-evy-fleet-replay
+                  namespace: lil-evy-fleet
+                spec:
+                  accessModes: [ReadWriteOnce]
+                  resources:
+                    requests:
+                      storage: 1Gi
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: lil-evy-node-manager
+                  namespace: lil-evy-fleet
+                  annotations:
+                    lilevy.edge/image-material: immutable-placeholder-replace-before-deploy
+                spec:
+                  replicas: 1
+                  strategy:
+                    type: Recreate
+                  template:
+                    spec:
+                      containers:
+                        - name: node-manager
+                          image: quay.io/rh-ai-quickstart/edge-inference-at-scale@sha256:0000000000000000000000000000000000000000000000000000000000000000
+                          env:
+                            - name: FLEET_AUTH_MODE
+                              value: required
+                            - name: FLEET_NODE_REGISTRY_PATH
+                              value: /etc/lil-evy/fleet/nodes.json
+                            - name: FLEET_REPLAY_STATE_PATH
+                              value: /var/lib/lil-evy/fleet/replay.sqlite3
+                          volumeMounts:
+                            - name: node-registry
+                              mountPath: /etc/lil-evy/fleet
+                              readOnly: true
+                            - name: replay-state
+                              mountPath: /var/lib/lil-evy/fleet
+                      volumes:
+                        - name: node-registry
+                          configMap:
+                            name: lil-evy-node-registry
+                        - name: replay-state
+                          persistentVolumeClaim:
+                            claimName: lil-evy-fleet-replay
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: networking.k8s.io/v1
+                kind: NetworkPolicy
+                metadata:
+                  name: lil-evy-node-manager-default-deny
+                  namespace: lil-evy-fleet
+                spec:
+                  podSelector:
+                    matchLabels:
+                      app.kubernetes.io/name: lil-evy-node-manager
+                  policyTypes: [Ingress]
+---
+apiVersion: cluster.open-cluster-management.io/v1beta1
+kind: Placement
+metadata:
+  name: lil-evy-fleet-control
+  namespace: open-cluster-management-policies
+spec:
+  predicates:
+    - requiredClusterSelector:
+        labelSelector:
+          matchExpressions:
+            - key: lilevy.edge/fleet-control
+              operator: In
+              values: ["true"]
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: lil-evy-fleet-control
+  namespace: open-cluster-management-policies
+placementRef:
+  apiGroup: cluster.open-cluster-management.io
+  kind: Placement
+  name: lil-evy-fleet-control
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: lil-evy-fleet-identity

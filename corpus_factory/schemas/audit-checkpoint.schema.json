@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v1/audit-checkpoint.schema.json",
+  "title": "CorpusAuditCheckpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "checkpoint_id", "checkpoint_sequence", "ledger", "previous_anchor", "requester_identity", "created_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "record_type": {"const": "corpus_audit_checkpoint"},
+    "checkpoint_id": {"$ref": "#/$defs/digest"},
+    "checkpoint_sequence": {"type": "integer", "minimum": 1},
+    "ledger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger_id", "entry_sequence", "entry_digest", "byte_size", "prefix_digest"],
+      "properties": {
+        "ledger_id": {"$ref": "#/$defs/id"},
+        "entry_sequence": {"type": "integer", "minimum": 1},
+        "entry_digest": {"$ref": "#/$defs/digest"},
+        "byte_size": {"type": "integer", "minimum": 1},
+        "prefix_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "previous_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["receipt_id", "receipt_digest"],
+      "properties": {
+        "receipt_id": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]},
+        "receipt_digest": {"oneOf": [{"$ref": "#/$defs/digest"}, {"type": "null"}]}
+      }
+    },
+    "requester_identity": {"type": "string", "minLength": 3, "maxLength": 256},
+    "created_at": {"type": "string", "format": "date-time"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  }
+}

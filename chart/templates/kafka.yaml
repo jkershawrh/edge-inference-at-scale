@@ -1,4 +1,5 @@
-apiVersion: kafka.strimzi.io/v1
+{{- if and (eq (default "kafka" .Values.stream.backend) "kafka") (ne .Values.kafka.managed false) }}
+apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
 metadata:
   name: {{ .Release.Name }}-kafka-pool
@@ -19,7 +20,7 @@ spec:
       cpu: {{ .Values.kafka.resources.limits.cpu | default "500m" }}
       memory: {{ .Values.kafka.resources.limits.memory | default "1Gi" }}
 ---
-apiVersion: kafka.strimzi.io/v1
+apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka
 metadata:
   name: {{ .Release.Name }}-kafka
@@ -47,14 +48,16 @@ spec:
   entityOperator:
     topicOperator: {}
 ---
-apiVersion: kafka.strimzi.io/v1
+apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
-  name: sms.inbound
+  name: {{ .Values.kafka.topic.resourceName | default (printf "%s-sms-inbound" .Release.Name) }}
   labels:
     strimzi.io/cluster: {{ .Release.Name }}-kafka
 spec:
+  topicName: {{ .Values.kafka.topic.name | default "sms.inbound" | quote }}
   partitions: 1
   replicas: 1
   config:
     retention.ms: "86400000"
+{{- end }}

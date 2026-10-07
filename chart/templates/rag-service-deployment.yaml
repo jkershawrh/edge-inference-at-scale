@@ -1,3 +1,31 @@
+{{- if and .Values.safety.groundingRequired (not (or .Values.rag.activation.enabled (and .Values.rag.corpus.enabled .Values.rag.corpus.requireSignature))) }}
+{{- fail "field grounding requires an activation-managed or signed packaged corpus" }}
+{{- end }}
+{{- if and .Values.rag.activation.enabled (not .Values.rag.corpus.publicKeySecretName) }}
+{{- fail "activation-managed corpus requires rag.corpus.publicKeySecretName" }}
+{{- end }}
+{{- if .Values.rag.offlineTrust.enabled }}
+{{- if not .Values.rag.activation.enabled }}
+{{- fail "offline trust requires an activation-managed corpus" }}
+{{- end }}
+{{- if or (not .Values.rag.offlineTrust.authoritySecretName) (not .Values.rag.offlineTrust.evidenceConfigMapName) }}
+{{- fail "offline trust requires authoritySecretName and evidenceConfigMapName" }}
+{{- end }}
+{{- end }}
+{{- if .Values.rag.activation.rollout.enabled }}
+{{- if eq (int .Values.rag.activation.rollout.port) (int .Values.rag.activation.operator.port) }}
+{{- fail "rag.activation.rollout.port must differ from rag.activation.operator.port" }}
+{{- end }}
+{{- if eq .Values.rag.activation.rollout.apiBearerSecretName .Values.rag.activation.operator.bearerSecretName }}
+{{- fail "rollout and activation bearer Secrets must be distinct" }}
+{{- end }}
+{{- if not (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.operator.intakeRoot)) .Values.rag.activation.rollout.candidatePath) }}
+{{- fail "rag.activation.rollout.candidatePath must be beneath rag.activation.operator.intakeRoot" }}
+{{- end }}
+{{- if or (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.root)) .Values.rag.activation.rollout.statePath) (hasPrefix (printf "%s/" (trimSuffix "/" .Values.rag.activation.operator.intakeRoot)) .Values.rag.activation.rollout.statePath) }}
+{{- fail "rag.activation.rollout.statePath must be outside activation and intake roots" }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,6 +36,10 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: 1
+  # The RAG data volume is normally ReadWriteOnce and corpus activation is an
+  # immutable, single-writer operation.  Do not overlap old and new pods.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: rag-service
@@ -19,6 +51,45 @@ spec:
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/component: backend
     spec:
+      {{- if .Values.rag.activation.rollout.enabled }}
+      serviceAccountName: {{ .Release.Name }}-rollout-controller
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- if .Values.rag.corpus.enabled }}
+      initContainers:
+        - name: install-corpus
+          image: {{ required "rag.corpus.image is required when corpus packaging is enabled" .Values.rag.corpus.image | quote }}
+          imagePullPolicy: {{ .Values.rag.corpus.imagePullPolicy }}
+          env:
+            - name: CORPUS_TARGET_DIR
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}"
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              if [ -f "${CORPUS_TARGET_DIR}/manifest.json" ]; then
+                packaged_manifest="$(cat /corpus/manifest.json)"
+                installed_manifest="$(cat "${CORPUS_TARGET_DIR}/manifest.json")"
+                [ "${packaged_manifest}" = "${installed_manifest}" ] || {
+                  echo "Refusing to replace an existing immutable corpus version" >&2
+                  exit 1
+                }
+                exit 0
+              fi
+              if [ -e "${CORPUS_TARGET_DIR}" ]; then
+                echo "Incomplete corpus target already exists" >&2
+                exit 1
+              fi
+              staging="${CORPUS_TARGET_DIR}.staging.$$"
+              trap 'rm -rf "${staging}"' EXIT
+              mkdir -p "$(dirname "${CORPUS_TARGET_DIR}")" "${staging}"
+              cp -a /corpus/. "${staging}/"
+              mv "${staging}" "${CORPUS_TARGET_DIR}"
+              trap - EXIT
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+      {{- end }}
       containers:
         - name: rag-service
           image: {{ .Values.rag.image }}
@@ -28,6 +99,76 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-config
+          env:
+            - name: EMBEDDING_MODEL_DIR
+              value: {{ .Values.rag.embeddingModelDir | quote }}
+            - name: EMBEDDING_REQUIRE_LOCAL_MODEL
+              value: {{ .Values.rag.requireLocalEmbeddingModel | quote }}
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          {{- if .Values.rag.offlineTrust.enabled }}
+            - name: OFFLINE_TRUST_ENABLED
+              value: "true"
+            - name: OFFLINE_TRUST_STATE_PATH
+              value: {{ .Values.rag.offlineTrust.statePath | quote }}
+            - name: OFFLINE_TRUST_BOOT_ID_PATH
+              value: {{ .Values.rag.offlineTrust.bootIdPath | quote }}
+            - name: OFFLINE_TRUST_ANCHOR_PATH
+              value: {{ .Values.rag.offlineTrust.anchorPath | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_SNAPSHOT_PATH
+              value: {{ .Values.rag.offlineTrust.snapshotPath | quote }}
+            - name: OFFLINE_TRUST_TIME_PUBLIC_KEY_PATH
+              value: {{ .Values.rag.offlineTrust.timePublicKeyPath | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_PUBLIC_KEY_PATH
+              value: {{ .Values.rag.offlineTrust.revocationPublicKeyPath | quote }}
+            - name: OFFLINE_TRUST_TIME_KEY_ID
+              value: {{ .Values.rag.offlineTrust.timeKeyId | quote }}
+            - name: OFFLINE_TRUST_REVOCATION_KEY_ID
+              value: {{ .Values.rag.offlineTrust.revocationKeyId | quote }}
+            - name: OFFLINE_TRUST_RELEASE_SIGNING_KEY_ID
+              value: {{ .Values.rag.offlineTrust.releaseSigningKeyId | quote }}
+            - name: OFFLINE_TRUST_SITE_ID
+              value: {{ .Values.rag.offlineTrust.siteId | quote }}
+            - name: OFFLINE_TRUST_GENERATION
+              value: {{ .Values.rag.offlineTrust.trustGeneration | quote }}
+            - name: OFFLINE_TRUST_MAX_SNAPSHOT_AGE_SECONDS
+              value: {{ .Values.rag.offlineTrust.maxSnapshotAgeSeconds | quote }}
+          {{- end }}
+          {{- if or .Values.rag.corpus.enabled .Values.rag.activation.enabled }}
+            {{- if .Values.rag.activation.enabled }}
+            - name: CORPUS_ACTIVATION_ROOT
+              value: {{ .Values.rag.activation.root | quote }}
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: CORPUS_READ_ONLY
+              value: "true"
+            - name: CORPUS_REQUIRE_SIGNATURE
+              value: "true"
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /var/run/corpus-key/public-key.pem
+            {{- else }}
+            - name: SUMMIT_DATA_DIR
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}"
+            - name: CORPUS_MANIFEST_PATH
+              value: "/data/corpora/{{ .Values.rag.corpus.eventId }}/{{ .Values.rag.corpus.version }}/manifest.json"
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: CORPUS_READ_ONLY
+              value: "true"
+            - name: CORPUS_REQUIRE_SIGNATURE
+              value: {{ .Values.rag.corpus.requireSignature | quote }}
+            {{- if .Values.rag.corpus.publicKeySecretName }}
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /var/run/corpus-key/public-key.pem
+            {{- end }}
+            {{- end }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /health
@@ -47,6 +188,19 @@ spec:
           volumeMounts:
             - name: rag-data
               mountPath: /data
+            {{- if and (or .Values.rag.corpus.enabled .Values.rag.activation.enabled) .Values.rag.corpus.publicKeySecretName }}
+            - name: corpus-public-key
+              mountPath: /var/run/corpus-key
+              readOnly: true
+            {{- end }}
+            {{- if .Values.rag.offlineTrust.enabled }}
+            - name: offline-trust-authorities
+              mountPath: /var/run/offline-trust/keys
+              readOnly: true
+            - name: offline-trust-evidence
+              mountPath: /var/run/offline-trust/evidence
+              readOnly: true
+            {{- end }}
           resources:
             requests:
               cpu: {{ .Values.rag.resources.requests.cpu | quote }}
@@ -54,6 +208,236 @@ spec:
             limits:
               cpu: {{ .Values.rag.resources.limits.cpu | quote }}
               memory: {{ .Values.rag.resources.limits.memory }}
+        {{- if .Values.rag.activation.operator.enabled }}
+        - name: activation-operator
+          image: {{ .Values.rag.image }}
+          command:
+            - python3.11
+            - -m
+            - uvicorn
+            - backend.services.rag_service.activation_operator_runtime:create_activation_operator_from_environment
+            - --factory
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.rag.activation.operator.port | quote }}
+          ports:
+            - name: activation
+              containerPort: {{ .Values.rag.activation.operator.port }}
+              protocol: TCP
+          env:
+            - name: ACTIVATION_ROOT
+              value: {{ .Values.rag.activation.root | quote }}
+            - name: ACTIVATION_INTAKE_ROOT
+              value: {{ .Values.rag.activation.operator.intakeRoot | quote }}
+            - name: CORPUS_PUBLIC_KEY_PATH
+              value: /run/corpus-key/public-key.pem
+            - name: ACTIVATION_RECEIPT_PRIVATE_KEY_PATH
+              value: /run/activation-receipt/private-key.pem
+            - name: ACTIVATION_RECEIPT_KEY_ID
+              value: {{ .Values.rag.activation.operator.receiptKeyId | quote }}
+            - name: ACTIVATION_BEARER_TOKEN_PATH
+              value: /run/activation-operator/bearer-token
+            - name: NODE_ID
+              value: {{ .Values.nodeId | quote }}
+            - name: CLUSTER_ID
+              value: {{ .Values.rag.activation.operator.clusterId | quote }}
+            - name: SITE_ID
+              value: {{ .Values.rag.activation.operator.siteId | quote }}
+            - name: CORPUS_EVENT_ID
+              value: {{ .Values.rag.corpus.eventId | quote }}
+            - name: CORPUS_VERSION
+              value: {{ .Values.rag.corpus.version | quote }}
+            - name: ACTIVATION_POLICY_DIGEST
+              value: {{ .Values.rag.activation.operator.policyDigest | quote }}
+            - name: ACTIVATION_RUNTIME_VERSION
+              value: {{ .Values.rag.activation.operator.runtimeVersion | quote }}
+            - name: ACTIVATION_CHUNKER_DIGEST
+              value: {{ .Values.rag.activation.operator.chunkerDigest | quote }}
+            - name: ACTIVATION_MODEL_DIGEST
+              value: {{ .Values.rag.activation.operator.modelDigest | quote }}
+            - name: ACTIVATION_EMBEDDING_MODEL_DIGEST
+              value: {{ .Values.rag.activation.operator.embeddingModelDigest | quote }}
+            - name: ACTIVATION_TIME_CONFIDENCE
+              value: {{ .Values.rag.activation.operator.timeConfidence | quote }}
+            - name: ACTIVATION_MAX_REQUEST_BYTES
+              value: {{ .Values.rag.activation.operator.maxRequestBytes | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: activation
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: activation
+            periodSeconds: 30
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+            - name: corpus-public-key
+              mountPath: /run/corpus-key
+              readOnly: true
+            - name: activation-operator-credential
+              mountPath: /run/activation-operator
+              readOnly: true
+            - name: activation-receipt-key
+              mountPath: /run/activation-receipt
+              readOnly: true
+          resources:
+            {{- toYaml .Values.rag.activation.operator.resources | nindent 12 }}
+        {{- end }}
+        {{- if .Values.rag.activation.rollout.enabled }}
+        - name: rollout-controller
+          image: {{ .Values.rag.image }}
+          command:
+            - python3.11
+            - -m
+            - uvicorn
+            - backend.services.rag_service.deployment_rollout_runtime:create_deployment_rollout_from_environment
+            - --factory
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.rag.activation.rollout.port | quote }}
+          ports:
+            - name: rollout
+              containerPort: {{ .Values.rag.activation.rollout.port }}
+              protocol: TCP
+          env:
+            - name: ROLLOUT_API_TOKEN_PATH
+              value: /run/rollout-api/bearer-token
+            - name: ACTIVATION_BEARER_TOKEN_PATH
+              value: /run/activation-operator/bearer-token
+            - name: SERVICE_ACCOUNT_TOKEN_PATH
+              value: /run/rollout-kubernetes/token
+            - name: SERVICE_ACCOUNT_NAMESPACE_PATH
+              value: /run/rollout-kubernetes/namespace
+            - name: SERVICE_ACCOUNT_CA_PATH
+              value: /run/rollout-kubernetes/ca.crt
+            - name: ACTIVATION_INTERNAL_ORIGIN
+              value: {{ printf "http://127.0.0.1:%v" .Values.rag.activation.operator.port | quote }}
+            - name: RAG_INTERNAL_ORIGIN
+              value: "http://127.0.0.1:8004"
+            - name: ROLLOUT_CANDIDATE_PATH
+              value: {{ .Values.rag.activation.rollout.candidatePath | quote }}
+            - name: ROLLOUT_CANDIDATE_DIGEST
+              value: {{ .Values.rag.activation.rollout.targetDigest | quote }}
+            - name: ROLLOUT_CANDIDATE_SEQUENCE
+              value: {{ .Values.rag.activation.rollout.targetSequence | quote }}
+            - name: ROLLOUT_STATE_PATH
+              value: {{ .Values.rag.activation.rollout.statePath | quote }}
+            - name: RAG_DEPLOYMENT_NAME
+              value: {{ printf "%s-rag-service" .Release.Name | quote }}
+            - name: ROLLOUT_MAX_ACTIVATION_ATTEMPTS
+              value: {{ .Values.rag.activation.rollout.maxActivationAttempts | quote }}
+            - name: ROLLOUT_MAX_RESTART_ATTEMPTS
+              value: {{ .Values.rag.activation.rollout.maxRestartAttempts | quote }}
+            - name: ROLLOUT_MAX_STATUS_POLLS
+              value: {{ .Values.rag.activation.rollout.maxStatusPolls | quote }}
+            - name: ROLLOUT_TIMEOUT_SECONDS
+              value: {{ .Values.rag.activation.rollout.timeoutSeconds | quote }}
+            - name: ROLLOUT_DEPENDENCY_TIMEOUT_SECONDS
+              value: {{ .Values.rag.activation.rollout.dependencyTimeoutSeconds | quote }}
+            - name: ROLLOUT_WORKER_POLL_SECONDS
+              value: {{ .Values.rag.activation.rollout.workerPollSeconds | quote }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: rollout
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: rollout
+            periodSeconds: 30
+          volumeMounts:
+            - name: rag-data
+              mountPath: /data
+            - name: activation-operator-credential
+              mountPath: /run/activation-operator
+              readOnly: true
+            - name: rollout-api-credential
+              mountPath: /run/rollout-api
+              readOnly: true
+            - name: rollout-kubernetes-identity
+              mountPath: /run/rollout-kubernetes
+              readOnly: true
+          resources:
+            {{- toYaml .Values.rag.activation.rollout.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: rag-data
+          {{- if .Values.rag.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-rag
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+        {{- if and (or .Values.rag.corpus.enabled .Values.rag.activation.enabled) .Values.rag.corpus.publicKeySecretName }}
+        - name: corpus-public-key
+          secret:
+            secretName: {{ .Values.rag.corpus.publicKeySecretName }}
+        {{- end }}
+        {{- if .Values.rag.offlineTrust.enabled }}
+        - name: offline-trust-authorities
+          secret:
+            secretName: {{ .Values.rag.offlineTrust.authoritySecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.offlineTrust.timePublicKeyKey }}
+                path: {{ base .Values.rag.offlineTrust.timePublicKeyPath }}
+              - key: {{ .Values.rag.offlineTrust.revocationPublicKeyKey }}
+                path: {{ base .Values.rag.offlineTrust.revocationPublicKeyPath }}
+        - name: offline-trust-evidence
+          configMap:
+            name: {{ .Values.rag.offlineTrust.evidenceConfigMapName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.offlineTrust.anchorKey }}
+                path: {{ base .Values.rag.offlineTrust.anchorPath }}
+              - key: {{ .Values.rag.offlineTrust.snapshotKey }}
+                path: {{ base .Values.rag.offlineTrust.snapshotPath }}
+        {{- end }}
+        {{- if .Values.rag.activation.operator.enabled }}
+        - name: activation-operator-credential
+          secret:
+            secretName: {{ .Values.rag.activation.operator.bearerSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.operator.bearerSecretKey }}
+                path: bearer-token
+        - name: activation-receipt-key
+          secret:
+            secretName: {{ .Values.rag.activation.operator.receiptSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.operator.receiptPrivateKeyKey }}
+                path: private-key.pem
+        {{- end }}
+        {{- if .Values.rag.activation.rollout.enabled }}
+        - name: rollout-api-credential
+          secret:
+            secretName: {{ .Values.rag.activation.rollout.apiBearerSecretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.rag.activation.rollout.apiBearerSecretKey }}
+                path: bearer-token
+        - name: rollout-kubernetes-identity
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+        {{- end }}

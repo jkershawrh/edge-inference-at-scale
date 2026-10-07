@@ -1,0 +1,14 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "document_classification",
+  "classification_id": "classification-summit-rumor-r1",
+  "mission_profile_id": "summit-connect-2026",
+  "document": {"document_id": "document-summit-rumor", "revision": 1},
+  "coverage": {"category_ids": ["schedule"], "supported_intents": ["agenda_change"], "geographies": ["summit-city"], "languages": ["en"], "audiences": ["attendees"], "delivery_channels": ["sms"]},
+  "authority": {"class": "unverified"},
+  "risk": {"safety_class": "high", "consequence_of_error": "An attendee may act on an unverified schedule rumor."},
+  "validity": {"valid_from": "2026-07-01T00:00:00-05:00", "valid_until": null, "stale_action": "block"},
+  "provenance": {"source_ids": ["source-summit-rumor"], "license": "unknown", "redistribution": "unknown"},
+  "verification": {"status": "pending", "verified_at": null, "reviewer_identity": null},
+  "answer_policy": {"direct_answer_eligible": true, "reason": "Invalid because it is not verified."}
+}

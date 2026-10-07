@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "record_type": "openshift_model_probe_observation",
+  "observation_id": "shared-amd64-bitnet-2026-10-07",
+  "observed_at": "2026-10-07T18:46:00Z",
+  "evidence_class": "OPENSHIFT_QUOTA",
+  "scope": {
+    "cluster": "redacted-shared-openshift",
+    "namespace": "redacted",
+    "pod": "redacted",
+    "node": "redacted",
+    "architecture": "amd64",
+    "cpu_model": "Intel Xeon Platinum 8260 CPU @ 2.40GHz",
+    "cpu_features": ["avx2", "avx512f", "avx512_vnni"],
+    "container_image": "redacted-internal-image"
+  },
+  "runtime": {
+    "model_alias": "bitnet-2b4t",
+    "model_file": "ggml-model-i2_s.gguf",
+    "model_bytes": 1187801280,
+    "model_sha256": "4221b252fdd5fd25e15847adfeb5ee88886506ba50b8a34548374492884c2162",
+    "threads": 2,
+    "parallel_slots": 1,
+    "context_tokens": 2048,
+    "configured_requests": {"cpu_cores": 1, "memory_gib": 2},
+    "configured_limits": {"cpu_cores": 2, "memory_gib": 4},
+    "observed_resident_memory_mib": 1203
+  },
+  "probe": {
+    "protocol": "OpenAI-compatible chat completions",
+    "temperature": 0,
+    "prompt_tokens": 21,
+    "completion_tokens": 32,
+    "total_tokens": 53,
+    "wall_time_seconds": 3.326982,
+    "completion_tokens_per_second_approximate": 9.62,
+    "http_status": 200
+  },
+  "limitations": [
+    "This is one short direct-runtime probe, not an end-to-end or sustained-capacity result.",
+    "Cluster metrics did not provide request-resolution CPU high-water data.",
+    "The public field-safety route correctly refused unsupported evidence and did not invoke generation.",
+    "No power, thermal, radio, ARM, or NPU behavior was measured."
+  ],
+  "qualification": "ESTIMATED_ONLY"
+}

@@ -127,7 +127,8 @@ Message Router (consumes from stream)
 
 ### Event Stream vs HTTP
 
-The current implementation uses HTTP forwarding between services (EVY pattern). For production edge deployment, this should evolve to **Redis Streams**:
+The field profile uses **Redis Streams** for durable delivery. HTTP forwarding
+remains a laboratory fallback only when the stream is unavailable:
 
 | Aspect | HTTP Forwarding (current) | Redis Streams (production) |
 |--------|--------------------------|---------------------------|
@@ -138,7 +139,11 @@ The current implementation uses HTTP forwarding between services (EVY pattern). 
 | Multi-consumer | No | Yes — fan-out to multiple processors |
 | Offline resilience | Messages lost on restart | Messages survive restart |
 
-Redis Streams are viable at the edge because Redis itself runs with ~50MB RAM. The stream provides ordered, persistent message delivery without the overhead of Kafka or a full message broker.
+Redis Streams are viable at the edge because Redis itself has a small memory
+footprint. The deployment enables AOF persistence, uses a bounded stream, and
+sets `noeviction` so memory pressure fails visibly instead of silently deleting
+unacknowledged messages. Kafka remains an optional connected-lab backend for AMQ
+Streams integration; it is not the default disconnected-node dependency.
 
 ## Node Profiles
 
@@ -152,7 +157,7 @@ Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edg
 | RAM | 16 GB total | BitNet model (~400MB) + ChromaDB ONNX (~200MB) + services + OS |
 | Storage | 20 GB | OS + containers + RAG corpus + Redis AOF |
 | Network | 2G cellular (GSM) or ethernet | SMS in/out |
-| Power | 25-45W | Solar viable for field deployment |
+| Power | 25-45W planning range | Estimate only; measure the complete node before battery or solar sizing |
 
 **Service allocation within the micronode:**
 
@@ -182,7 +187,7 @@ Simulates an 8-core / 16 GB edge board (Orange Pi 5 Plus, Rock 5B, Intel NUC Edg
 | RAM | 4-6 GB | BitNet model (~400MB) + embeddings (~200MB) + services + OS |
 | Storage | 32 GB | OS image + container images + RAG corpus + Redis AOF |
 | Network | 2G cellular (GSM) or ethernet | SMS in/out; management plane sync when available |
-| Power | 15-50W | Solar viable for field deployment |
+| Power | 15-50W planning range | Estimate only; solar suitability requires exact-device CUT evidence |
 
 ### bigEVY (Central Node) — Optional
 
@@ -235,6 +240,11 @@ The management plane (RHACM) provides:
 - **Updates**: push new models, updated RAG corpus, configuration changes
 - **Provisioning**: new nodes boot from the RHEL image and auto-register
 
+The connected-to-disconnected corpus supply chain is a separate trust boundary.
+See [Big EVY Corpus Factory → Lil EVY Roadmap](big-evy-corpus-factory-roadmap.md)
+for source governance, evidence lineage, agentic workstreams, secure distribution,
+anti-rollback activation, and release promotion gates.
+
 ## Deployment Artifacts
 
 | Artifact | Format | Target |
@@ -243,7 +253,7 @@ The management plane (RHACM) provides:
 | Workloads | Helm chart | MicroShift (Kubernetes API) |
 | BitNet server | Container image (UBI9) | Pod on MicroShift |
 | Backend services | Container images (UBI9) | Pods on MicroShift |
-| RAG corpus | JSON → ChromaDB | Loaded at first boot or via GitOps sync |
+| RAG corpus | Signed immutable OCI release → local index | Verified, smoke-tested, and atomically activated by digest |
 | Fleet policies | RHACM policies | Applied from central hub |
 
 ### Development Path (docker-compose)

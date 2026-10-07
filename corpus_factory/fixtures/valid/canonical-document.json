@@ -1,0 +1,13 @@
+{
+  "schema_version": "2.0.0", "record_type": "canonical_document",
+  "document_id": "region4-shelter-alpha", "revision": 2, "document_digest": "sha256:c1ea0d8ecdbff2dfcd2ffccd38e18e8c05f80ef10e2cefd3d356f8e304d202f9",
+  "event_id": "region4-flood-2026", "deployment_ids": ["region4-public-response"],
+  "scope": {"geographies": ["US-EX-R4"], "languages": ["en-US"], "audiences": ["public"]},
+  "canonical_text": "Shelter Alpha opens at 08:00.",
+  "structured_facts": [{"fact_id": "shelter-alpha-opening", "value": "08:00", "citations": [{"source_id": "region4-emergency-office-shelters", "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "location": "$.shelters[0].opens"}]}],
+  "source_citations": [{"source_id": "region4-emergency-office-shelters", "evidence_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "location": "$.shelters[0]"}],
+  "transformations": [{"tool": "evy-json-normalizer", "version": "2.0.0", "operation": "canonicalize"}],
+  "validity": {"valid_from": "2026-10-05T18:00:00Z", "valid_until": "2026-10-06T18:00:00Z", "review_due_at": "2026-10-05T20:00:00Z", "stale_action": "block"},
+  "authority_rank": 100, "conflict": {"state": "resolved", "explanation": "Revision 2 supersedes the earlier opening time.", "supersedes": [{"document_id": "region4-shelter-alpha", "revision": 1, "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}]},
+  "safety_class": "critical", "permitted_delivery_channels": ["sms", "lora", "web"], "review_attestation_ids": ["review-shelter-alpha-domain", "review-shelter-alpha-privacy"], "approval_state": "approved"
+}

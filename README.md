@@ -1,12 +1,12 @@
 # Edge Inference at Scale
 
-**SMS → LLM → SMS** | AI at the edge, powered by **Red Hat** + **Intel**
+**Message → RAG/LLM → Message** | Offline AI at the edge
 
-> In a warzone, disaster zone, or underserved community — anywhere 2G cellular works — people can text in and get knowledge back. No internet. No app. No GPU. Just SMS and a 1-bit language model running on CPU.
+> In a warzone, disaster zone, or underserved community — anywhere a local radio or 2G link works — people can request knowledge and get a response without internet access.
 
 ## What This Is
 
-A reference architecture and live demo showing how to deploy LLM inference at the edge with minimal resources. Users send SMS messages and receive AI-generated responses powered by a **BitNet 1.58-bit ternary model** (~400MB, CPU-only) with **Retrieval-Augmented Generation** for domain-specific knowledge.
+A reference architecture and live demo showing how to deploy resource-constrained inference and **Retrieval-Augmented Generation** at the edge. BitNet remains the small CPU control model, while the inference boundary can target any local OpenAI-compatible runtime for model and hardware evaluation.
 
 The demo scenario is a conference assistant for **Summit Connect**, but the architecture works for any edge deployment: disaster relief coordination, community information hubs, agricultural advisories, health triage — anywhere information access matters and infrastructure is limited.
 
@@ -22,8 +22,8 @@ The demo scenario is a conference assistant for **Summit Connect**, but the arch
   │   (GSM/Twilio)  (Redis         │         │                    │
   │                  Streams)       ▼         ▼                   │
   │   SMS Out ◄──────────── RAG Service   LLM Inference           │
-  │                        (OpenVINO +    (BitNet b1.58           │
-  │                         MiniLM)       via llama.cpp)          │
+  │                        (OpenVINO +    (OpenAI-compatible      │
+  │                         MiniLM)       local provider)         │
   │                                                               │
   │   Privacy Filter     Redis Streams     ChromaDB               │
   ├───────────────────────────────────────────────────────────────┤
@@ -57,7 +57,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **LLM** | BitNet b1.58-2B-4T via llama.cpp | 1-bit ternary weights → integer-only math → no GPU needed |
+| **LLM** | OpenAI-compatible local provider | Compare BitNet, GGUF models, and accelerator runtimes without changing the pipeline |
 | **RAG** | ChromaDB + MiniLM-L6-v2 (OpenVINO) | Lightweight vector search for domain knowledge |
 | **Services** | FastAPI (Python) on UBI9 | Microservice architecture |
 | **SMS** | Simulated (Twilio-ready) | GSM modem or Twilio webhook in production |
@@ -67,7 +67,7 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture docum
 
 ```bash
 # Clone and start the edge node
-git clone https://github.com/YOUR_ORG/edge-inference-at-scale.git
+git clone https://github.com/jkershawrh/edge-inference-at-scale.git
 cd edge-inference-at-scale
 docker compose up    # requires x86_64 (Intel/AMD) for BitNet
 
@@ -85,8 +85,185 @@ No frontend on the node — it's pure backend, like a real edge deployment. Metr
 ```bash
 curl http://localhost:8000/services/health     # All services
 curl http://localhost:8000/llm/stats           # Inference latency
-curl http://localhost:8000/router/statistics   # Message throughput
+curl http://localhost:8000/router/statistics   # Throughput + RAG/LLM/delivery stage timing
 ```
+
+### Convergence gates
+
+The executable [core convergence matrix](tests/validation_matrix.yaml) reports
+CDD, TDD, integration, EDD, BDD, CUT, and publication as RED, AMBER, or GREEN.
+A skipped or simulated check remains AMBER; it is never silently promoted.
+
+```bash
+make test-all       # Local evidence; succeeds when there is no RED
+make test-release   # Strict promotion; requires every stage to be GREEN
+make test-openshift # Live retrieval, answer-quality, and capacity evidence
+```
+
+CUT means capability-and-user testing for the complete field product. The
+presentation's component-based testing (CBT) is useful evidence, but cannot by
+itself qualify hardware, GSM delivery, power, or representative field use.
+
+### Provider and resource experiments
+
+BitNet remains the default control. Point the same application image at another
+OpenAI-compatible local server with environment variables:
+
+```bash
+LLM_PROVIDER=llama-cpp \
+LLM_BASE_URL=http://model-server:8080 \
+LLM_MODEL=ministral-3b-q4 \
+docker compose up
+```
+
+The Helm chart includes three OpenShift laboratory envelopes. They validate
+memory floors, concurrency, queueing, RAG quality, and latency; CPU quotas do
+not predict ARM/NPU speed or physical power draw.
+
+```bash
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-small.yaml
+
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-balanced.yaml
+
+helm upgrade --install edge-inference chart/ \
+  -f chart/profiles/values-lab-ventuno-class.yaml
+```
+
+For disaster, rural, or conflict-zone behavior, also apply
+`chart/profiles/values-field-safety.yaml`. It prevents ungrounded LLM fallback
+and routes emergency questions through approved local RAG evidence. See
+[docs/field-safety-mode.md](docs/field-safety-mode.md).
+
+For the smallest disconnected footprint, use
+`chart/profiles/values-field-rag-only.yaml` with a signed event corpus. This
+profile removes both the model server and LLM adapter, lowers the direct-answer
+threshold to the approved evidence floor, and refuses anything the corpus
+cannot support. It also selects persistent Redis Streams as the lightweight
+at-least-once field transport. Generation remains enabled by default so BitNet and other
+candidate models can still be evaluated as controlled fallbacks.
+
+Use the controlled experiment runner in
+[docs/model-rag-experiments.md](docs/model-rag-experiments.md) to compare BitNet
+and candidate runtimes without accidentally changing the corpus, embeddings,
+evaluation set, retrieval depth, or resource envelope.
+
+Use the evidence-labeled [hardware sizing pipeline](docs/hardware-sizing.md) to
+turn those OpenShift observations into preliminary CPU, memory, storage,
+battery, solar, and DC-supply envelopes. Quota-derived results remain
+`ESTIMATED_ONLY` until exact-board measurements are collected.
+
+For two-way conversational testing before GSM hardware is available, use the
+signed Discord `/ask` adapter described in
+[docs/discord-testing.md](docs/discord-testing.md). Discord is only a development
+transport; the core router now uses a channel-neutral envelope so the field SMS
+and LoRa paths remain independent.
+
+### Validate retrieval before comparing LLMs
+
+The RAG service explicitly uses the configured embedding model for both corpus
+indexing and query vectors. Its Chroma collection and local embedding cache are
+versioned by model identity, so switching models builds a compatible index while
+leaving the prior index intact.
+
+Load the complete Summit Connect corpus, then measure retrieval independently of
+the LLM and message transport:
+
+```bash
+make corpus-load
+make test-retrieval-evaluation
+```
+
+The retrieval gate reports evidence recall at 3, mean reciprocal rank, and p50/
+p95 latency. Run `make test-evaluation` separately for end-to-end answer quality;
+this distinction makes it clear whether a miss came from retrieval or generation.
+
+For field rollout, package each event corpus as an immutable, optionally signed
+OCI image. Event/version identity, integrity checks, rollback behavior, and the
+OpenShift promotion workflow are documented in
+[docs/corpus-packaging.md](docs/corpus-packaging.md).
+
+The complete connected Big EVY sourcing, governance, evaluation, distribution,
+and Lil EVY activation plan is saved in
+[docs/big-evy-corpus-factory-roadmap.md](docs/big-evy-corpus-factory-roadmap.md).
+The executable source-registry and bounded HTTPS acquisition contract is
+documented in [docs/corpus-acquisition.md](docs/corpus-acquisition.md).
+
+The first factory/runtime contract is now executable: allowlisted files become
+immutable evidence snapshots, provenance-linked canonical documents, and
+deterministic chunks; five independent promotion layers bind to the exact
+release/model/retrieval identities; and Lil EVY stages, verifies, tests, and
+atomically activates a signed corpus without lowering its anti-rollback floor.
+The RAG runtime can now boot directly from that durable active pointer, reverify
+the selected signed package, expose a bounded activation status, and fail closed
+instead of falling back to unrelated local data.
+Field responses also carry internal, text-free attribution to the exact active
+corpus and selected evidence, while signed exceptional recovery remains bound to
+the live node state and suppresses restricted or unclassified recovery evidence.
+Fleet inventory now distinguishes active, recovery, unready, unknown, and drifted
+nodes without claiming compliance until a desired release is configured.
+For OpenShift lab testing, the chart can also enable an internal-only activation
+sidecar. Its credentials are projected from Secrets, a 202 response still
+requires a RAG pod restart, and exact digest/sequence reconciliation prevents an
+accepted package from being mistaken for the release currently serving answers.
+The next control layer is also executable as a crash-resumable state machine:
+restart requests are idempotent, deadlines survive controller restarts, and fleet
+compliance requires live proof of the exact production digest and sequence.
+The opt-in chart profile now runs that controller autonomously with a projected,
+controller-only Kubernetes identity and permission to patch only its own RAG
+Deployment, making the complete cutover testable on OpenShift without field hardware.
+
+The factory is domain-agnostic, but promotion is not. Each deployment supplies
+an event policy that names the accepted authorities, required operational facts,
+scope intersections, freshness limits, independent-source minimums, human
+approvals, and safe no-answer behavior. The resulting suitability report is an
+input to release promotion, so packaging success cannot hide missing or stale
+field information. See
+[docs/corpus-suitability.md](docs/corpus-suitability.md).
+
+The first agentic sourcing reference is intentionally one bounded Summit
+Connect set. Its mission profile, approved synthetic source registry, and
+document classifications produce a deterministic coverage report with five
+covered categories and six explicit gaps. The planner has no network,
+approval, signing, publication, or deployment authority. See
+[corpus_factory/examples/summit_connect/README.md](corpus_factory/examples/summit_connect/README.md).
+Connected-side MCP clients can inspect that same evidence through four bounded,
+read-only advisory tools without adding MCP to the Lil EVY message path. See
+[docs/corpus-factory-mcp.md](docs/corpus-factory-mcp.md).
+Governed candidates now remain unsigned until an independently approved,
+externally signed evaluation attestation authorizes a protected signer for the
+exact evaluated digest. The repository holds no production private key; see
+[docs/evaluation-attestation.md](docs/evaluation-attestation.md).
+The acquisition and release audit chain can also be checkpointed by an
+independent external Ed25519 witness and verified offline for rollback, replay,
+tampering, and forks; see
+[docs/external-audit-anchoring.md](docs/external-audit-anchoring.md).
+
+```bash
+make test-corpus-factory
+make test-connected-acquisition
+make test-corpus-audit
+make test-corpus-suitability
+make test-corpus-sourcing
+make test-corpus-mcp
+make test-evaluation-attestation
+make test-audit-anchor
+make test-hardware-sizing
+make hardware-plan
+python scripts/plan_corpus_coverage.py --help
+python scripts/plan_corpus_sourcing.py --help
+python scripts/build_summit_lineage.py --help
+python scripts/acquire_corpus_source.py --help
+python scripts/plan_corpus_refresh.py --help
+python scripts/corpus_audit.py --help
+python scripts/evaluate_corpus_suitability.py --help
+python scripts/evaluate_corpus_release.py --help
+```
+
+These are connected-lab building blocks, not permission to onboard live crisis
+data. Source authority, licensing, local-language review, production signing,
+and release approval remain human-controlled gates.
 
 ## Micronode Footprint
 
@@ -134,7 +311,7 @@ In the field: truck nodes to the affected area, power them up, they start servin
 │   └── services/
 │       ├── sms_gateway/           # SMS simulation + Twilio stub
 │       ├── message_router/        # Classify → RAG → LLM → respond
-│       ├── llm_inference/         # BitNet server wrapper
+│       ├── llm_inference/         # Hardware-neutral model-provider adapter
 │       ├── rag_service/           # ChromaDB + OpenVINO embeddings
 │       └── privacy_filter/        # PII detection, rate limiting
 ├── data/summit_connect/           # RAG knowledge corpus
@@ -142,7 +319,7 @@ In the field: truck nodes to the affected area, power them up, they start servin
 ├── tests/                         # CDD/TDD/EDD/BDD validation matrix
 ├── docs/architecture.md           # Full architecture document
 ├── docker-compose.yml             # Dev: single edge node
-└── chart/                         # Helm chart for MicroShift (TODO)
+└── chart/                         # Helm chart for MicroShift/OpenShift
 ```
 
 ## Based On

@@ -8,8 +8,8 @@ PYTEST ?= $(PYTHON) -m pytest
 HELM ?= helm
 PODMAN ?= podman
 
-.PHONY: help test-all test-contracts test-unit test-integration test-benchmarks \
-        test-evaluation test-bdd test-capacity test-capacity-live test-publication \
+.PHONY: help test-all test-release test-openshift test-contracts test-corpus-factory test-corpus-mcp test-evaluation-attestation test-audit-anchor test-connected-acquisition test-corpus-audit test-corpus-suitability test-corpus-sourcing test-hardware-sizing hardware-plan test-unit test-integration test-benchmarks \
+        test-evaluation test-retrieval-evaluation test-bdd test-capacity test-capacity-live test-publication \
         lint build compose-up compose-down scale-up scale-down dashboard deploy
 
 help: ## Show this help
@@ -17,11 +17,43 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 # ── Stage 0: Contracts (CDD) ──────────────────────────────────────────
-test-contracts: ## Stage 0 — Validate API contracts
-	$(PYTEST) tests/contracts/ -v --tb=short
+test-contracts: ## Stage 0 — Validate API and corpus contracts
+	$(PYTEST) tests/contracts/ tests/corpus_factory/ -v --tb=short
+
+test-corpus-factory: ## Validate Big EVY contracts, factory core, and promotion gates
+	$(PYTEST) tests/corpus_factory/ -v --tb=short
+
+test-corpus-mcp: ## Validate the constrained Big EVY MCP tools and protocol surface
+	$(PYTEST) tests/corpus_factory/test_mcp_server.py -v --tb=short
+
+test-evaluation-attestation: ## Validate independent evaluation approval and signing handoff
+	$(PYTEST) tests/corpus_factory/test_evaluation_attestation.py -v --tb=short
+
+test-audit-anchor: ## Validate externally witnessed corpus audit checkpoints
+	$(PYTEST) tests/corpus_factory/test_audit_anchor.py -v --tb=short
+
+test-connected-acquisition: ## Validate source registry and bounded HTTPS acquisition
+	$(PYTEST) tests/corpus_factory/test_connected_acquisition.py -v --tb=short
+
+test-corpus-audit: ## Validate refresh planning and tamper-evident audit chain
+	$(PYTEST) tests/corpus_factory/test_refresh_planning.py tests/corpus_factory/test_audit_ledger.py -v --tb=short
+
+test-corpus-suitability: ## Prove the synthetic event is incomplete-then-corrected
+	$(PYTEST) tests/integration/test_synthetic_suitability_drill.py -v --tb=short
+
+test-corpus-sourcing: ## Plan the bounded Summit source set and expose explicit gaps
+	$(PYTEST) tests/integration/test_summit_sourcing_reference.py -v --tb=short
+
+test-hardware-sizing: ## Validate resource, storage, battery, and solar sizing
+	$(PYTEST) tests/unit/test_hardware_sizing.py -v --tb=short
+
+hardware-plan: ## Build the pre-hardware estimate from declared observations
+	$(PYTHON) scripts/plan_hardware.py \
+		--input hardware/examples/openshift-estimate.json \
+		--output artifacts/hardware-sizing-estimate.json
 
 # ── Stage 1: Unit (TDD) ──────────────────────────────────────────────
-test-unit: ## Stage 1 — Unit tests (143 tests, no external deps)
+test-unit: ## Stage 1 — Unit tests (no external services)
 	$(PYTEST) tests/unit/ -v --tb=short
 
 # ── Stage 2: Integration ─────────────────────────────────────────────
@@ -31,6 +63,9 @@ test-integration: ## Stage 2 — Pipeline integration tests
 # ── Stage 3: Evaluation (EDD) ────────────────────────────────────────
 test-evaluation: ## Stage 3 — Response quality evaluation (requires live API)
 	$(PYTHON) tests/evaluation/run_eval.py
+
+test-retrieval-evaluation: ## Stage 3 — RAG recall, rank, and latency (requires live RAG)
+	$(PYTHON) tests/evaluation/run_retrieval_eval.py
 
 # ── Stage 3b: Capacity & Burst Benchmarks ────────────────────────────
 test-capacity: ## Stage 3b — Capacity tests (mocked, runs in CI)
@@ -55,25 +90,35 @@ test: ## Quick test — unit tests only
 	$(PYTEST) tests/unit/ -q
 
 test-all: ## Run all gated stages sequentially
-	@echo "╔══════════════════════════════════════════╗"
-	@echo "║  $(PROJECT) — Validation Matrix          ║"
-	@echo "╚══════════════════════════════════════════╝"
-	@$(MAKE) test-contracts   && echo "Stage 0: Contracts    ✅" || (echo "Stage 0: Contracts    ❌" && exit 1)
-	@$(MAKE) test-unit        && echo "Stage 1: Unit/TDD     ✅" || (echo "Stage 1: Unit/TDD     ❌" && exit 1)
-	@$(MAKE) test-integration && echo "Stage 2: Integration  ✅" || (echo "Stage 2: Integration  ❌" && exit 1)
-	@$(MAKE) test-capacity    && echo "Stage 3b: Capacity    ✅" || (echo "Stage 3b: Capacity    ❌" && exit 1)
-	@$(MAKE) test-bdd         && echo "Stage 4: BDD          ✅" || (echo "Stage 4: BDD          ❌" && exit 1)
-	@$(MAKE) test-publication && echo "Stage 5: Publication  ✅" || (echo "Stage 5: Publication  ❌" && exit 1)
-	@echo ""
-	@echo "ALL STAGES GREEN ✅"
+	$(PYTHON) scripts/run_convergence.py --profile local
+
+test-release: ## Require every convergence stage to be GREEN
+	$(PYTHON) scripts/run_convergence.py --profile local --require-green
+
+test-openshift: ## Run convergence with live OpenShift EDD evidence
+	$(PYTHON) scripts/run_convergence.py --profile openshift
 
 # ── Lint ──────────────────────────────────────────────────────────────
 lint: ## Lint Python and Helm
-	$(PYTHON) -c "import ast, os, sys; \
-		errs = 0; \
-		[exec('try:\n ast.parse(open(os.path.join(r,f)).read())\nexcept SyntaxError as e:\n print(f\"  FAIL: {os.path.join(r,f)}: {e}\"); errs += 1', {'ast':ast,'os':os,'open':open,'print':print,'SyntaxError':SyntaxError,'errs':errs}) for r,_,fs in os.walk('backend') for f in fs if f.endswith('.py')]; \
-		print(f'Python syntax: {\"PASS\" if not errs else \"FAIL\"}')"
-	$(HELM) lint chart/ 2>/dev/null || true
+	$(PYTHON) -m compileall -q backend corpus_factory scripts tests
+	$(HELM) lint chart/
+	@if $(HELM) template unsafe chart/ -f chart/profiles/values-field-safety.yaml >/dev/null 2>&1; then \
+		echo "Field safety rendered without a verified corpus"; exit 1; \
+	fi
+	@$(HELM) template signed-lab chart/ \
+		-f chart/profiles/values-lab-small.yaml \
+		-f chart/profiles/values-field-safety.yaml \
+		--set rag.corpus.enabled=true \
+		--set rag.corpus.image=registry.example/corpus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+		--set rag.corpus.requireSignature=true \
+		--set rag.corpus.publicKeySecretName=corpus-signing-key >/dev/null
+	@$(HELM) template field-rag-only chart/ \
+		-f chart/profiles/values-field-rag-only.yaml \
+		--set rag.corpus.enabled=true \
+		--set rag.corpus.image=registry.example/corpus@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+		--set rag.corpus.requireSignature=true \
+		--set rag.corpus.publicKeySecretName=corpus-signing-key \
+		| grep -q 'GENERATION_ENABLED: "false"'
 	@echo "Lint complete"
 
 # ── Build ─────────────────────────────────────────────────────────────

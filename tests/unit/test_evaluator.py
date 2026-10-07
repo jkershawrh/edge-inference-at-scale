@@ -84,6 +84,8 @@ class TestScoreResponse:
         assert result["length_score"] == 1.0  # 0 chars < 160
         # composite = 0.15 + 0.10 + 0.10 + 0.15 = 0.50 (borderline pass)
         assert result["composite_score"] <= 0.5
+        assert result["fact_score"] == 0.0
+        assert result["pass"] is False
 
     def test_partial_keyword_match(self, tmp_path):
         evaluator = _make_evaluator([BASIC_QUERY], str(tmp_path))
@@ -216,6 +218,7 @@ class TestRunEvaluation:
         assert report["failed"] == 0
         assert report["pass_rate"] == 1.0
         assert "schedule" in report["category_scores"]
+        assert report["category_pass_rates"]["schedule"] == 1.0
 
     def test_empty_batch(self, tmp_path):
         evaluator = _make_evaluator([BASIC_QUERY], str(tmp_path))

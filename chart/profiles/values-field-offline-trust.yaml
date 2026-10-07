@@ -1,0 +1,19 @@
+# Opt-in field overlay for signed offline time and revocation enforcement.
+# Provision both named objects before deployment and override identities for the
+# actual site, trust generation, and release-signing key.
+rag:
+  corpus:
+    enabled: false
+    publicKeySecretName: lil-evy-corpus-signing-authority
+  activation:
+    enabled: true
+  offlineTrust:
+    enabled: true
+    siteId: field-site-alpha
+    trustGeneration: 1
+    maxSnapshotAgeSeconds: 3600
+    timeKeyId: time-authority-01
+    revocationKeyId: revocation-authority-01
+    releaseSigningKeyId: release-signing-01
+    authoritySecretName: lil-evy-offline-trust-authorities
+    evidenceConfigMapName: lil-evy-offline-trust-evidence

@@ -1,0 +1,20 @@
+{{- if .Values.rag.activation.operator.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-activation-operator
+  labels:
+    app.kubernetes.io/name: activation-operator
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: control-plane
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.rag.activation.operator.port }}
+      targetPort: activation
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: rag-service
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

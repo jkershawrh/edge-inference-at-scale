@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v2/document-classification.schema.json",
+  "title": "DocumentClassification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "classification_id", "mission_profile_id", "document", "coverage", "authority", "risk", "validity", "provenance", "verification", "answer_policy"],
+  "properties": {
+    "schema_version": {"const": "2.0.0"}, "record_type": {"const": "document_classification"},
+    "classification_id": {"$ref": "#/$defs/id"}, "mission_profile_id": {"$ref": "#/$defs/id"},
+    "document": {"type": "object", "additionalProperties": false, "required": ["document_id", "revision"], "properties": {"document_id": {"$ref": "#/$defs/id"}, "revision": {"type": "integer", "minimum": 1}}},
+    "coverage": {"$ref": "#/$defs/coverage"}, "authority": {"$ref": "#/$defs/authority"},
+    "risk": {"$ref": "#/$defs/risk"}, "validity": {"$ref": "#/$defs/validity"},
+    "provenance": {"$ref": "#/$defs/provenance"}, "verification": {"$ref": "#/$defs/verification"},
+    "answer_policy": {"$ref": "#/$defs/answerPolicy"}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{2,127}$"},
+    "language": {"type": "string", "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"},
+    "idList": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/id"}},
+    "coverage": {"type": "object", "additionalProperties": false, "required": ["category_ids", "supported_intents", "geographies", "languages", "audiences", "delivery_channels"], "properties": {
+      "category_ids": {"$ref": "#/$defs/idList"}, "supported_intents": {"$ref": "#/$defs/idList"},
+      "geographies": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+      "languages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/language"}},
+      "audiences": {"$ref": "#/$defs/idList"},
+      "delivery_channels": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["sms", "lora", "discord", "web", "voice"]}}
+    }},
+    "authority": {"type": "object", "additionalProperties": false, "required": ["class"], "properties": {"class": {"enum": ["official", "delegated", "expert", "community", "advisory", "unverified"]}}},
+    "risk": {"type": "object", "additionalProperties": false, "required": ["safety_class", "consequence_of_error"], "properties": {"safety_class": {"enum": ["advisory", "standard", "high", "critical"]}, "consequence_of_error": {"type": "string", "minLength": 1, "maxLength": 512}}},
+    "validity": {"type": "object", "additionalProperties": false, "required": ["valid_from", "valid_until", "stale_action"], "properties": {"valid_from": {"type": "string", "format": "date-time"}, "valid_until": {"type": ["string", "null"], "format": "date-time"}, "stale_action": {"enum": ["block", "warn", "allow"]}}},
+    "provenance": {"type": "object", "additionalProperties": false, "required": ["source_ids", "license", "redistribution"], "properties": {"source_ids": {"$ref": "#/$defs/idList"}, "license": {"type": "string", "minLength": 1, "maxLength": 256}, "redistribution": {"enum": ["permitted", "restricted", "prohibited", "unknown"]}}},
+    "verification": {"type": "object", "additionalProperties": false, "required": ["status", "verified_at", "reviewer_identity"], "properties": {"status": {"enum": ["pending", "verified", "rejected"]}, "verified_at": {"type": ["string", "null"], "format": "date-time"}, "reviewer_identity": {"type": ["string", "null"], "minLength": 3, "maxLength": 256}}},
+    "answerPolicy": {"type": "object", "additionalProperties": false, "required": ["direct_answer_eligible", "reason"], "properties": {"direct_answer_eligible": {"type": "boolean"}, "reason": {"type": "string", "minLength": 1, "maxLength": 512}}}
+  }
+}

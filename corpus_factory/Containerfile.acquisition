@@ -1,0 +1,17 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+RUN microdnf install -y python3.11 python3.11-pip && microdnf clean all
+
+WORKDIR /opt/app-root/src
+
+COPY corpus_factory/requirements-acquisition.txt /tmp/corpus-factory-requirements.txt
+RUN python3.11 -m pip install --no-cache-dir -r /tmp/corpus-factory-requirements.txt
+
+COPY corpus_factory /opt/app-root/src/corpus_factory
+COPY scripts/run_acquisition_controller.py /opt/app-root/src/scripts/run_acquisition_controller.py
+
+ENV PYTHONPATH=/opt/app-root/src
+
+USER 1001
+
+ENTRYPOINT ["python3.11", "/opt/app-root/src/scripts/run_acquisition_controller.py"]

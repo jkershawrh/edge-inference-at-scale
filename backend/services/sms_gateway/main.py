@@ -1,8 +1,8 @@
 """Edge Inference at Scale -- SMS Gateway service.
 
 Forked from the EVY SMS gateway but stripped of all hardware drivers
-(GSM, serial, gammu).  Uses either an in-memory SimDriver for local /
-demo work or a TwilioDriver stub for future Phase 4 integration.
+(GSM, serial, gammu). Uses either an in-memory SimDriver for local/demo
+work or the authenticated Twilio REST/webhook driver for connected SMS tests.
 """
 
 import asyncio
@@ -26,7 +26,7 @@ from backend.shared.models import (
     SMSMessage,
     ServiceHealth,
 )
-from backend.shared.streams import SMSEventStream
+from backend.shared.streams import create_sms_event_stream
 from backend.services.sms_gateway.sim_driver import SimDriver
 from backend.services.sms_gateway.twilio_driver import TwilioDriver
 
@@ -119,11 +119,17 @@ class SMSGateway:
         if _HAS_PARSER:
             self.message_parser = MessageParser()
 
-        # Kafka event stream (producer side)
-        self.event_stream = SMSEventStream(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
-            topic=settings.stream_topic,
+        # Durable event stream (producer side)
+        self.event_stream = create_sms_event_stream(
+            backend=os.getenv("STREAM_BACKEND", settings.stream_backend),
+            redis_url=os.getenv("REDIS_URL", settings.redis_url),
+            kafka_bootstrap_servers=os.getenv(
+                "KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers
+            ),
+            stream_name=settings.stream_topic,
             group_name=settings.stream_consumer_group,
+            enable_producer=True,
+            enable_consumer=False,
         )
 
         # Rate limiter
@@ -147,6 +153,7 @@ class SMSGateway:
 
         # Background worker handle
         self._forward_task: Optional[asyncio.Task[None]] = None
+        self._stream_task: Optional[asyncio.Task[None]] = None
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -154,11 +161,7 @@ class SMSGateway:
         ok = await self.active_driver.initialize()
         if not ok:
             raise RuntimeError("SMS driver failed to initialise")
-        try:
-            await self.event_stream.connect()
-            logger.info("Kafka event stream connected")
-        except Exception:
-            logger.warning("Kafka unavailable -- will use HTTP-only forwarding")
+        self._stream_task = asyncio.create_task(self._stream_reconnect_loop())
         self._forward_task = asyncio.create_task(self._forward_worker())
         logger.info("SMS Gateway started (driver=%s)", type(self.active_driver).__name__)
 
@@ -167,6 +170,12 @@ class SMSGateway:
             self._forward_task.cancel()
             try:
                 await self._forward_task
+            except asyncio.CancelledError:
+                pass
+        if self._stream_task and not self._stream_task.done():
+            self._stream_task.cancel()
+            try:
+                await self._stream_task
             except asyncio.CancelledError:
                 pass
         await self.event_stream.close()
@@ -179,6 +188,14 @@ class SMSGateway:
         """Accept an inbound SMS, record it, enqueue for forwarding."""
         if not self.rate_limiter.allow():
             raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
+        if self.message_parser:
+            validation = self.message_parser.validate_message(content)
+            if not validation["valid"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"message": "Invalid SMS content", "errors": validation["errors"]},
+                )
 
         msg = await self.active_driver.receive_sms(sender, content)
         self._total_received += 1
@@ -238,16 +255,43 @@ class SMSGateway:
 
     # -- forwarding worker ---------------------------------------------------
 
+    async def _stream_reconnect_loop(self) -> None:
+        """Keep the producer connected across boot races and broker restarts."""
+        while True:
+            try:
+                health = await self.event_stream.health()
+                if health.get("status") != "connected":
+                    await self.event_stream.close()
+                    await self.event_stream.connect()
+                    logger.info("Durable event stream producer connected")
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.warning(
+                    "Durable event stream unavailable -- HTTP fallback remains active"
+                )
+            await asyncio.sleep(2.0)
+
     async def _forward_worker(self) -> None:
         """Drain the inbound queue and POST each message to the router."""
         while True:
             envelope = await self._inbound_queue.get()
-            await self._forward_to_router(envelope)
-            self._inbound_queue.task_done()
+            try:
+                await self._forward_to_router(envelope)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self._total_forward_failures += 1
+                logger.exception(
+                    "Unexpected forwarding failure for message from %s",
+                    envelope.get("sender"),
+                )
+            finally:
+                self._inbound_queue.task_done()
 
     async def _forward_to_router(self, envelope: Dict[str, Any]) -> None:
-        """Forward a message via Kafka, falling back to HTTP POST."""
-        # --- Try Kafka first ---
+        """Forward via the durable stream, falling back to HTTP POST."""
+        # --- Try the configured durable stream first ---
         try:
             stream_fields = {
                 "sender": envelope.get("sender", ""),
@@ -267,7 +311,7 @@ class SMSGateway:
             return
         except Exception:
             logger.warning(
-                "Kafka publish failed for message from %s -- falling back to HTTP",
+                "Durable stream publish failed for message from %s -- falling back to HTTP",
                 envelope.get("sender"),
             )
 
@@ -390,6 +434,33 @@ async def sms_history():
 
 # -- Twilio webhooks --------------------------------------------------------
 
+async def _validate_twilio_signature(request: Request) -> None:
+    """Validate every Twilio callback before processing its form payload."""
+
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", settings.twilio_auth_token)
+    if not auth_token:
+        if settings.sms_mode == "twilio":
+            raise HTTPException(
+                status_code=503,
+                detail="Twilio webhook verification is not configured",
+            )
+        return
+    try:
+        from twilio.request_validator import RequestValidator
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="twilio package required for signature validation",
+        ) from exc
+
+    validator = RequestValidator(auth_token)
+    signature = request.headers.get("X-Twilio-Signature", "")
+    form_data = dict(await request.form())
+    url = str(request.url).replace("http://", "https://", 1)
+    if not validator.validate(url, form_data, signature):
+        logger.warning("Twilio signature validation FAILED — rejecting request")
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
+
 @app.post("/twilio/webhook")
 async def twilio_webhook(
     request: Request,
@@ -404,22 +475,7 @@ async def twilio_webhook(
     Twilio POSTs form-encoded data with fields ``From``, ``To``, ``Body``,
     ``MessageSid``, etc.
     """
-    # Validate Twilio signature to prevent spoofed webhooks
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN", settings.twilio_auth_token)
-    if auth_token:
-        try:
-            from twilio.request_validator import RequestValidator
-            validator = RequestValidator(auth_token)
-            signature = request.headers.get("X-Twilio-Signature", "")
-            form_data = dict(await request.form())
-            url = str(request.url).replace("http://", "https://")
-            if not validator.validate(url, form_data, signature):
-                logger.warning("Twilio signature validation FAILED — rejecting request")
-                raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-        except ImportError:
-            if settings.sms_mode == "twilio":
-                raise HTTPException(status_code=500, detail="twilio package required for signature validation in twilio mode")
-            logger.warning("twilio package not installed — skipping signature validation")
+    await _validate_twilio_signature(request)
     logger.info(
         "Twilio webhook: from=%s to=%s sid=%s body=%s",
         From, To, MessageSid, Body[:40],
@@ -445,6 +501,7 @@ async def twilio_status(request: Request):
 
     These are informational — we log them and return 200.
     """
+    await _validate_twilio_signature(request)
     form = await request.form()
     logger.info(
         "Twilio status callback: sid=%s status=%s",

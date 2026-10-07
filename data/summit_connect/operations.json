@@ -1,0 +1,36 @@
+{
+  "fixture_notice": "SYNTHETIC TEST DATA for Summit Connect 2026. This is not a real event operations bulletin and must not be used for field deployment.",
+  "publisher": "Summit Connect Operations (synthetic fixture)",
+  "effective_at": "2026-07-01T12:00:00-05:00",
+  "event_timezone": {
+    "iana_name": "America/Chicago",
+    "display_name": "Central Daylight Time",
+    "utc_offset_during_event": "UTC-05:00"
+  },
+  "agenda_changes": {
+    "authority": "Summit Connect Operations",
+    "policy": "Only changes published by Summit Connect Operations at an information desk or in the official schedule are authoritative. Speaker announcements and attendee messages are not authoritative schedule changes."
+  },
+  "session_capacity": {
+    "policy": "Room capacity is fixed by the posted room limit. Entry is first come, first served until event staff close the room; registration does not reserve a seat."
+  },
+  "accessibility": {
+    "accessible_entrance": "The east entrance is step-free and has automatic doors.",
+    "routes": "Elevators connect all attendee levels. Ask an information desk for an accessible route or staff assistance.",
+    "accommodations": "For communication or mobility assistance, visit an information desk before the session begins."
+  },
+  "event_policy": {
+    "badge": "A visible event badge is required in conference areas and may not be transferred.",
+    "conduct": "Attendees must follow staff safety directions and the synthetic event code of conduct. Report urgent safety concerns to event security; report non-urgent conduct concerns at an information desk."
+  },
+  "information_desks": [
+    {
+      "location": "Level 1 east entrance lobby",
+      "hours": "07:00-18:00 each event day"
+    },
+    {
+      "location": "Level 2 registration landing",
+      "hours": "08:00-17:00 each event day"
+    }
+  ]
+}

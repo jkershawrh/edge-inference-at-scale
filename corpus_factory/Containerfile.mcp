@@ -1,0 +1,20 @@
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4
+
+RUN microdnf install -y python3.11 python3.11-pip && microdnf clean all
+
+WORKDIR /opt/app-root/src
+
+COPY corpus_factory/requirements.txt /tmp/corpus-factory-requirements.txt
+RUN python3.11 -m pip install --no-cache-dir -r /tmp/corpus-factory-requirements.txt
+
+COPY corpus_factory /opt/app-root/src/corpus_factory
+COPY data/summit_connect /opt/app-root/src/data/summit_connect
+
+ENV BIG_EVY_MCP_ALLOWED_ROOTS=/opt/app-root/src \
+    BIG_EVY_MCP_HOST=0.0.0.0 \
+    PYTHONPATH=/opt/app-root/src
+
+EXPOSE 8006
+USER 1001
+
+CMD ["python3.11", "-m", "corpus_factory.mcp_server", "--transport", "streamable-http"]

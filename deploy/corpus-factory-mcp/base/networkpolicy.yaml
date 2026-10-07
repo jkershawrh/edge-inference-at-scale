@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: corpus-factory-mcp-default-deny
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: corpus-factory-mcp
+  policyTypes: ["Ingress", "Egress"]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: corpus-factory-mcp-allow-approved-clients
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: corpus-factory-mcp
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              lilevy.edge/mcp-client: approved
+      ports:
+        - protocol: TCP
+          port: 8006

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://evy.example/schemas/v1/release-signature.schema.json",
+  "title": "ProtectedReleaseSignature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "signature_id", "candidate_release_digest", "authorization", "governance_bindings", "signing_key", "signed_at", "signature", "manifest_signature"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "record_type": {"const": "release_signature"},
+    "signature_id": {"$ref": "#/$defs/digest"},
+    "candidate_release_digest": {"$ref": "#/$defs/digest"},
+    "authorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authorization_id", "digest"],
+      "properties": {"authorization_id": {"$ref": "#/$defs/digest"}, "digest": {"$ref": "#/$defs/digest"}}
+    },
+    "governance_bindings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["evaluation_report_digest", "approval_attestation_digests"],
+      "properties": {
+        "evaluation_report_digest": {"$ref": "#/$defs/digest"},
+        "approval_attestation_digests": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}}
+      }
+    },
+    "signing_key": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key_id", "role", "algorithm", "generation", "rotation_state", "revocation_generation", "valid_from", "expires_at"],
+      "properties": {
+        "key_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"},
+        "role": {"const": "corpus-release"},
+        "algorithm": {"const": "Ed25519"},
+        "generation": {"type": "integer", "minimum": 1},
+        "rotation_state": {"enum": ["active", "overlap"]},
+        "revocation_generation": {"type": "integer", "minimum": 1},
+        "valid_from": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "signed_at": {"type": "string", "format": "date-time"},
+    "signature": {
+      "type": "object", "additionalProperties": false, "required": ["encoding", "value"],
+      "properties": {"encoding": {"const": "base64"}, "value": {"type": "string", "minLength": 88, "maxLength": 88}}
+    },
+    "manifest_signature": {
+      "type": "object", "additionalProperties": false, "required": ["encoding", "value"],
+      "properties": {"encoding": {"const": "base64"}, "value": {"type": "string", "minLength": 88, "maxLength": 88}}
+    }
+  },
+  "$defs": {"digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}}
+}

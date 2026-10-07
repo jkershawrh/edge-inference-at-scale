@@ -1,0 +1,6 @@
+# Big EVY Corpus Factory dependencies. These are intentionally separate from
+# the Lil EVY runtime image.
+jsonschema>=4.21,<5
+mcp>=2.3,<3
+cryptography>=41,<47
+PyYAML>=6,<7

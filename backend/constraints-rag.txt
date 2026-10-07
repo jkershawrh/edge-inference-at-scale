@@ -1,0 +1,4 @@
+# Keep the CPU-only PyTorch vision ABI aligned. Unconstrained torchvision can
+# upgrade torch behind sentence-transformers and fail only at runtime.
+torch==2.8.0+cpu
+torchvision==0.23.0+cpu

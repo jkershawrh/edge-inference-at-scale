@@ -1,0 +1,45 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "corpus_mission_profile",
+  "mission_profile_id": "summit-connect-2026",
+  "version": "1.0.0",
+  "vertical": "conference_event",
+  "mission": "Answer attendee questions for the synthetic Summit Connect 2026 event using current, approved event information.",
+  "event": {
+    "event_id": "summit-connect-2026",
+    "name": "Summit Connect 2026",
+    "starts_at": "2026-07-15T00:00:00-05:00",
+    "ends_at": "2026-07-18T00:00:00-05:00",
+    "timezone": "America/Chicago"
+  },
+  "scope": {
+    "geographies": ["summit-city", "convention-center"],
+    "languages": ["en"],
+    "audiences": ["attendees", "speakers", "staff"],
+    "accessibility_needs": ["plain_language", "screen_reader"],
+    "delivery_channels": ["sms", "web"]
+  },
+  "governance": {
+    "risk_level": "high",
+    "owner_organization": "Summit Connect Operations",
+    "required_approver_roles": ["event_owner", "safety_reviewer"]
+  },
+  "validity": {
+    "valid_from": "2026-07-01T00:00:00-05:00",
+    "valid_until": "2026-07-18T23:59:59-05:00",
+    "expected_refresh_seconds": 3600
+  },
+  "required_information": [
+    {"requirement_id": "summit-event-identity", "category_id": "event_identity", "description": "Event identity, geography, dates, and time zone", "required_intents": ["event_dates", "event_location", "event_timezone"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-schedule", "category_id": "schedule", "description": "Schedule, agenda, and approved changes", "required_intents": ["session_time", "agenda_change"], "safety_class": "high", "minimum_sources": 1},
+    {"requirement_id": "summit-sessions", "category_id": "sessions", "description": "Sessions, topics, rooms, and capacity", "required_intents": ["session_topic", "session_room", "session_capacity"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-speakers", "category_id": "speakers", "description": "Speakers and affiliations", "required_intents": ["speaker_identity", "speaker_affiliation"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-venue", "category_id": "venue_accessibility", "description": "Venue navigation and accessibility", "required_intents": ["venue_navigation", "accessibility"], "safety_class": "high", "minimum_sources": 1},
+    {"requirement_id": "summit-amenities", "category_id": "amenities", "description": "WiFi, charging, food, and facilities", "required_intents": ["wifi", "charging", "food", "facilities"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-travel", "category_id": "travel_local", "description": "Transportation, lodging, and local guidance", "required_intents": ["transportation", "lodging", "local_guidance"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-policies", "category_id": "registration_policies", "description": "Registration and event policies", "required_intents": ["registration", "event_policy"], "safety_class": "standard", "minimum_sources": 1},
+    {"requirement_id": "summit-safety", "category_id": "safety_emergency", "description": "Safety contacts, first aid, and emergency escalation", "required_intents": ["emergency_contact", "first_aid", "safety_escalation"], "safety_class": "critical", "minimum_sources": 1},
+    {"requirement_id": "summit-help", "category_id": "help_escalation", "description": "Information desks and attendee escalation paths", "required_intents": ["information_desk", "attendee_help"], "safety_class": "high", "minimum_sources": 1},
+    {"requirement_id": "summit-demo", "category_id": "demo_entertainment", "description": "Treasure hunt and demo content isolated from operational guidance", "required_intents": ["treasure_hunt", "demo_help"], "safety_class": "advisory", "minimum_sources": 1}
+  ]
+}

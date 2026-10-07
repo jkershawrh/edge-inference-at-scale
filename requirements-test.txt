@@ -1,0 +1,10 @@
+-r backend/requirements.txt
+-r corpus_factory/requirements.txt
+
+# Lightweight dependencies imported directly by the convergence suites.
+# Chroma/OpenVINO remain in backend/requirements-rag.txt and are exercised by
+# their dedicated image/live profiles rather than making every CI job install
+# the complete ML runtime.
+numpy>=1.24,<3
+pytest>=8,<9
+pytest-asyncio>=0.23,<2

@@ -10,7 +10,7 @@
     {"id": "arch_rag_direct", "text": "RAG-direct returns high-confidence corpus matches instantly without calling the LLM. About 60-70 percent of conference questions are answered in under 1 second this way.", "category": "architecture"},
     {"id": "arch_usecase", "text": "This architecture works for disaster relief, warzones, remote communities. Anywhere 2G cellular works, people text in and get knowledge back. No app needed.", "category": "architecture"},
     {"id": "arch_privacy", "text": "All messages are processed locally on the edge node. PII like credit cards and SSNs are detected and blocked. Phone numbers are never shared. Messages expire after the event.", "category": "architecture"},
-    {"id": "arch_builder", "text": "This system was designed and built by Kersh, a Senior Solutions Architect at Red Hat based in Wichita, KS. The project combines EVY (SMS platform) with the edge-ai-cpu-inference quickstart.", "category": "architecture"},
+    {"id": "arch_builder", "text": "This system was designed and built by Kersh, a Senior Solutions Architect at Red Hat based in Wichita, KS. The reference architecture is a Red Hat and Intel collaboration. The project combines EVY (SMS platform) with the edge-ai-cpu-inference quickstart.", "category": "architecture"},
     {"id": "arch_chat_history", "text": "The system remembers your last 10 messages. You can have follow-up conversations. Text /reset to clear your chat history.", "category": "architecture"}
   ]
 }

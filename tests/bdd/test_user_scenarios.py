@@ -168,7 +168,7 @@ class TestAttendeeAsksOpenQuestion:
     async def test_open_question_hits_llm(self):
         router = _mock_router(
             rag_docs=["Various sessions on AI and edge computing available."],
-            rag_scores=[0.6],
+            rag_scores=[0.54],
             llm_response="Try the Edge Inference keynote Day 1 9AM.",
         )
         result = await router.process_message(_sms("What should a beginner attend?"))

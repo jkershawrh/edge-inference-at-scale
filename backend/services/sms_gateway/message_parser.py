@@ -372,7 +372,7 @@ class MessageParser:
             validation_result['valid'] = False
             validation_result['errors'].append(f"Message too long: {len(message_text)} characters (max 160)")
         
-        if len(message_text) == 0:
+        if not message_text.strip():
             validation_result['valid'] = False
             validation_result['errors'].append("Message is empty")
         

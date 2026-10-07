@@ -2,6 +2,13 @@
 # Micronode profile: simulates an 8-core / 16 GB edge board
 # (Orange Pi 5 Plus, Rock 5B, Intel NUC Edge class)
 
+deploymentProfile: default
+
+# Disable this for a retrieval-only field node. The chart then omits both the
+# model server and its inference adapter rather than leaving idle resources.
+generation:
+  enabled: true
+
 bitnet:
   image: quay.io/rh-ai-quickstart/bitnet-cpp:latest
   model: bitnet-2b4t
@@ -16,6 +23,25 @@ bitnet:
       cpu: "4"
       memory: 4Gi
 
+# The application talks to any OpenAI-compatible local inference server.
+# Keep BitNet as the control while model candidates are evaluated.
+llm:
+  provider: bitnet
+  baseUrl: ""
+  model: bitnet-2b4t
+  modelMemoryMB: 410
+
+discord:
+  publicKey: ""
+  commandName: ask
+  ephemeral: true
+
+# Conference/demo compatibility defaults to preferred grounding. Field
+# deployments should apply chart/profiles/values-field-safety.yaml.
+safety:
+  groundingRequired: false
+  emergencyRagEnabled: false
+
 backend:
   image: quay.io/rh-ai-quickstart/edge-inference-at-scale:latest
   resources:
@@ -29,7 +55,108 @@ backend:
 rag:
   image: quay.io/rh-ai-quickstart/edge-inference-rag:latest
   embeddingModel: all-MiniLM-L6-v2
+  embeddingModelDir: /opt/models
+  requireLocalEmbeddingModel: true
+  minSimilarity: 0.4
+  candidatePoolMultiplier: 4
+  candidatePoolMin: 10
+  directThreshold: 0.55
+  directMaxChars: 400
+  # Optional semantic-support floor used by field safety profiles to reject
+  # accidental lexical overlaps. Zero preserves demo compatibility.
+  minVectorConfidence: 0.0
   storageSize: 5Gi
+  persistence:
+    enabled: true
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+  corpus:
+    enabled: false
+    # Use an immutable image digest in production, not a mutable tag.
+    image: ""
+    imagePullPolicy: IfNotPresent
+    eventId: summit-connect
+    version: "2026.1"
+    requireSignature: false
+    # Secret must contain public-key.pem when signature verification is required.
+    publicKeySecretName: ""
+  # Use after a disconnected transfer has been verified and activated on-node.
+  # The RAG service then resolves current.json and serves only that signed release.
+  activation:
+    enabled: false
+    root: /data/activation
+    # Internal control-plane sidecar. It is never exposed by an OpenShift Route.
+    operator:
+      enabled: false
+      port: 8014
+      intakeRoot: /data/activation-intake
+      clusterId: ""
+      siteId: ""
+      bearerSecretName: ""
+      bearerSecretKey: bearer-token
+      receiptSecretName: ""
+      receiptPrivateKeyKey: private-key.pem
+      receiptKeyId: ""
+      policyDigest: ""
+      runtimeVersion: ""
+      chunkerDigest: ""
+      modelDigest: ""
+      embeddingModelDigest: ""
+      timeConfidence: trusted
+      maxRequestBytes: 8192
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+    # Crash-resumable controller sidecar. Requires operator.enabled=true.
+    rollout:
+      enabled: false
+      port: 8015
+      candidatePath: ""
+      targetDigest: ""
+      targetSequence: 0
+      statePath: /data/rollout/state.json
+      apiBearerSecretName: ""
+      apiBearerSecretKey: bearer-token
+      maxActivationAttempts: 3
+      maxRestartAttempts: 3
+      maxStatusPolls: 60
+      timeoutSeconds: 300
+      dependencyTimeoutSeconds: 10
+      workerPollSeconds: 5
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 100m
+          memory: 128Mi
+  # Signed time/revocation enforcement is opt-in. Field deployments should use
+  # values-field-offline-trust.yaml and provision the named evidence and keys.
+  offlineTrust:
+    enabled: false
+    statePath: /data/offline-trust/state.json
+    bootIdPath: /proc/sys/kernel/random/boot_id
+    siteId: ""
+    trustGeneration: 0
+    maxSnapshotAgeSeconds: 0
+    timeKeyId: ""
+    revocationKeyId: ""
+    releaseSigningKeyId: ""
+    authoritySecretName: ""
+    timePublicKeyKey: time-public-key.pem
+    revocationPublicKeyKey: revocation-public-key.pem
+    timePublicKeyPath: /var/run/offline-trust/keys/time-public-key.pem
+    revocationPublicKeyPath: /var/run/offline-trust/keys/revocation-public-key.pem
+    evidenceConfigMapName: ""
+    anchorKey: time-anchor.json
+    snapshotKey: revocation-snapshot.json
+    anchorPath: /var/run/offline-trust/evidence/time-anchor.json
+    snapshotPath: /var/run/offline-trust/evidence/revocation-snapshot.json
   resources:
     requests:
       cpu: 250m
@@ -47,9 +174,45 @@ privacyFilter:
       cpu: 250m
       memory: 256Mi
 
+stream:
+  # Redis Streams is the lightweight disconnected-field default. Kafka remains
+  # selectable for connected AMQ Streams integration and comparison testing.
+  backend: redis
+  name: sms.inbound
+  consumerGroup: processors
+  maxLen: 10000
+  claimIdleMs: 30000
+
+redis:
+  managed: true
+  # Required when managed=false.
+  url: ""
+  image: redis:7-alpine
+  maxmemory: 128mb
+  storageSize: 1Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+
 kafka:
+  # Set managed=false when the release must use an existing Kafka/AMQ Streams
+  # broker (for example, when the operator is scoped to another namespace).
+  managed: true
+  # Required when managed=false. May be a comma-separated broker list.
+  bootstrapServers: ""
   version: "4.2.0"
   replicas: 1
+  topic:
+    # Kubernetes resource names share a namespace across Helm releases. The
+    # Kafka topic itself may keep the same name because each release owns a
+    # separate broker cluster.
+    resourceName: ""
+    name: sms.inbound
   resources:
     requests:
       cpu: 250m
@@ -61,6 +224,7 @@ kafka:
 chromadb:
   image: chromadb/chroma:latest
   storageSize: 5Gi
+  storageClassName: ""
   resources:
     requests:
       cpu: 500m

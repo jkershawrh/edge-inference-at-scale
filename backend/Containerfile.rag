@@ -10,12 +10,30 @@ RUN microdnf install -y python3.11 python3.11-pip && \
 
 WORKDIR /app
 
-# Install CPU-only PyTorch first to avoid pulling CUDA
-RUN python3.11 -m pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+# Install a matched CPU-only PyTorch/torchvision pair to avoid CUDA and ABI drift.
+COPY constraints-rag.txt ./
+RUN python3.11 -m pip install --no-cache-dir \
+    -c constraints-rag.txt torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple
 
 COPY requirements-rag.txt requirements.txt ./
 RUN python3.11 -m pip install --no-cache-dir pysqlite3-binary && \
-    python3.11 -m pip install --no-cache-dir -r requirements-rag.txt
+    python3.11 -m pip install --no-cache-dir \
+      -c constraints-rag.txt -r requirements-rag.txt \
+      --extra-index-url https://download.pytorch.org/whl/cpu && \
+    python3.11 -c "from sentence_transformers import SentenceTransformer; import openvino"
+
+# Pin and bake the embedding model so field startup never requires Hugging Face.
+ARG EMBEDDING_MODEL_ID=sentence-transformers/all-MiniLM-L6-v2
+ARG EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+ARG EMBEDDING_MODEL_REVISION=1110a243fdf4706b3f48f1d95db1a4f5529b4d41
+RUN mkdir -p /opt/models && \
+    python3.11 -c "from sentence_transformers import SentenceTransformer; m=SentenceTransformer('${EMBEDDING_MODEL_ID}', revision='${EMBEDDING_MODEL_REVISION}', backend='openvino'); m.save('/opt/models/${EMBEDDING_MODEL_NAME}_openvino')"
+
+ENV EMBEDDING_MODEL_DIR=/opt/models \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 COPY . /app/backend/
 ENV PYTHONPATH=/app

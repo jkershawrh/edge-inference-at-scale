@@ -5,7 +5,42 @@
 #
 # Source data: data/summit_connect/{sessions,speakers,venues,schedule,city_guide}.json
 
+# Only these categories are expected to be answered by corpus retrieval.
+# Stateful treasure-hunt commands are exercised by end-to-end BDD/EDD instead.
+retrieval_categories:
+  - schedule
+  - session
+  - venue
+  - general
+  - emergency
+  - architecture
+
+response_gate:
+  min_pass_rate: 0.80
+  min_fact_score: 0.50
+  category_min_pass_rate:
+    schedule: 0.80
+    session: 0.80
+    venue: 0.80
+    general: 0.80
+    emergency: 1.00
+    treasure_hunt: 0.90
+    architecture: 0.80
+    no_answer: 1.00
+
 eval_queries:
+
+  # ---------------------------------------------------------------------------
+  # Out-of-domain / safe no-answer queries
+  # ---------------------------------------------------------------------------
+
+  - id: noanswer_01
+    query: "What is the winning lottery number on Mars?"
+    category: no_answer
+    expected_keywords: ["can't verify", "trusted local"]
+    forbidden_keywords: ["BitNet", "phone number", "911"]
+    expected_entities: []
+    max_acceptable_latency_ms: 15000
 
   # ---------------------------------------------------------------------------
   # Schedule queries

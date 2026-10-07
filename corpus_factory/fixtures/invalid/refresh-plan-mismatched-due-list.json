@@ -1,0 +1,23 @@
+{
+  "plan_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "schema_version": "2.0.0",
+  "record_type": "refresh_plan",
+  "event_id": "field-event-2026",
+  "as_of": "2026-10-06T12:00:00Z",
+  "bindings": {
+    "source_registry_digest": "sha256:fa463a888639bb095ff9d40aab9296129b9ea7c27bc01d4d6e2e3e0944b9a86b",
+    "event_policy_subject_digest": "sha256:eecaabf182ed4bb2fa22d2d12909f4862562840691e7f79cc3cc4ef82ed3a968",
+    "previous_records_digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "entries": [
+    {
+      "source_id": "source-shelter-primary",
+      "connector_id": "connector-region4-shelters",
+      "status": "due",
+      "reason": "never_acquired",
+      "due_at": "2026-10-06T12:00:00Z",
+      "previous_digest": null
+    }
+  ],
+  "due_source_ids": []
+}

@@ -6,10 +6,39 @@ metadata:
     app.kubernetes.io/name: edge-inference-at-scale
     app.kubernetes.io/instance: {{ .Release.Name }}
 data:
+  EDGE_RESOURCE_PROFILE: {{ .Values.deploymentProfile | quote }}
   NODE_ID: {{ .Values.nodeId | quote }}
   SMS_MODE: {{ .Values.smsMode | quote }}
+  CORPUS_MODE: {{ ternary "activation" (ternary "packaged" "unpackaged" .Values.rag.corpus.enabled) .Values.rag.activation.enabled | quote }}
+  CORPUS_EVENT_ID: {{ .Values.rag.corpus.eventId | quote }}
+  CORPUS_VERSION: {{ .Values.rag.corpus.version | quote }}
+  CORPUS_REQUIRE_SIGNATURE: {{ .Values.rag.corpus.requireSignature | quote }}
+  GENERATION_ENABLED: {{ .Values.generation.enabled | quote }}
+  LLM_PROVIDER: {{ .Values.llm.provider | default "bitnet" | quote }}
+  LLM_BASE_URL: {{ .Values.llm.baseUrl | default (printf "http://%s-bitnet:8080" .Release.Name) | quote }}
+  LLM_MODEL: {{ .Values.llm.model | default .Values.bitnet.model | quote }}
+  MODEL_MEMORY_MB: {{ .Values.llm.modelMemoryMB | default 0 | quote }}
+  DISCORD_PUBLIC_KEY: {{ .Values.discord.publicKey | default "" | quote }}
+  DISCORD_COMMAND_NAME: {{ .Values.discord.commandName | default "ask" | quote }}
+  DISCORD_EPHEMERAL: {{ .Values.discord.ephemeral | quote }}
+  # Legacy aliases retained for compatibility with older images.
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
+  STREAM_BACKEND: {{ default "kafka" .Values.stream.backend | quote }}
+  {{- if eq (default "kafka" .Values.stream.backend) "redis" }}
+  {{- if ne .Values.redis.managed false }}
+  REDIS_URL: "redis://{{ .Release.Name }}-redis:6379/0"
+  {{- else }}
+  REDIS_URL: {{ required "redis.url is required when redis.managed=false" .Values.redis.url | quote }}
+  {{- end }}
+  {{- else if ne .Values.kafka.managed false }}
   KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
+  {{- else }}
+  KAFKA_BOOTSTRAP_SERVERS: {{ required "kafka.bootstrapServers is required when kafka.managed=false" .Values.kafka.bootstrapServers | quote }}
+  {{- end }}
+  STREAM_TOPIC: {{ default (.Values.kafka.topic.name | default "sms.inbound") .Values.stream.name | quote }}
+  STREAM_CONSUMER_GROUP: {{ .Values.stream.consumerGroup | default "processors" | quote }}
+  STREAM_MAX_LEN: {{ .Values.stream.maxLen | default 10000 | quote }}
+  STREAM_CLAIM_IDLE_MS: {{ .Values.stream.claimIdleMs | default 30000 | quote }}
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
   MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
   LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"
@@ -20,8 +49,16 @@ data:
   CHROMA_PORT: "8000"
   MODEL_NAME: {{ .Values.bitnet.model | quote }}
   EMBEDDING_MODEL: {{ .Values.rag.embeddingModel | quote }}
+  RAG_MIN_SIMILARITY: {{ .Values.rag.minSimilarity | quote }}
+  RAG_CANDIDATE_POOL_MULTIPLIER: {{ .Values.rag.candidatePoolMultiplier | quote }}
+  RAG_CANDIDATE_POOL_MIN: {{ .Values.rag.candidatePoolMin | quote }}
   LLM_REQUEST_TIMEOUT_SECONDS: "60"
   SMS_ROUTER_TIMEOUT_SECONDS: "60"
   LLM_MAX_INFLIGHT_REQUESTS: "2"
-  RAG_DIRECT_THRESHOLD: "0.8"
+  RAG_DIRECT_THRESHOLD: {{ .Values.rag.directThreshold | quote }}
+  RAG_DIRECT_MAX_CHARS: {{ .Values.rag.directMaxChars | quote }}
+  RAG_MIN_VECTOR_CONFIDENCE: {{ .Values.rag.minVectorConfidence | quote }}
+  API_GATEWAY_PROXY_TIMEOUT_SECONDS: "125"
+  RAG_GROUNDING_REQUIRED: {{ .Values.safety.groundingRequired | quote }}
+  EMERGENCY_RAG_ENABLED: {{ .Values.safety.emergencyRagEnabled | quote }}
   HOME: "/tmp"

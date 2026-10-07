@@ -1,0 +1,31 @@
+# Balanced software profile approximating a capable 8 GB field node envelope.
+deploymentProfile: lab-balanced
+
+bitnet:
+  threads: 4
+  slots: 1
+  resources:
+    requests:
+      cpu: "2"
+      memory: 3Gi
+    limits:
+      cpu: "4"
+      memory: 6Gi
+
+backend:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+rag:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi

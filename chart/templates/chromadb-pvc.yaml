@@ -7,7 +7,9 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     app.kubernetes.io/component: vector-store
 spec:
-  storageClassName: nfs-storage
+  {{- if .Values.chromadb.storageClassName }}
+  storageClassName: {{ .Values.chromadb.storageClassName | quote }}
+  {{- end }}
   accessModes:
     - ReadWriteOnce
   resources:

@@ -8,10 +8,12 @@ Rebranded from EVY for Summit Connect.
 import asyncio
 import json
 import logging
+import math
 import os
 import re
 import time
 import uuid
+from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -23,17 +25,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.shared.config import settings
 from backend.shared.models import (
+    AnswerAttribution,
+    ChannelMessage,
     LLMRequest,
     LLMResponse,
+    MessageChannel,
     MessagePriority,
     MessageType,
     ProcessedMessage,
     RAGQuery,
+    RAGResult,
     ServiceHealth,
     SMSMessage,
 )
 from backend.shared.chat_history import ChatHistoryStore
-from backend.shared.streams import SMSEventStream
+from backend.shared.streams import create_sms_event_stream
 
 logger = logging.getLogger("message-router")
 
@@ -49,6 +55,10 @@ EMERGENCY_KEYWORDS = [
     "medical",
     "injury",
     "injured",
+    "fell",
+    "bleeding",
+    "unconscious",
+    "trapped",
     "ambulance",
     "security threat",
     "active shooter",
@@ -95,11 +105,17 @@ class MessageRouter:
             "SMS_GATEWAY_URL", settings.sms_gateway_url
         )
 
-        # Kafka event stream (consumer side)
-        self.event_stream = SMSEventStream(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
-            topic=settings.stream_topic,
+        # Durable event stream (consumer side)
+        self.event_stream = create_sms_event_stream(
+            backend=os.getenv("STREAM_BACKEND", settings.stream_backend),
+            redis_url=os.getenv("REDIS_URL", settings.redis_url),
+            kafka_bootstrap_servers=os.getenv(
+                "KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers
+            ),
+            stream_name=settings.stream_topic,
             group_name=settings.stream_consumer_group,
+            enable_producer=False,
+            enable_consumer=True,
         )
         self.consumer_name = os.getenv("NODE_ID", settings.node_id)
         self._stream_task: Optional[asyncio.Task[None]] = None
@@ -131,11 +147,41 @@ class MessageRouter:
         }
         self.start_time = time.time()
 
+        # Aggregate stage timings stay useful under concurrent requests and do
+        # not expose sender content or other message-level data.
+        self.timing_totals_ms: Dict[str, float] = {}
+        self.timing_counts: Dict[str, int] = {}
+        # Context-local state keeps attribution correct when multiple field
+        # channels are processed concurrently.  The bounded audit contains no
+        # prompts, answers, sender identifiers, or filesystem paths.
+        self._answer_trace: ContextVar[Optional[Dict[str, object]]] = ContextVar(
+            "message_router_answer_trace", default=None
+        )
+        self.answer_attribution_audit: List[Dict[str, object]] = []
+
+    def _record_stage_timing(self, stage: str, started_at: float) -> None:
+        """Record one monotonic duration sample for a pipeline stage."""
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        self.timing_totals_ms[stage] = self.timing_totals_ms.get(stage, 0.0) + elapsed_ms
+        self.timing_counts[stage] = self.timing_counts.get(stage, 0) + 1
+
+    def timing_snapshot(self) -> Dict[str, Dict[str, object]]:
+        """Return average stage durations without resetting the counters."""
+        snapshot: Dict[str, Dict[str, object]] = {}
+        for stage, total_ms in self.timing_totals_ms.items():
+            samples = self.timing_counts.get(stage, 0)
+            snapshot[stage] = {
+                "samples": samples,
+                "average_ms": round(total_ms / samples, 2) if samples else 0.0,
+                "total_ms": round(total_ms, 2),
+            }
+        return snapshot
+
     # ------------------------------------------------------------------
     # Classification
     # ------------------------------------------------------------------
 
-    def classify_message(self, message: SMSMessage) -> ProcessedMessage:
+    def classify_message(self, message: ChannelMessage) -> ProcessedMessage:
         """Determine MessageType, priority, and routing needs."""
         content = message.content.strip()
         content_lower = content.lower()
@@ -154,11 +200,12 @@ class MessageRouter:
 
         if emergency_match:
             self.stats["emergency_messages"] += 1
+            use_event_rag = settings.emergency_rag_enabled
             return ProcessedMessage(
                 original_message=message,
                 message_type=MessageType.EMERGENCY,
                 intent="emergency",
-                requires_rag=False,
+                requires_rag=use_event_rag,
                 requires_llm=False,
                 priority=MessagePriority.EMERGENCY,
             )
@@ -208,12 +255,16 @@ class MessageRouter:
 
         Returns a 3-tuple: (joined context string or None, top score, top document text).
         """
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return None, 0.0, None
-
-        rag_query = RAGQuery(query=query, top_k=3)
+        started_at = time.perf_counter()
+        self._answer_trace.set(
+            {"retrieval_status": "unavailable", "evidence": []}
+        )
         try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return None, 0.0, None
+
+            rag_query = RAGQuery(query=query, top_k=3)
             response = await self.http_client.post(
                 f"{self.rag_service_url}/search",
                 json=rag_query.model_dump(),
@@ -222,10 +273,62 @@ class MessageRouter:
             response.raise_for_status()
             data = response.json()
 
-            documents = data.get("documents", [])
-            scores = data.get("scores", [])
+            if "metadata" not in data and isinstance(data.get("documents"), list):
+                data = {**data, "metadata": [{} for _ in data["documents"]]}
+            validated_result = RAGResult.model_validate(data)
+            documents = validated_result.documents
+            scores = validated_result.scores
+            result_metadata = validated_result.metadata
             top_score = scores[0] if scores else 0.0
             top_doc = documents[0] if documents else None
+            top_vector_confidence = None
+            if result_metadata and isinstance(result_metadata[0], dict):
+                source_scores = result_metadata[0].get("retrieval_source_scores")
+                if isinstance(source_scores, dict):
+                    candidate = source_scores.get("vector")
+                    if (
+                        isinstance(candidate, (int, float))
+                        and not isinstance(candidate, bool)
+                        and math.isfinite(float(candidate))
+                        and 0.0 <= float(candidate) <= 1.0
+                    ):
+                        top_vector_confidence = float(candidate)
+
+            evidence = []
+            for index, _document in enumerate(documents[:10]):
+                metadata = (
+                    result_metadata[index]
+                    if index < len(result_metadata)
+                    and isinstance(result_metadata[index], dict)
+                    else {}
+                )
+                document_id = (
+                    metadata.get("parent_doc_id")
+                    or metadata.get("doc_id")
+                    or metadata.get("id")
+                )
+                score = scores[index] if index < len(scores) else None
+                if (
+                    isinstance(document_id, str)
+                    and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", document_id)
+                    and isinstance(score, (int, float))
+                    and not isinstance(score, bool)
+                    and math.isfinite(float(score))
+                    and 0.0 <= float(score) <= 1.0
+                ):
+                    evidence.append(
+                        {"document_id": document_id, "score": float(score)}
+                    )
+
+            self._answer_trace.set(
+                {
+                    "retrieval_status": "grounded" if documents else "no_evidence",
+                    "active_corpus_digest": validated_result.active_corpus_digest,
+                    "active_corpus_sequence": validated_result.active_corpus_sequence,
+                    "evidence": evidence,
+                    "top_vector_confidence": top_vector_confidence,
+                }
+            )
 
             if documents:
                 self.stats["messages_routed_rag"] += 1
@@ -233,63 +336,76 @@ class MessageRouter:
             return None, 0.0, None
         except Exception as exc:
             logger.warning("RAG service call failed: %s", exc)
+            self._answer_trace.set(
+                {"retrieval_status": "unavailable", "evidence": []}
+            )
             return None, 0.0, None
+        finally:
+            self._record_stage_timing("rag", started_at)
 
     async def route_to_llm(
         self, prompt: str, context: Optional[str] = None, chat_history=None
     ) -> Optional[str]:
         """Call the LLM inference service with concurrency control and retry."""
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return None
+        started_at = time.perf_counter()
+        try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return None
 
-        llm_request = LLMRequest(
-            prompt=prompt,
-            context=context,
-            max_length=SMS_MAX_LENGTH,
-            temperature=0.7,
-            chat_history=chat_history,
-        )
+            llm_request = LLMRequest(
+                prompt=prompt,
+                context=context,
+                max_length=SMS_MAX_LENGTH,
+                temperature=0.7,
+                chat_history=chat_history,
+            )
 
-        async with self.llm_semaphore:
-            for attempt in range(2):
-                try:
-                    response = await self.http_client.post(
-                        f"{self.llm_service_url}/inference",
-                        json=llm_request.model_dump(),
-                        timeout=settings.llm_request_timeout_seconds,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                    self.stats["messages_routed_llm"] += 1
-                    llm_response = LLMResponse(**data)
-                    return llm_response.response
-                except Exception as exc:
-                    logger.warning("LLM service call failed (attempt %d): %s", attempt + 1, exc)
-                    if attempt == 0:
-                        await asyncio.sleep(1)
-            return None
+            async with self.llm_semaphore:
+                for attempt in range(2):
+                    try:
+                        response = await self.http_client.post(
+                            f"{self.llm_service_url}/inference",
+                            json=llm_request.model_dump(),
+                            timeout=settings.llm_request_timeout_seconds,
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        self.stats["messages_routed_llm"] += 1
+                        llm_response = LLMResponse(**data)
+                        return llm_response.response
+                    except Exception as exc:
+                        logger.warning("LLM service call failed (attempt %d): %s", attempt + 1, exc)
+                        if attempt == 0:
+                            await asyncio.sleep(1)
+                return None
+        finally:
+            self._record_stage_timing("llm", started_at)
 
     async def send_response(self, recipient: str, sender: str, text: str) -> bool:
         """Send the response back via SMS gateway, chunking if necessary."""
-        if self.http_client is None:
-            logger.error("HTTP client not initialised")
-            return False
+        started_at = time.perf_counter()
+        try:
+            if self.http_client is None:
+                logger.error("HTTP client not initialised")
+                return False
 
-        chunks = _chunk_sms_response(text)
-        success = True
-        for i, chunk in enumerate(chunks):
-            try:
-                response = await self.http_client.post(
-                    f"{self.sms_gateway_url}/sms/send",
-                    json={"phone_number": recipient, "content": chunk},
-                    timeout=settings.sms_router_timeout_seconds,
-                )
-                response.raise_for_status()
-            except Exception as exc:
-                logger.warning("SMS send failed (part %d/%d): %s", i + 1, len(chunks), exc)
-                success = False
-        return success
+            chunks = _chunk_sms_response(text)
+            success = True
+            for i, chunk in enumerate(chunks):
+                try:
+                    response = await self.http_client.post(
+                        f"{self.sms_gateway_url}/sms/send",
+                        json={"phone_number": recipient, "content": chunk},
+                        timeout=settings.sms_router_timeout_seconds,
+                    )
+                    response.raise_for_status()
+                except Exception as exc:
+                    logger.warning("SMS send failed (part %d/%d): %s", i + 1, len(chunks), exc)
+                    success = False
+            return success
+        finally:
+            self._record_stage_timing("delivery", started_at)
 
     # ------------------------------------------------------------------
     # Template / command responses
@@ -358,7 +474,7 @@ class MessageRouter:
     # ------------------------------------------------------------------
 
     async def _stream_consumer_loop(self) -> None:
-        """Continuously consume messages from the Redis Stream."""
+        """Continuously reconnect to and consume the durable event stream."""
         logger.info(
             "Stream consumer loop started (consumer=%s, stream=%s)",
             self.consumer_name,
@@ -366,6 +482,11 @@ class MessageRouter:
         )
         while True:
             try:
+                health = await self.event_stream.health()
+                if health.get("status") != "connected":
+                    await self.event_stream.close()
+                    await self.event_stream.connect()
+                    logger.info("Durable event stream consumer connected")
                 messages = await self.event_stream.consume(
                     consumer_name=self.consumer_name,
                     count=1,
@@ -428,7 +549,8 @@ class MessageRouter:
                 logger.info("Stream consumer loop cancelled")
                 raise
             except Exception:
-                logger.exception("Stream consumer loop error -- retrying in 1s")
+                logger.exception("Stream consumer loop error -- reconnecting in 1s")
+                await self.event_stream.close()
                 await asyncio.sleep(1.0)
 
     # ------------------------------------------------------------------
@@ -439,12 +561,23 @@ class MessageRouter:
         """Handle treasure hunt commands. Returns response or None if not a hunt message."""
         text = content.strip().lower()
 
-        # Load hunt data (lazy, cached)
+        # Load event interaction data lazily.  Packaged deployments fetch this
+        # from the RAG service so the state machine travels with the signed
+        # event release rather than the generic application image.
         if not hasattr(self, "_hunt_data"):
             try:
-                hunt_path = Path(__file__).parent.parent.parent.parent / "data" / "summit_connect" / "treasure_hunt.json"
+                hunt_path = Path(settings.summit_data_dir) / "treasure_hunt.json"
+                if not hunt_path.exists():
+                    hunt_path = Path(__file__).parent.parent.parent.parent / "data" / "summit_connect" / "treasure_hunt.json"
                 if hunt_path.exists():
                     self._hunt_data = json.loads(hunt_path.read_text())
+                elif self.http_client is not None:
+                    response = await self.http_client.get(
+                        f"{self.rag_service_url}/event-assets/treasure-hunt",
+                        timeout=5.0,
+                    )
+                    response.raise_for_status()
+                    self._hunt_data = response.json()
                 else:
                     self._hunt_data = None
             except Exception:
@@ -499,7 +632,65 @@ class MessageRouter:
         # Not a hunt message
         return None
 
-    async def process_message(self, message: SMSMessage) -> str:
+    def _set_answer_mode(self, response_mode: str) -> None:
+        trace = dict(self._answer_trace.get() or {})
+        if trace:
+            trace["response_mode"] = response_mode
+            self._answer_trace.set(trace)
+
+    def _finalize_answer_attribution(
+        self, message: ChannelMessage, *, failed: bool = False
+    ) -> Optional[Dict[str, object]]:
+        trace = dict(self._answer_trace.get() or {})
+        if not trace:
+            return None
+        mode = "error" if failed else trace.get("response_mode")
+        if not isinstance(mode, str):
+            mode = "error"
+        record = AnswerAttribution(
+            channel=message.channel,
+            retrieval_status=trace.get("retrieval_status", "unavailable"),
+            response_mode=mode,
+            grounded=mode in {"rag_direct", "llm_grounded"},
+            active_corpus_digest=trace.get("active_corpus_digest"),
+            active_corpus_sequence=trace.get("active_corpus_sequence"),
+            evidence=trace.get("evidence", []),
+        ).model_dump(mode="json")
+        self.answer_attribution_audit.append(record)
+        if len(self.answer_attribution_audit) > 1000:
+            del self.answer_attribution_audit[:-1000]
+        return record
+
+    def get_answer_attribution_audit(self, limit: int = 100) -> List[Dict[str, object]]:
+        """Return bounded provenance records without message or response text."""
+        bounded = max(0, min(int(limit), 1000))
+        if bounded == 0:
+            return []
+        return [dict(item) for item in self.answer_attribution_audit[-bounded:]]
+
+    async def process_message_with_attribution(
+        self, message: ChannelMessage
+    ) -> tuple[str, Optional[Dict[str, object]]]:
+        """Execute one pipeline request and return its safe internal provenance."""
+        started_at = time.perf_counter()
+        token = self._answer_trace.set(None)
+        try:
+            response = await self._process_message(message)
+            attribution = self._finalize_answer_attribution(message)
+            return response, attribution
+        except Exception:
+            self._finalize_answer_attribution(message, failed=True)
+            raise
+        finally:
+            self._record_stage_timing("pipeline", started_at)
+            self._answer_trace.reset(token)
+
+    async def process_message(self, message: ChannelMessage) -> str:
+        """Measure and execute one complete channel-to-channel pipeline."""
+        response, _attribution = await self.process_message_with_attribution(message)
+        return response
+
+    async def _process_message(self, message: ChannelMessage) -> str:
         """Full processing pipeline: classify -> route -> respond."""
         self.stats["messages_received"] += 1
         logger.info(
@@ -515,7 +706,8 @@ class MessageRouter:
             logger.warning("Treasure hunt check failed, skipping: %s", exc)
             hunt_response = None
         if hunt_response is not None:
-            await self.send_response(message.sender, message.receiver, hunt_response)
+            if message.channel != MessageChannel.DISCORD:
+                await self.send_response(message.sender, message.receiver, hunt_response)
             return hunt_response
 
         # Privacy filter check
@@ -549,7 +741,10 @@ class MessageRouter:
         )
 
         # 2. Handle non-routed message types directly
-        if processed.message_type == MessageType.EMERGENCY:
+        if (
+            processed.message_type == MessageType.EMERGENCY
+            and not processed.requires_rag
+        ):
             response_text = self._handle_emergency(processed)
         elif processed.message_type == MessageType.COMMAND:
             response_text = await self._handle_command(processed)
@@ -570,21 +765,71 @@ class MessageRouter:
             if processed.requires_rag:
                 context, top_score, top_doc = await self.route_to_rag(message.content)
 
-            # 3b. RAG-direct: if top result is high confidence and fits SMS, skip LLM
+            # 3b. RAG-direct: bounded, high-confidence evidence is safer and
+            # faster than asking a small model to paraphrase it. Delivery owns
+            # 160-character chunking, so this limit may span a few SMS parts.
             rag_threshold = float(os.getenv("RAG_DIRECT_THRESHOLD", settings.rag_direct_threshold))
-            if top_doc and top_score >= rag_threshold and len(top_doc) <= 160:
+            rag_direct_max_chars = int(
+                os.getenv("RAG_DIRECT_MAX_CHARS", settings.rag_direct_max_chars)
+            )
+            min_vector_confidence = float(
+                os.getenv(
+                    "RAG_MIN_VECTOR_CONFIDENCE",
+                    settings.rag_min_vector_confidence,
+                )
+            )
+            top_vector_confidence = (self._answer_trace.get() or {}).get(
+                "top_vector_confidence"
+            )
+            vector_supported = min_vector_confidence <= 0.0 or (
+                isinstance(top_vector_confidence, (int, float))
+                and float(top_vector_confidence) >= min_vector_confidence
+            )
+            if (
+                top_doc
+                and top_score >= rag_threshold
+                and vector_supported
+                and (
+                    len(top_doc) <= rag_direct_max_chars
+                    or processed.message_type == MessageType.EMERGENCY
+                )
+            ):
                 response_text = top_doc
+                self._set_answer_mode("rag_direct")
                 self.stats.setdefault("rag_direct_responses", 0)
                 self.stats["rag_direct_responses"] += 1
                 logger.info("RAG-direct response (score=%.2f): %.60s...", top_score, top_doc)
 
             # 4. LLM inference (if needed and RAG-direct didn't fire)
+            elif processed.message_type == MessageType.EMERGENCY:
+                response_text = settings.emergency_grounding_failure_message
+                self._set_answer_mode("refused_emergency_grounding")
+                self.stats.setdefault("emergency_grounding_refusals", 0)
+                self.stats["emergency_grounding_refusals"] += 1
+            elif settings.rag_grounding_required and (
+                not context or not vector_supported
+            ):
+                response_text = settings.grounding_failure_message
+                self._set_answer_mode("refused_grounding")
+                self.stats.setdefault("grounding_refusals", 0)
+                self.stats["grounding_refusals"] += 1
+            elif not settings.generation_enabled:
+                # A RAG-only field deployment has no inference service to
+                # fall through to. Weak, oversized, or otherwise ineligible
+                # evidence must fail closed instead of fabricating an answer.
+                response_text = settings.grounding_failure_message
+                self._set_answer_mode("refused_generation_disabled")
+                self.stats.setdefault("generation_disabled_refusals", 0)
+                self.stats["generation_disabled_refusals"] += 1
             elif processed.requires_llm:
                 llm_result = await self.route_to_llm(
                     message.content, context, chat_history=history
                 )
                 if llm_result:
                     response_text = llm_result
+                    self._set_answer_mode(
+                        "llm_grounded" if context else "llm_ungrounded"
+                    )
                 else:
                     response_text = (
                         "Sorry, I couldn't process your request right now. "
@@ -597,19 +842,26 @@ class MessageRouter:
                 )
 
             # Store this turn in chat history (only for QUERY messages)
-            try:
-                await self.chat_store.add_turn(
-                    message.sender, message.content, response_text
-                )
-            except Exception as exc:
-                logger.warning("Failed to store chat turn: %s", exc)
+            if processed.message_type == MessageType.QUERY:
+                try:
+                    await self.chat_store.add_turn(
+                        message.sender, message.content, response_text
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to store chat turn: %s", exc)
 
         # 5. Send response back via SMS gateway
-        sent = await self.send_response(
-            recipient=message.sender,
-            sender=message.receiver,
-            text=response_text,
-        )
+        if message.channel == MessageChannel.DISCORD:
+            # The Discord interaction adapter owns the deferred callback.
+            sent = True
+            self.stats.setdefault("discord_responses", 0)
+            self.stats["discord_responses"] += 1
+        else:
+            sent = await self.send_response(
+                recipient=message.sender,
+                sender=message.receiver,
+                text=response_text,
+            )
         if sent:
             self.stats["messages_responded"] += 1
         else:
@@ -691,15 +943,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Chat history store unavailable -- continuing without history")
 
-    # Connect to Redis Streams and start the consumer loop
-    try:
-        await router_instance.event_stream.connect()
-        router_instance._stream_task = asyncio.create_task(
-            router_instance._stream_consumer_loop()
-        )
-        logger.info("Kafka consumer loop started")
-    except Exception:
-        logger.warning("Kafka unavailable -- HTTP-only intake active")
+    # The loop owns connection and reconnection across boot races and restarts.
+    router_instance._stream_task = asyncio.create_task(
+        router_instance._stream_consumer_loop()
+    )
+    logger.info("Durable event stream consumer supervisor started")
 
     yield
 
@@ -764,15 +1012,20 @@ async def stream_health():
 
 
 @app.post("/route")
-async def route_message(message: SMSMessage) -> Dict:
+async def route_message(message: ChannelMessage) -> Dict:
     """Full pipeline: classify, retrieve, infer, respond."""
     try:
-        response_text = await router_instance.process_message(message)
-        return {
+        response_text, attribution = await router_instance.process_message_with_attribution(
+            message
+        )
+        result = {
             "status": "success",
             "response": response_text,
             "message_id": message.id,
         }
+        if attribution is not None:
+            result["attribution"] = attribution
+        return result
     except Exception as exc:
         logger.exception("Error processing message: %s", exc)
         router_instance.stats["messages_failed"] += 1
@@ -780,7 +1033,7 @@ async def route_message(message: SMSMessage) -> Dict:
 
 
 @app.post("/classify")
-async def classify_message(message: SMSMessage) -> ProcessedMessage:
+async def classify_message(message: ChannelMessage) -> ProcessedMessage:
     """Classify a message without routing it."""
     try:
         processed = router_instance.classify_message(message)
@@ -796,6 +1049,7 @@ async def get_statistics() -> Dict:
     uptime = time.time() - router_instance.start_time
     return {
         "stats": router_instance.stats,
+        "pipeline_timings_ms": router_instance.timing_snapshot(),
         "uptime_seconds": uptime,
         "service": "message-router",
     }
