@@ -466,14 +466,17 @@ Already implemented:
 - Constrained connected-side MCP server for mission status, deterministic
   coverage planning, bounded sourcing work, and exact-byte lineage verification;
   all tools are read-only and accept no paths, URLs, content, or release actions
+- Registry-only connected acquisition controller with bounded reconcile
+  lifecycles, content-addressed success/failure outcomes, durable chained audit,
+  atomic change state, and an OpenShift profile combining default-deny network
+  policy with reviewed DNS-name HTTPS egress
 - Operator-enrolled Ed25519 fleet registration and heartbeat authentication,
   bounded content-free metrics, timestamp checks, and restart-durable monotonic
   replay protection; the unsigned path is explicitly local-lab-only
 
 Still required before this is production-grade:
 
-- Authenticated API/SFTP adapters, always-on acquisition controller, protected
-  external audit anchoring, and OpenShift egress-policy deployment for the HTTPS worker
+- Authenticated API/SFTP adapters and protected external audit anchoring
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
 - Mandatory coverage-report binding for the next release-contract major version;

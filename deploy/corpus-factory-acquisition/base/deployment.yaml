@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: corpus-acquisition-controller
+  labels:
+    app.kubernetes.io/name: corpus-acquisition-controller
+    app.kubernetes.io/part-of: big-evy-corpus-factory
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: corpus-acquisition-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: corpus-acquisition-controller
+    spec:
+      serviceAccountName: corpus-acquisition-controller
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: quay.io/rh-ai-quickstart/corpus-acquisition-controller:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --registry
+            - /etc/evy/registry/source-registry.json
+            - --event-policy
+            - /etc/evy/policy/event-policy.json
+            - --state-root
+            - /var/lib/evy
+            - --actor
+            - urn:evy:openshift:acquisition-controller
+            - --mode
+            - reconcile
+            - --max-sources
+            - "32"
+            - --max-cycles
+            - "288"
+            - --interval-seconds
+            - "300"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: registry
+              mountPath: /etc/evy/registry
+              readOnly: true
+            - name: policy
+              mountPath: /etc/evy/policy
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/evy
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: registry
+          configMap:
+            name: corpus-source-registry
+        - name: policy
+          configMap:
+            name: corpus-event-policy
+        - name: state
+          persistentVolumeClaim:
+            claimName: corpus-acquisition-state
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
