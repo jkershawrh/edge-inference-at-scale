@@ -87,6 +87,14 @@ class Settings(BaseSettings):
     rag_service_port: int = 8004
     privacy_filter_port: int = 8005
 
+    # Fleet control plane. Production requires an operator-owned enrollment
+    # registry and durable replay state. "lab" is an explicit compatibility
+    # mode for the local scale simulator only.
+    fleet_auth_mode: str = "required"
+    fleet_node_registry_path: str = "/etc/lil-evy/fleet/nodes.json"
+    fleet_replay_state_path: str = "/var/lib/lil-evy/fleet/replay.sqlite3"
+    fleet_max_clock_skew_seconds: int = 300
+
     # Rate Limiting
     max_sms_per_minute: int = 10
     max_sms_per_hour: int = 100

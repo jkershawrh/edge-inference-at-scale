@@ -7,9 +7,15 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
+from backend.shared.config import settings
 from backend.shared.models import SMSMessage, ServiceHealth
+from backend.services.node_manager.fleet_auth import (
+    FleetAuthError,
+    FleetAuthenticator,
+    FleetReplayStore,
+)
 from backend.services.node_manager.fleet_compliance import (
     DesiredReleaseCompliancePolicy,
     FleetComplianceReport,
@@ -24,18 +30,43 @@ HEARTBEAT_TIMEOUT_SECONDS = 60
 
 # --- Request / Response Models ---
 
+class FleetAuthProof(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    key_id: str = Field(min_length=1, max_length=128)
+    issued_at: int = Field(ge=1)
+    sequence: int = Field(ge=1)
+    signature: str = Field(min_length=1, max_length=256)
+
+
 class NodeRegistration(BaseModel):
-    node_id: str
-    api_url: str
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    api_url: AnyHttpUrl
     capabilities: Dict[str, Any] = Field(default_factory=dict)
+    auth: Optional[FleetAuthProof] = None
+
+
+class NodeMetrics(BaseModel):
+    """Bounded operational data; never accepts message or retrieved content."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    messages_received: int = Field(default=0, ge=0)
+    avg_latency_ms: Optional[float] = Field(default=None, ge=0)
+    rag_direct: int = Field(default=0, ge=0)
+    queue_depth: Optional[int] = Field(default=None, ge=0)
+    load_percent: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class NodeHeartbeat(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    node_id: str
-    metrics: Dict[str, Any] = Field(default_factory=dict)
+    node_id: str = Field(pattern=r"^[a-z0-9][a-z0-9._-]{0,63}$")
+    metrics: NodeMetrics = Field(default_factory=NodeMetrics)
     activation: Optional[ActivationStatusResponse] = None
+    auth: Optional[FleetAuthProof] = None
 
 
 class RouteRequest(BaseModel):
@@ -122,6 +153,8 @@ class NodeManager:
             activation, ActivationStatusResponse
         ):
             activation = ActivationStatusResponse.model_validate(activation)
+        if isinstance(metrics, BaseModel):
+            metrics = metrics.model_dump(mode="json", exclude_none=True)
         self.nodes[node_id]["last_seen"] = time.time()
         self.nodes[node_id]["metrics"] = metrics
         # Persist only the bounded control-plane projection.  The strict
@@ -308,6 +341,33 @@ class NodeManager:
 # --- Application ---
 
 manager = NodeManager()
+_fleet_authenticator: Optional[FleetAuthenticator] = None
+
+
+def _authenticate_fleet_message(kind: str, request: BaseModel) -> None:
+    """Authenticate signed control messages, with an explicit lab escape hatch."""
+    global _fleet_authenticator
+    mode = settings.fleet_auth_mode.strip().lower()
+    proof = getattr(request, "auth", None)
+    if mode == "lab" and proof is None:
+        return
+    if mode != "required":
+        if mode != "lab":
+            raise FleetAuthError("FLEET_AUTH_MODE must be 'required' or 'lab'")
+    if proof is None:
+        raise FleetAuthError("signed fleet authentication proof is required")
+    if _fleet_authenticator is None:
+        _fleet_authenticator = FleetAuthenticator(
+            settings.fleet_node_registry_path,
+            FleetReplayStore(settings.fleet_replay_state_path),
+            max_clock_skew_seconds=settings.fleet_max_clock_skew_seconds,
+        )
+    payload = request.model_dump(mode="json", exclude={"auth"})
+    _fleet_authenticator.verify(
+        kind=kind,
+        payload=payload,
+        proof=proof.model_dump(mode="json"),
+    )
 
 
 @asynccontextmanager
@@ -354,9 +414,13 @@ async def health_check():
 
 @app.post("/nodes/register")
 async def register_node(registration: NodeRegistration):
+    try:
+        _authenticate_fleet_message("registration", registration)
+    except FleetAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
     node = manager.register_node(
         node_id=registration.node_id,
-        api_url=registration.api_url,
+        api_url=str(registration.api_url).rstrip("/"),
         capabilities=registration.capabilities,
     )
     return {"status": "registered", "node": node}
@@ -365,12 +429,15 @@ async def register_node(registration: NodeRegistration):
 @app.post("/nodes/heartbeat")
 async def node_heartbeat(hb: NodeHeartbeat):
     try:
+        _authenticate_fleet_message("heartbeat", hb)
         node = manager.heartbeat(
             node_id=hb.node_id,
-            metrics=hb.metrics,
+            metrics=hb.metrics.model_dump(mode="json", exclude_none=True),
             activation=hb.activation,
         )
         return {"status": "ok", "node_id": hb.node_id}
+    except FleetAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

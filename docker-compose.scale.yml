@@ -49,6 +49,10 @@ services:
       context: ./backend
       dockerfile: Containerfile
     command: ["python3.11", "-m", "uvicorn", "backend.services.node_manager.main:app", "--host", "0.0.0.0", "--port", "8006"]
+    environment:
+      # Local simulator compatibility only. Field and production deployments
+      # use the default signed-node requirement.
+      - FLEET_AUTH_MODE=lab
     ports:
       - "8006:8006"
     deploy:

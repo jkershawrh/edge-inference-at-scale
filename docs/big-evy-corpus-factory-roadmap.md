@@ -466,6 +466,9 @@ Already implemented:
 - Constrained connected-side MCP server for mission status, deterministic
   coverage planning, bounded sourcing work, and exact-byte lineage verification;
   all tools are read-only and accept no paths, URLs, content, or release actions
+- Operator-enrolled Ed25519 fleet registration and heartbeat authentication,
+  bounded content-free metrics, timestamp checks, and restart-durable monotonic
+  replay protection; the unsigned path is explicitly local-lab-only
 
 Still required before this is production-grade:
 
@@ -478,8 +481,8 @@ Still required before this is production-grade:
 - Protected signing service, key rotation, and revocation
 - Evaluation attestations bound into the signed artifact
 - Encrypted transfer envelopes, production key integration, and media custody
-- Authenticated fleet heartbeats and a GitOps policy for controller-owned
-  rollout annotations after promotion
+- GitOps policy for fleet identity enrollment and controller-owned rollout
+  annotations after promotion, plus a disconnected trusted-time mechanism
 - Complete synthetic disaster drill followed by hardware and solar-power tests
 
 ## Decisions to make during Wave 1
