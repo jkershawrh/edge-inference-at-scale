@@ -10,10 +10,154 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
+import redis.asyncio as aioredis
 
 from backend.shared.config import settings
 
 logger = logging.getLogger("sms-stream")
+
+
+class RedisSMSEventStream:
+    """Lightweight durable SMS stream backed by Redis Streams."""
+
+    def __init__(
+        self,
+        redis_url: str,
+        stream_name: str = "sms.inbound",
+        group_name: str = "processors",
+        enable_producer: bool = True,
+        enable_consumer: bool = True,
+    ) -> None:
+        if not enable_producer and not enable_consumer:
+            raise ValueError("stream must enable a producer or consumer")
+        self.redis_url = redis_url
+        self.stream_name = stream_name
+        self.group_name = group_name
+        self.enable_producer = enable_producer
+        self.enable_consumer = enable_consumer
+        self._redis: Optional[aioredis.Redis] = None
+
+    async def connect(self) -> None:
+        """Connect, verify the server, and create the consumer group."""
+        client = aioredis.from_url(self.redis_url, decode_responses=True)
+        try:
+            await client.ping()
+            if self.enable_consumer:
+                try:
+                    await client.xgroup_create(
+                        name=self.stream_name,
+                        groupname=self.group_name,
+                        id="0",
+                        mkstream=True,
+                    )
+                except aioredis.ResponseError as exc:
+                    if "BUSYGROUP" not in str(exc):
+                        raise
+        except BaseException:
+            try:
+                await client.aclose()
+            except Exception:
+                logger.debug("Failed Redis cleanup after startup error", exc_info=True)
+            self._redis = None
+            raise
+        self._redis = client
+        logger.info(
+            "Redis stream connected, stream='%s', group='%s'",
+            self.stream_name,
+            self.group_name,
+        )
+
+    async def close(self) -> None:
+        if self._redis is not None:
+            await self._redis.aclose()
+            self._redis = None
+            logger.info("Redis stream connection closed")
+
+    async def publish(self, message_data: dict) -> str:
+        if self._redis is None:
+            raise RuntimeError("SMSEventStream is not connected")
+        message_id = await self._redis.xadd(
+            name=self.stream_name,
+            fields={"payload": json.dumps(message_data, separators=(",", ":"))},
+            maxlen=settings.stream_max_len,
+            approximate=True,
+        )
+        return str(message_id)
+
+    async def consume(
+        self,
+        consumer_name: str,
+        count: int = 1,
+        block_ms: int = 5000,
+    ) -> List[Tuple[str, Dict[str, Any]]]:
+        if self._redis is None:
+            raise RuntimeError("SMSEventStream is not connected")
+        result = await self._redis.xreadgroup(
+            groupname=self.group_name,
+            consumername=consumer_name,
+            streams={self.stream_name: ">"},
+            count=count,
+            block=block_ms,
+        )
+        messages: List[Tuple[str, Dict[str, Any]]] = []
+        for _stream, entries in result or []:
+            for message_id, fields in entries:
+                payload = fields.get("payload")
+                if payload is None:
+                    logger.warning("Ignoring stream message %s without payload", message_id)
+                    continue
+                messages.append((str(message_id), json.loads(payload)))
+        return messages
+
+    async def ack(self, message_id: str) -> None:
+        if self._redis is None:
+            raise RuntimeError("SMSEventStream is not connected")
+        await self._redis.xack(self.stream_name, self.group_name, message_id)
+
+    async def pending(self) -> dict:
+        if self._redis is None:
+            raise RuntimeError("SMSEventStream is not connected")
+        info = await self._redis.xpending(self.stream_name, self.group_name)
+        if isinstance(info, dict):
+            return {
+                "total_lag": info.get("pending", 0),
+                "min_id": info.get("min"),
+                "max_id": info.get("max"),
+                "consumers": info.get("consumers", []),
+            }
+        return {
+            "total_lag": info[0],
+            "min_id": info[1],
+            "max_id": info[2],
+            "consumers": info[3],
+        }
+
+    async def health(self) -> dict:
+        info: Dict[str, Any] = {
+            "status": "disconnected" if self._redis is None else "connected",
+            "backend": "redis",
+            "topic": self.stream_name,
+            "roles": [
+                role
+                for role, enabled in (
+                    ("producer", self.enable_producer),
+                    ("consumer", self.enable_consumer),
+                )
+                if enabled
+            ],
+        }
+        if self.enable_consumer:
+            info["group"] = self.group_name
+        if self._redis is None:
+            return info
+        try:
+            await self._redis.ping()
+            info["length"] = await self._redis.xlen(self.stream_name)
+            return info
+        except Exception as exc:
+            logger.warning("Redis stream health check failed: %s", exc)
+            info.update({"status": "error", "error": str(exc)})
+            return info
 
 
 class SMSEventStream:
@@ -223,6 +367,7 @@ class SMSEventStream:
         consumer_connected = not self.enable_consumer or self._consumer is not None
         info = {
             "status": "connected" if producer_connected and consumer_connected else "disconnected",
+            "backend": "kafka",
             "topic": self.topic,
             "roles": [
                 role
@@ -253,3 +398,34 @@ class SMSEventStream:
             logger.warning("Topic health check failed: %s", exc)
             info.update({"status": "error", "error": str(exc)})
             return info
+
+
+def create_sms_event_stream(
+    *,
+    backend: str,
+    redis_url: str,
+    kafka_bootstrap_servers: str,
+    stream_name: str,
+    group_name: str,
+    enable_producer: bool,
+    enable_consumer: bool,
+):
+    """Build the configured stream backend behind one service interface."""
+    normalized = backend.strip().lower()
+    if normalized == "redis":
+        return RedisSMSEventStream(
+            redis_url=redis_url,
+            stream_name=stream_name,
+            group_name=group_name,
+            enable_producer=enable_producer,
+            enable_consumer=enable_consumer,
+        )
+    if normalized == "kafka":
+        return SMSEventStream(
+            bootstrap_servers=kafka_bootstrap_servers,
+            topic=stream_name,
+            group_name=group_name,
+            enable_producer=enable_producer,
+            enable_consumer=enable_consumer,
+        )
+    raise ValueError("STREAM_BACKEND must be redis or kafka")

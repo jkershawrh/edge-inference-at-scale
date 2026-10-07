@@ -140,7 +140,8 @@ For the smallest disconnected footprint, use
 `chart/profiles/values-field-rag-only.yaml` with a signed event corpus. This
 profile removes both the model server and LLM adapter, lowers the direct-answer
 threshold to the approved evidence floor, and refuses anything the corpus
-cannot support. Generation remains enabled by default so BitNet and other
+cannot support. It also selects persistent Redis Streams as the lightweight
+at-least-once field transport. Generation remains enabled by default so BitNet and other
 candidate models can still be evaluated as controlled fallbacks.
 
 Use the controlled experiment runner in

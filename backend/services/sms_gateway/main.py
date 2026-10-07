@@ -26,7 +26,7 @@ from backend.shared.models import (
     SMSMessage,
     ServiceHealth,
 )
-from backend.shared.streams import SMSEventStream
+from backend.shared.streams import create_sms_event_stream
 from backend.services.sms_gateway.sim_driver import SimDriver
 from backend.services.sms_gateway.twilio_driver import TwilioDriver
 
@@ -119,11 +119,16 @@ class SMSGateway:
         if _HAS_PARSER:
             self.message_parser = MessageParser()
 
-        # Kafka event stream (producer side)
-        self.event_stream = SMSEventStream(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
-            topic=settings.stream_topic,
+        # Durable event stream (producer side)
+        self.event_stream = create_sms_event_stream(
+            backend=os.getenv("STREAM_BACKEND", settings.stream_backend),
+            redis_url=os.getenv("REDIS_URL", settings.redis_url),
+            kafka_bootstrap_servers=os.getenv(
+                "KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers
+            ),
+            stream_name=settings.stream_topic,
             group_name=settings.stream_consumer_group,
+            enable_producer=True,
             enable_consumer=False,
         )
 

@@ -13,6 +13,7 @@ def _expected():
         "profile": "lab-small",
         "embedding_model": "all-MiniLM-L6-v2",
         "generation_enabled": "true",
+        "stream_backend": "kafka",
         "llm_provider": "bitnet",
         "llm_model": "bitnet-2b4t",
         "corpus_digest": "sha256:" + "a" * 64,
@@ -39,6 +40,7 @@ def _snapshot():
             "EDGE_RESOURCE_PROFILE": expected["profile"],
             "EMBEDDING_MODEL": expected["embedding_model"],
             "GENERATION_ENABLED": expected["generation_enabled"],
+            "STREAM_BACKEND": expected["stream_backend"],
             "LLM_PROVIDER": expected["llm_provider"],
             "LLM_MODEL": expected["llm_model"],
             "RAG_GROUNDING_REQUIRED": "true",
@@ -70,10 +72,18 @@ def _snapshot():
             component: {"status": "healthy"} for component in EXPECTED_COMPONENTS
         },
         "sms_stream_health": {
-            "stream": {"status": "connected", "topic": "sms.inbound"}
+            "stream": {
+                "status": "connected",
+                "backend": expected["stream_backend"],
+                "topic": "sms.inbound",
+            }
         },
         "router_stream_health": {
-            "stream": {"status": "connected", "topic": "sms.inbound"}
+            "stream": {
+                "status": "connected",
+                "backend": expected["stream_backend"],
+                "topic": "sms.inbound",
+            }
         },
     }
 

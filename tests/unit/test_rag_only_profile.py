@@ -71,7 +71,12 @@ def test_field_rag_only_chart_omits_generation_workloads(tmp_path):
     objects = [item for item in rendered if isinstance(item, dict)]
     names = {item.get("metadata", {}).get("name") for item in objects}
     config = next(item for item in objects if item.get("kind") == "ConfigMap")
-    topic = next(item for item in objects if item.get("kind") == "KafkaTopic")
+    redis_deployment = next(
+        item
+        for item in objects
+        if item.get("kind") == "Deployment"
+        and item.get("metadata", {}).get("name") == "lil-evy-redis"
+    )
 
     assert "lil-evy-bitnet" not in names
     assert "lil-evy-llm-inference" not in names
@@ -79,9 +84,14 @@ def test_field_rag_only_chart_omits_generation_workloads(tmp_path):
     assert config["data"]["RAG_DIRECT_THRESHOLD"] == "0.55"
     assert config["data"]["RAG_DIRECT_MAX_CHARS"] == "1000"
     assert config["data"]["RAG_MIN_VECTOR_CONFIDENCE"] == "0.25"
-    assert topic["metadata"]["name"] == "lil-evy-sms-inbound"
-    assert topic["spec"]["topicName"] == "sms.inbound"
+    assert not any(item.get("kind", "").startswith("Kafka") for item in objects)
+    assert config["data"]["STREAM_BACKEND"] == "redis"
+    assert config["data"]["REDIS_URL"] == "redis://lil-evy-redis:6379/0"
     assert config["data"]["STREAM_TOPIC"] == "sms.inbound"
+    redis_args = redis_deployment["spec"]["template"]["spec"]["containers"][0]["args"]
+    assert "--appendonly" in redis_args
+    assert "--appendfsync" in redis_args
+    assert "noeviction" in redis_args
 
 
 def test_external_kafka_omits_managed_resources_and_sets_bootstrap(tmp_path):
@@ -93,6 +103,7 @@ def test_external_kafka_omits_managed_resources_and_sets_bootstrap(tmp_path):
     values.write_text(
         yaml.safe_dump(
             {
+                "stream": {"backend": "kafka"},
                 "kafka": {
                     "managed": False,
                     "bootstrapServers": "shared-kafka.messaging.svc:9092",
@@ -135,6 +146,8 @@ def test_external_kafka_requires_bootstrap_servers():
             "template",
             "lil-evy",
             "chart",
+            "--set",
+            "stream.backend=kafka",
             "--set",
             "kafka.managed=false",
         ],

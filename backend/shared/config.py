@@ -56,12 +56,16 @@ class Settings(BaseSettings):
     corpus_read_only: bool = False
     corpus_activation_root: Optional[str] = None
 
-    # Kafka (AMQ Streams)
+    # Durable message stream. Redis Streams is the lightweight field default;
+    # Kafka remains available for connected OpenShift/AMQ Streams labs.
+    stream_backend: str = "redis"
+    redis_url: str = "redis://redis:6379/0"
     kafka_bootstrap_servers: str = "kafka:9092"
 
     # Message stream
     stream_topic: str = "sms.inbound"
     stream_consumer_group: str = "processors"
+    stream_max_len: int = 10000
 
     # Chat history
     chat_history_max_turns: int = 10

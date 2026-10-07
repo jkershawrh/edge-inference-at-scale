@@ -87,6 +87,8 @@ def evaluate_snapshot(
     required_components = CORE_COMPONENTS + (
         GENERATION_COMPONENTS if generation_enabled else ()
     )
+    if expected.get("stream_backend") == "redis":
+        required_components += ("redis",)
     deployments = snapshot.get("deployments") or []
     by_name = {item["name"]: item for item in deployments}
     for component in required_components:
@@ -113,6 +115,7 @@ def evaluate_snapshot(
         "EDGE_RESOURCE_PROFILE": expected["profile"],
         "EMBEDDING_MODEL": expected["embedding_model"],
         "GENERATION_ENABLED": "true" if generation_enabled else "false",
+        "STREAM_BACKEND": expected["stream_backend"],
     }
     if generation_enabled:
         comparisons.update(
@@ -196,6 +199,12 @@ def evaluate_snapshot(
         if stream.get("topic") != "sms.inbound":
             reasons.append(
                 "{0} event stream topic is not sms.inbound".format(component)
+            )
+        if stream.get("backend") != expected["stream_backend"]:
+            reasons.append(
+                "{0} event stream backend is not {1}".format(
+                    component, expected["stream_backend"]
+                )
             )
 
     service_health = snapshot.get("service_health") or {}
@@ -286,6 +295,7 @@ def main() -> int:
         "version": os.environ.get("CORPUS_VERSION", ""),
         "embedding_model": os.environ.get("EMBEDDING_MODEL", ""),
         "generation_enabled": os.environ.get("GENERATION_ENABLED", ""),
+        "stream_backend": os.environ.get("STREAM_BACKEND", ""),
         "llm_provider": os.environ.get("LLM_PROVIDER", ""),
         "llm_model": os.environ.get("LLM_MODEL", ""),
         "channel": os.environ.get("CHANNEL_DRIVER", ""),

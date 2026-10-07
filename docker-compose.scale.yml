@@ -9,29 +9,21 @@ services:
   # Shared Infrastructure
   # ============================================================
 
-  kafka:
-    image: bitnami/kafka:latest
-    environment:
-      - KAFKA_CFG_NODE_ID=1
-      - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
-      - KAFKA_CFG_LOG_RETENTION_HOURS=24
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--save", "", "--maxmemory", "128mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512m
+          cpus: "0.2"
+          memory: 192m
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 30s
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     networks:
       - edge-network
 
@@ -156,7 +148,9 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-1-router:8002
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-1.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -165,7 +159,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      kafka:
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
@@ -185,6 +179,9 @@ services:
       - RAG_SERVICE_URL=http://node-1-rag:8004
       - PRIVACY_FILTER_URL=http://node-1-privacy:8005
       - SMS_GATEWAY_URL=http://node-1-sms:8001
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-1.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - RAG_DIRECT_THRESHOLD=0.8
     deploy:
@@ -342,7 +339,9 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-2-router:8002
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-2.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -351,7 +350,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      kafka:
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
@@ -371,6 +370,9 @@ services:
       - RAG_SERVICE_URL=http://node-2-rag:8004
       - PRIVACY_FILTER_URL=http://node-2-privacy:8005
       - SMS_GATEWAY_URL=http://node-2-sms:8001
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-2.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - RAG_DIRECT_THRESHOLD=0.8
     deploy:
@@ -528,7 +530,9 @@ services:
     environment:
       - SMS_MODE=sim
       - MESSAGE_ROUTER_URL=http://node-3-router:8002
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-3.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - SMS_ROUTER_TIMEOUT_SECONDS=60
     deploy:
@@ -537,7 +541,7 @@ services:
           cpus: "0.15"
           memory: 256m
     depends_on:
-      kafka:
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python3.11", "-c", "import httpx; print(httpx.get('http://localhost:8001/health').status_code)"]
@@ -557,6 +561,9 @@ services:
       - RAG_SERVICE_URL=http://node-3-rag:8004
       - PRIVACY_FILTER_URL=http://node-3-privacy:8005
       - SMS_GATEWAY_URL=http://node-3-sms:8001
+      - STREAM_BACKEND=redis
+      - REDIS_URL=redis://redis:6379/0
+      - STREAM_TOPIC=node-3.sms.inbound
       - LLM_REQUEST_TIMEOUT_SECONDS=60
       - RAG_DIRECT_THRESHOLD=0.8
     deploy:
@@ -658,3 +665,4 @@ networks:
 volumes:
   chroma-data:
   rag-data:
+  redis-data:

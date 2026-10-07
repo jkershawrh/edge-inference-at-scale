@@ -152,6 +152,30 @@ privacyFilter:
       cpu: 250m
       memory: 256Mi
 
+stream:
+  # Redis Streams is the lightweight disconnected-field default. Kafka remains
+  # selectable for connected AMQ Streams integration and comparison testing.
+  backend: redis
+  name: sms.inbound
+  consumerGroup: processors
+  maxLen: 10000
+
+redis:
+  managed: true
+  # Required when managed=false.
+  url: ""
+  image: redis:7-alpine
+  maxmemory: 128mb
+  storageSize: 1Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 200m
+      memory: 192Mi
+
 kafka:
   # Set managed=false when the release must use an existing Kafka/AMQ Streams
   # broker (for example, when the operator is scoped to another namespace).

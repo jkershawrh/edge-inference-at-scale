@@ -127,7 +127,8 @@ Message Router (consumes from stream)
 
 ### Event Stream vs HTTP
 
-The current implementation uses HTTP forwarding between services (EVY pattern). For production edge deployment, this should evolve to **Redis Streams**:
+The field profile uses **Redis Streams** for durable delivery. HTTP forwarding
+remains a laboratory fallback only when the stream is unavailable:
 
 | Aspect | HTTP Forwarding (current) | Redis Streams (production) |
 |--------|--------------------------|---------------------------|
@@ -138,7 +139,11 @@ The current implementation uses HTTP forwarding between services (EVY pattern). 
 | Multi-consumer | No | Yes — fan-out to multiple processors |
 | Offline resilience | Messages lost on restart | Messages survive restart |
 
-Redis Streams are viable at the edge because Redis itself runs with ~50MB RAM. The stream provides ordered, persistent message delivery without the overhead of Kafka or a full message broker.
+Redis Streams are viable at the edge because Redis itself has a small memory
+footprint. The deployment enables AOF persistence, uses a bounded stream, and
+sets `noeviction` so memory pressure fails visibly instead of silently deleting
+unacknowledged messages. Kafka remains an optional connected-lab backend for AMQ
+Streams integration; it is not the default disconnected-node dependency.
 
 ## Node Profiles
 

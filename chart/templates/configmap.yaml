@@ -23,12 +23,21 @@ data:
   DISCORD_EPHEMERAL: {{ .Values.discord.ephemeral | quote }}
   # Legacy aliases retained for compatibility with older images.
   BITNET_SERVER_URL: "http://{{ .Release.Name }}-bitnet:8080"
-  {{- if ne .Values.kafka.managed false }}
+  STREAM_BACKEND: {{ default "kafka" .Values.stream.backend | quote }}
+  {{- if eq (default "kafka" .Values.stream.backend) "redis" }}
+  {{- if ne .Values.redis.managed false }}
+  REDIS_URL: "redis://{{ .Release.Name }}-redis:6379/0"
+  {{- else }}
+  REDIS_URL: {{ required "redis.url is required when redis.managed=false" .Values.redis.url | quote }}
+  {{- end }}
+  {{- else if ne .Values.kafka.managed false }}
   KAFKA_BOOTSTRAP_SERVERS: "{{ .Release.Name }}-kafka-kafka-bootstrap:9092"
   {{- else }}
   KAFKA_BOOTSTRAP_SERVERS: {{ required "kafka.bootstrapServers is required when kafka.managed=false" .Values.kafka.bootstrapServers | quote }}
   {{- end }}
-  STREAM_TOPIC: {{ .Values.kafka.topic.name | default "sms.inbound" | quote }}
+  STREAM_TOPIC: {{ default (.Values.kafka.topic.name | default "sms.inbound") .Values.stream.name | quote }}
+  STREAM_CONSUMER_GROUP: {{ .Values.stream.consumerGroup | default "processors" | quote }}
+  STREAM_MAX_LEN: {{ .Values.stream.maxLen | default 10000 | quote }}
   SMS_GATEWAY_URL: "http://{{ .Release.Name }}-sms-gateway:8001"
   MESSAGE_ROUTER_URL: "http://{{ .Release.Name }}-message-router:8002"
   LLM_SERVICE_URL: "http://{{ .Release.Name }}-llm-inference:8003"

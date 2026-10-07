@@ -1,4 +1,4 @@
-{{- if ne .Values.kafka.managed false }}
+{{- if and (eq (default "kafka" .Values.stream.backend) "kafka") (ne .Values.kafka.managed false) }}
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
 metadata:

@@ -7,6 +7,9 @@ deploymentProfile: field-rag-only
 generation:
   enabled: false
 
+stream:
+  backend: redis
+
 safety:
   groundingRequired: true
   emergencyRagEnabled: true

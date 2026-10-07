@@ -6,6 +6,31 @@
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._-]{0,62}$"
     },
+    "stream": {
+      "type": "object",
+      "required": ["backend", "name", "consumerGroup", "maxLen"],
+      "properties": {
+        "backend": {"enum": ["redis", "kafka"]},
+        "name": {"type": "string", "minLength": 1},
+        "consumerGroup": {"type": "string", "minLength": 1},
+        "maxLen": {"type": "integer", "minimum": 100, "maximum": 1000000}
+      },
+      "additionalProperties": false
+    },
+    "redis": {
+      "type": "object",
+      "required": ["managed", "url", "image", "maxmemory", "storageSize", "storageClassName", "resources"],
+      "properties": {
+        "managed": {"type": "boolean"},
+        "url": {"type": "string"},
+        "image": {"type": "string", "minLength": 1},
+        "maxmemory": {"type": "string", "minLength": 2},
+        "storageSize": {"type": "string", "minLength": 2},
+        "storageClassName": {"type": "string"},
+        "resources": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
     "chromadb": {
       "type": "object",
       "properties": {

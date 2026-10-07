@@ -87,6 +87,7 @@ export CORPUS_EVENT_ID=summit-connect
 export CORPUS_VERSION=2026.1
 export EMBEDDING_MODEL=all-MiniLM-L6-v2
 export GENERATION_ENABLED=true
+export STREAM_BACKEND=redis
 export LLM_PROVIDER=bitnet
 export LLM_MODEL=bitnet-2b4t
 export CHANNEL_DRIVER=simulator

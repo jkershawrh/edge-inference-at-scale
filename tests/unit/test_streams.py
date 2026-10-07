@@ -285,6 +285,7 @@ class TestHealth:
         info = await stream.health()
         assert info == {
             "status": "disconnected",
+            "backend": "kafka",
             "topic": "sms.inbound",
             "roles": ["producer", "consumer"],
             "group": "processors",
@@ -299,6 +300,7 @@ class TestHealth:
 
         assert info == {
             "status": "connected",
+            "backend": "kafka",
             "topic": "sms.inbound",
             "roles": ["producer"],
         }

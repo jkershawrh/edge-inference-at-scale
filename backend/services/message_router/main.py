@@ -39,7 +39,7 @@ from backend.shared.models import (
     SMSMessage,
 )
 from backend.shared.chat_history import ChatHistoryStore
-from backend.shared.streams import SMSEventStream
+from backend.shared.streams import create_sms_event_stream
 
 logger = logging.getLogger("message-router")
 
@@ -105,12 +105,17 @@ class MessageRouter:
             "SMS_GATEWAY_URL", settings.sms_gateway_url
         )
 
-        # Kafka event stream (consumer side)
-        self.event_stream = SMSEventStream(
-            bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers),
-            topic=settings.stream_topic,
+        # Durable event stream (consumer side)
+        self.event_stream = create_sms_event_stream(
+            backend=os.getenv("STREAM_BACKEND", settings.stream_backend),
+            redis_url=os.getenv("REDIS_URL", settings.redis_url),
+            kafka_bootstrap_servers=os.getenv(
+                "KAFKA_BOOTSTRAP_SERVERS", settings.kafka_bootstrap_servers
+            ),
+            stream_name=settings.stream_topic,
             group_name=settings.stream_consumer_group,
             enable_producer=False,
+            enable_consumer=True,
         )
         self.consumer_name = os.getenv("NODE_ID", settings.node_id)
         self._stream_task: Optional[asyncio.Task[None]] = None

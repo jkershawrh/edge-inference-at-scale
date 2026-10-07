@@ -81,28 +81,27 @@ documents and the event evaluation demonstrates adequate coverage. It is not a
 substitute for corpus-quality, stale-data, geography, language, or field-user
 testing.
 
-Each Helm release names its KafkaTopic resource independently while retaining
-the application topic `sms.inbound` inside that release's broker. When upgrading
-an older release that already owns the legacy Kubernetes resource, set
-`kafka.topic.resourceName=sms.inbound` for that release to preserve ownership.
+The field profile creates a release-local Redis Streams service with AOF
+persistence on a PVC. The stream is bounded and configured with `noeviction`;
+Redis must reject writes under memory pressure rather than silently discard
+unacknowledged safety messages. The OpenShift field preflight requires both the
+SMS gateway producer and message router consumer to report a connected
+`sms.inbound` Redis stream. HTTP fallback keeps laboratory demos usable when the
+stream is absent, but it does not provide the at-least-once delivery evidence
+required for field qualification.
 
-The OpenShift field preflight requires both the SMS gateway producer and message
-router consumer to report a connected `sms.inbound` stream. HTTP fallback keeps
-laboratory demos usable when Kafka is absent, but it does not provide the
-at-least-once delivery evidence required for field qualification.
-
-The default chart creates a release-local Kafka cluster and therefore requires
-an AMQ Streams/Strimzi operator that watches the release namespace. An installed
-operator in a different namespace is not sufficient. When an approved broker is
-provided by the platform instead, disable managed resources and declare its
-bootstrap endpoint explicitly:
+Kafka remains an optional connected-lab backend for Red Hat AMQ Streams
+integration. A release-local Kafka cluster requires an operator that watches the
+release namespace. When an approved broker is provided by the platform instead,
+select Kafka, disable managed resources, and declare its bootstrap endpoint:
 
 ```bash
 helm upgrade --install lil-evy ./chart \
+  --set stream.backend=kafka \
   --set kafka.managed=false \
   --set-string kafka.bootstrapServers=shared-kafka.messaging.svc:9092
 ```
 
-External mode does not create or own a `KafkaTopic`; platform operators must
+External Kafka mode does not create or own a `KafkaTopic`; platform operators must
 provision `sms.inbound` with the required retention and access controls before
 field preflight can become GREEN.
