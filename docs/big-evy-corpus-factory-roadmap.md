@@ -475,6 +475,8 @@ Already implemented:
 - Constrained connected-side MCP server for mission status, deterministic
   coverage planning, bounded sourcing work, and exact-byte lineage verification;
   all tools are read-only and accept no paths, URLs, content, or release actions
+- Internal-only OpenShift MCP profile with bounded resources, no service-account
+  token or public Route, default-deny egress, and label-restricted ingress
 - Registry-only connected acquisition controller with bounded reconcile
   lifecycles, content-addressed success/failure outcomes, durable chained audit,
   atomic change state, and an OpenShift profile combining default-deny network
@@ -488,6 +490,16 @@ Already implemented:
 - Strict external audit checkpoints and Ed25519 witness receipts with exact
   ledger-prefix and predecessor binding, offline rollback/replay/tamper/fork
   detection, monotonic sequences, and no witness private key in the application
+- Independent evaluation attestations and exact release-signing authorizations,
+  plus a protected signer-adapter/API boundary that re-verifies the signed
+  evidence, enforces key rotation/revocation policy, and emits a Lil EVY-compatible
+  manifest signature without exposing private key material
+- Site-scoped encrypted disconnected transfer using AES-256-GCM and HPKE
+  X25519/HKDF-SHA256 key wrapping, with verify-before-decrypt, wrong-site,
+  replay, tamper, and wrong-key rejection
+- Signed offline time anchors and revocation snapshots with persistent monotonic
+  replay floors, bounded same-boot anchored time, and opt-in fail-closed RAG
+  enforcement for active release, signing key, and contributing source identities
 - Repeatable synthetic disaster governed-release rehearsal covering exact
   packaging, attested signing authorization, encrypted offline transfer,
   activation/restart persistence, and grounded/refusal behavior, with an
@@ -498,13 +510,15 @@ Still required before this is production-grade:
 - Authenticated API/SFTP adapters and production external witness service
 - Human review UI/identity workflow, translation approval, and deployment-owned
   conflict/freshness policy configuration
-- Mandatory coverage-report binding for the next release-contract major version;
-  the current promotion input remains optional only for compatibility
-- Protected signing service, key rotation, and revocation
-- Evaluation attestations bound into the signed artifact
-- Encrypted transfer envelopes, production key integration, and media custody
-- GitOps policy for fleet identity enrollment and a disconnected trusted-time
-  mechanism
+- Retire `legacy-v1` compatibility so every supported release path requires the
+  governed coverage/lineage/evaluation contract
+- A real PKCS#11/KMS/HSM signer adapter and production key lifecycle; the
+  repository provides only the protected boundary and fake test adapter
+- Make release-signature governance evidence mandatory in every transfer/import
+  workflow and retain it with activation/audit evidence
+- Production site-key provisioning, rotation, device custody, and physical-media
+  chain of custody for encrypted transfers
+- GitOps policy for fleet identity enrollment
 - Expand the disaster fixture with signature-failure, interrupted-transfer,
   rejection, and authorized-rollback scenarios
 - Run physical target-hardware CUT for GSM/SMS, LoRa, antenna/range, thermal,
