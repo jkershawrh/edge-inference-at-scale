@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "corpus_factory" / "fixtures"
 
 VALID_FIXTURES = {
+    "corpus_mission_profile": "corpus-mission-profile.json",
+    "document_classification": "document-classification.json",
     "source_record": "source-record.json",
     "canonical_document": "canonical-document.json",
     "chunk_record": "chunk-record.json",
@@ -33,6 +35,8 @@ VALID_FIXTURES = {
 }
 
 INVALID_FIXTURES = {
+    "corpus_mission_profile": "corpus-mission-profile-duplicate-coverage.json",
+    "document_classification": "document-classification-unsafe-direct-answer.json",
     "source_record": "source-record-missing-evidence-digest.json",
     "canonical_document": "canonical-document-approved-contested.json",
     "chunk_record": "chunk-record-untraceable-parent.json",
@@ -150,3 +154,30 @@ def test_validator_does_not_mutate_input():
     original = copy.deepcopy(record)
     validate_instance(record)
     assert record == original
+
+
+def test_mission_profile_requires_every_coverage_category_to_be_unique():
+    record = _valid("corpus_mission_profile")
+    duplicate = copy.deepcopy(record["required_information"][0])
+    duplicate["requirement_id"] = "summit-duplicate-id"
+    record["required_information"].append(duplicate)
+
+    with pytest.raises(ContractValidationError, match="coverage category IDs"):
+        validate_instance(record)
+
+
+def test_document_classification_direct_answer_requires_verified_evidence():
+    record = _valid("document_classification")
+    record["verification"]["status"] = "pending"
+
+    with pytest.raises(ContractValidationError, match="direct-answer eligibility"):
+        validate_instance(record)
+
+
+def test_document_classification_critical_content_blocks_when_stale():
+    record = _valid("document_classification")
+    record["risk"]["safety_class"] = "critical"
+    record["validity"]["stale_action"] = "warn"
+
+    with pytest.raises(ContractValidationError, match="critical classification"):
+        validate_instance(record)

@@ -1,0 +1,19 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "document_classification",
+  "classification_id": "classification-summit-schedule-r1",
+  "mission_profile_id": "summit-connect-2026",
+  "document": {"document_id": "document-summit-schedule", "revision": 1},
+  "coverage": {
+    "category_ids": ["event_identity", "schedule"],
+    "supported_intents": ["event_dates", "event_location", "session_time"],
+    "geographies": ["summit-city", "convention-center"],
+    "languages": ["en"]
+  },
+  "authority": {"class": "official"},
+  "risk": {"safety_class": "high", "consequence_of_error": "An attendee may miss or travel to the wrong event session."},
+  "validity": {"valid_from": "2026-07-01T00:00:00-05:00", "valid_until": "2026-07-18T23:59:59-05:00", "stale_action": "block"},
+  "provenance": {"source_ids": ["source-summit-schedule"], "license": "CC-BY-4.0", "redistribution": "permitted"},
+  "verification": {"status": "verified", "verified_at": "2026-07-01T12:00:00-05:00", "reviewer_identity": "event-owner@example.test"},
+  "answer_policy": {"direct_answer_eligible": true, "reason": "Official, current event schedule approved for attendee answers."}
+}

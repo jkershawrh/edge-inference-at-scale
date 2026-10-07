@@ -22,6 +22,8 @@ except ImportError as exc:  # pragma: no cover - exercised only in minimal insta
 
 SCHEMA_DIR = Path(__file__).with_name("schemas")
 SCHEMA_BY_RECORD_TYPE = {
+    "corpus_mission_profile": "corpus-mission-profile.schema.json",
+    "document_classification": "document-classification.schema.json",
     "source_record": "source-record.schema.json",
     "canonical_document": "canonical-document.schema.json",
     "chunk_record": "chunk-record.schema.json",
@@ -101,7 +103,48 @@ def event_policy_subject_digest(instance: Mapping[str, Any]) -> str:
 
 def _semantic_validate(instance: Mapping[str, Any]) -> None:
     record_type = instance["record_type"]
-    if record_type == "source_record":
+    if record_type == "corpus_mission_profile":
+        event = instance["event"]
+        _ordered_time_window(event, "starts_at", "ends_at", "mission event")
+        validity = instance["validity"]
+        _ordered_time_window(validity, "valid_from", "valid_until", "mission validity")
+        requirements = instance["required_information"]
+        requirement_ids = [item["requirement_id"] for item in requirements]
+        if len(requirement_ids) != len(set(requirement_ids)):
+            raise ContractValidationError("mission requirement IDs must be unique")
+        category_ids = [item["category_id"] for item in requirements]
+        if len(category_ids) != len(set(category_ids)):
+            raise ContractValidationError("mission coverage category IDs must be unique")
+    elif record_type == "document_classification":
+        validity = instance["validity"]
+        _ordered_time_window(validity, "valid_from", "valid_until", "classification validity")
+        verification = instance["verification"]
+        is_verified = verification["status"] == "verified"
+        has_verifier = (
+            verification["verified_at"] is not None
+            and verification["reviewer_identity"] is not None
+        )
+        if instance["answer_policy"]["direct_answer_eligible"] and not is_verified:
+            raise ContractValidationError(
+                "direct-answer eligibility requires verified evidence"
+            )
+        if is_verified != has_verifier:
+            raise ContractValidationError(
+                "verified classification requires verification time and reviewer"
+            )
+        if (
+            instance["risk"]["safety_class"] == "critical"
+            and validity["stale_action"] != "block"
+        ):
+            raise ContractValidationError("critical classification must block when stale")
+        if (
+            instance["authority"]["class"] == "unverified"
+            and instance["answer_policy"]["direct_answer_eligible"]
+        ):
+            raise ContractValidationError(
+                "unverified authority cannot be direct-answer eligible"
+            )
+    elif record_type == "source_record":
         acquired = _parse_time(instance["acquired_at"])
         verified = _parse_time(instance["last_verified_at"])
         if verified < acquired:

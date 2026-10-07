@@ -1,0 +1,16 @@
+{
+  "schema_version": "2.0.0",
+  "record_type": "corpus_mission_profile",
+  "mission_profile_id": "summit-connect-2026",
+  "version": "1.0.0",
+  "vertical": "conference_event",
+  "mission": "Invalid duplicate coverage fixture.",
+  "event": {"event_id": "summit-connect-2026", "name": "Summit Connect 2026", "starts_at": "2026-07-15T00:00:00-05:00", "ends_at": "2026-07-18T00:00:00-05:00", "timezone": "America/Chicago"},
+  "scope": {"geographies": ["summit-city"], "languages": ["en"], "audiences": ["attendees"], "accessibility_needs": [], "delivery_channels": ["sms"]},
+  "governance": {"risk_level": "high", "owner_organization": "Summit Connect Operations", "required_approver_roles": ["event_owner"]},
+  "validity": {"valid_from": "2026-07-01T00:00:00-05:00", "valid_until": "2026-07-18T23:59:59-05:00", "expected_refresh_seconds": 3600},
+  "required_information": [
+    {"requirement_id": "summit-schedule", "category_id": "schedule", "description": "Schedule", "required_intents": ["session_time"], "safety_class": "high", "minimum_sources": 1},
+    {"requirement_id": "summit-schedule-copy", "category_id": "schedule", "description": "Duplicate schedule category", "required_intents": ["agenda_change"], "safety_class": "high", "minimum_sources": 1}
+  ]
+}
