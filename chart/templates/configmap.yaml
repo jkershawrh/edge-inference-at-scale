@@ -43,6 +43,7 @@ data:
   LLM_MAX_INFLIGHT_REQUESTS: "2"
   RAG_DIRECT_THRESHOLD: {{ .Values.rag.directThreshold | quote }}
   RAG_DIRECT_MAX_CHARS: {{ .Values.rag.directMaxChars | quote }}
+  RAG_MIN_VECTOR_CONFIDENCE: {{ .Values.rag.minVectorConfidence | quote }}
   API_GATEWAY_PROXY_TIMEOUT_SECONDS: "125"
   RAG_GROUNDING_REQUIRED: {{ .Values.safety.groundingRequired | quote }}
   EMERGENCY_RAG_ENABLED: {{ .Values.safety.emergencyRagEnabled | quote }}

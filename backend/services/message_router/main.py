@@ -275,6 +275,18 @@ class MessageRouter:
             result_metadata = validated_result.metadata
             top_score = scores[0] if scores else 0.0
             top_doc = documents[0] if documents else None
+            top_vector_confidence = None
+            if result_metadata and isinstance(result_metadata[0], dict):
+                source_scores = result_metadata[0].get("retrieval_source_scores")
+                if isinstance(source_scores, dict):
+                    candidate = source_scores.get("vector")
+                    if (
+                        isinstance(candidate, (int, float))
+                        and not isinstance(candidate, bool)
+                        and math.isfinite(float(candidate))
+                        and 0.0 <= float(candidate) <= 1.0
+                    ):
+                        top_vector_confidence = float(candidate)
 
             evidence = []
             for index, _document in enumerate(documents[:10]):
@@ -308,6 +320,7 @@ class MessageRouter:
                     "active_corpus_digest": validated_result.active_corpus_digest,
                     "active_corpus_sequence": validated_result.active_corpus_sequence,
                     "evidence": evidence,
+                    "top_vector_confidence": top_vector_confidence,
                 }
             )
 
@@ -747,9 +760,23 @@ class MessageRouter:
             rag_direct_max_chars = int(
                 os.getenv("RAG_DIRECT_MAX_CHARS", settings.rag_direct_max_chars)
             )
+            min_vector_confidence = float(
+                os.getenv(
+                    "RAG_MIN_VECTOR_CONFIDENCE",
+                    settings.rag_min_vector_confidence,
+                )
+            )
+            top_vector_confidence = (self._answer_trace.get() or {}).get(
+                "top_vector_confidence"
+            )
+            vector_supported = min_vector_confidence <= 0.0 or (
+                isinstance(top_vector_confidence, (int, float))
+                and float(top_vector_confidence) >= min_vector_confidence
+            )
             if (
                 top_doc
                 and top_score >= rag_threshold
+                and vector_supported
                 and (
                     len(top_doc) <= rag_direct_max_chars
                     or processed.message_type == MessageType.EMERGENCY
@@ -767,7 +794,9 @@ class MessageRouter:
                 self._set_answer_mode("refused_emergency_grounding")
                 self.stats.setdefault("emergency_grounding_refusals", 0)
                 self.stats["emergency_grounding_refusals"] += 1
-            elif settings.rag_grounding_required and not context:
+            elif settings.rag_grounding_required and (
+                not context or not vector_supported
+            ):
                 response_text = settings.grounding_failure_message
                 self._set_answer_mode("refused_grounding")
                 self.stats.setdefault("grounding_refusals", 0)

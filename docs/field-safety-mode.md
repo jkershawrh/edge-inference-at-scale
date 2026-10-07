@@ -32,6 +32,8 @@ The overlay enables two independent controls:
   returned directly and may be split into SMS segments. If current guidance is
   missing or below the retrieval threshold, the node returns a generic refusal
   directing the user to trusted local instructions or responders.
+- `RAG_MIN_VECTOR_CONFIDENCE=0.25`: a lexical overlap alone cannot qualify as
+  grounding. The top result must also have minimum semantic-vector support.
 
 Emergency turns are not added to conversational history. The refusal messages
 fit within one SMS and intentionally contain no assumed phone number, location,

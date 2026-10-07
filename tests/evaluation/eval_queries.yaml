@@ -26,8 +26,21 @@ response_gate:
     emergency: 1.00
     treasure_hunt: 0.90
     architecture: 0.80
+    no_answer: 1.00
 
 eval_queries:
+
+  # ---------------------------------------------------------------------------
+  # Out-of-domain / safe no-answer queries
+  # ---------------------------------------------------------------------------
+
+  - id: noanswer_01
+    query: "What is the winning lottery number on Mars?"
+    category: no_answer
+    expected_keywords: ["can't verify", "trusted local"]
+    forbidden_keywords: ["BitNet", "phone number", "911"]
+    expected_entities: []
+    max_acceptable_latency_ms: 15000
 
   # ---------------------------------------------------------------------------
   # Schedule queries

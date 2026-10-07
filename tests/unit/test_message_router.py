@@ -449,7 +449,13 @@ class TestRAGDirectFallback:
     def setup_method(self):
         self.router = MessageRouter()
 
-    def _mock_http_client(self, rag_docs, rag_scores, llm_response_text="LLM fallback"):
+    def _mock_http_client(
+        self,
+        rag_docs,
+        rag_scores,
+        llm_response_text="LLM fallback",
+        rag_metadata=None,
+    ):
         """Wire up http_client.post to return canned RAG, LLM, and SMS responses.
 
         Returns a call_log list so callers can inspect which URLs were hit.
@@ -463,6 +469,7 @@ class TestRAGDirectFallback:
         rag_response.json = MagicMock(return_value={
             "documents": rag_docs,
             "scores": rag_scores,
+            "metadata": rag_metadata or [{} for _ in rag_docs],
         })
 
         llm_response = MagicMock()
@@ -605,12 +612,47 @@ class TestRAGDirectFallback:
     @pytest.mark.asyncio
     async def test_rag_only_profile_still_returns_eligible_evidence(self):
         doc = "Verified shelter: North School, 12 River Road."
-        call_log = self._mock_http_client(rag_docs=[doc], rag_scores=[0.9])
+        call_log = self._mock_http_client(
+            rag_docs=[doc],
+            rag_scores=[0.9],
+            rag_metadata=[
+                {"retrieval_source_scores": {"vector": 0.72, "text": 0.8}}
+            ],
+        )
 
-        with patch.object(settings, "generation_enabled", False):
+        with (
+            patch.object(settings, "generation_enabled", False),
+            patch.object(settings, "rag_min_vector_confidence", 0.25),
+        ):
             response = await self.router.process_message(
                 _make_sms("Where is the verified shelter?")
             )
 
         assert not [c for c in call_log if "/inference" in c["url"]]
         assert response == doc
+
+    @pytest.mark.asyncio
+    async def test_field_profile_rejects_lexical_overlap_without_vector_support(self):
+        misleading = (
+            "This system uses SMS to LLM to SMS architecture. "
+            "You text a phone number and receive an answer."
+        )
+        call_log = self._mock_http_client(
+            rag_docs=[misleading],
+            rag_scores=[0.5667],
+            rag_metadata=[
+                {"retrieval_source_scores": {"vector": 0.18, "text": 0.4667}}
+            ],
+        )
+
+        with (
+            patch.object(settings, "rag_grounding_required", True),
+            patch.object(settings, "rag_min_vector_confidence", 0.25),
+        ):
+            response = await self.router.process_message(
+                _make_sms("What is the winning lottery number on Mars?")
+            )
+
+        assert not [c for c in call_log if "/inference" in c["url"]]
+        assert response == settings.grounding_failure_message
+        assert self.router.stats["grounding_refusals"] == 1

@@ -62,6 +62,9 @@ rag:
   candidatePoolMin: 10
   directThreshold: 0.55
   directMaxChars: 400
+  # Optional semantic-support floor used by field safety profiles to reject
+  # accidental lexical overlaps. Zero preserves demo compatibility.
+  minVectorConfidence: 0.0
   storageSize: 5Gi
   persistence:
     enabled: true

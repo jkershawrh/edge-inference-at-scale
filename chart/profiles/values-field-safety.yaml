@@ -3,3 +3,9 @@
 safety:
   groundingRequired: true
   emergencyRagEnabled: true
+
+rag:
+  # Require semantic support in addition to lexical/rank-fusion confidence.
+  # This blocks accidental overlaps such as an unrelated query containing the
+  # word "number" matching a phone-number document.
+  minVectorConfidence: 0.25

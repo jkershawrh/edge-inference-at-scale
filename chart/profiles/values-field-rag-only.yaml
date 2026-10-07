@@ -12,7 +12,8 @@ safety:
   emergencyRagEnabled: true
 
 rag:
-  # Match the minimum evidence floor so qualifying corpus evidence is returned
-  # directly. Documents remain bounded and SMS chunking happens at delivery.
-  directThreshold: 0.4
+  # Direct answers require both fused confidence and independent semantic
+  # support. Documents remain bounded and SMS chunking happens at delivery.
+  directThreshold: 0.55
   directMaxChars: 1000
+  minVectorConfidence: 0.25

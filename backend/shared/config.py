@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     llm_max_inflight_requests: int = 2
     rag_direct_threshold: float = 0.55
     rag_direct_max_chars: int = 400
+    rag_min_vector_confidence: float = 0.0
     api_gateway_proxy_timeout_seconds: float = 125.0
     rag_grounding_required: bool = False
     emergency_rag_enabled: bool = False
